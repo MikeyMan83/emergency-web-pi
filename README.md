@@ -3,11 +3,13 @@
 HACS-style GitOps workflow for an offline-ready Raspberry Pi Kiwix library.
 
 Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
+For zero-touch first boot, use: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 
 ## Documentation
 
 - Setup and architecture: [README.md](README.md)
 - SD card deployment path: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
+- Fully unattended SD prep: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 - Easiest operating model and tool choices: [WORKFLOW_CHOICES.md](WORKFLOW_CHOICES.md)
 - Day-2 operations: [HOWTO.md](HOWTO.md)
 - Release runbook: [RELEASE.md](RELEASE.md)
@@ -18,7 +20,7 @@ Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUIC
 
 If your goal is the easiest reliable workflow, use:
 1. Raspberry Pi Imager to create the SD card.
-2. First-boot command from [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md).
+2. Unattended prep script from [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
 3. Docker stack in this repo (no Home Assistant required).
 
 Use Home Assistant only as an optional dashboard later.

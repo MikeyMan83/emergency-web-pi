@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Unattended SD preparation script for Windows (`scripts/prepare-sd-autoboot.ps1`) that writes first-boot automation to the Pi boot partition.
+- Dedicated unattended setup guide (`AUTOBOOT_SD.md`) for zero-touch first boot.
+
+### Changed
+- Bootstrap logic now supports first-boot configuration injection via environment variables (content URL, sync interval, port, optional token file setup).
+
 ## [0.1.0] - 2026-08-06
 
 ### Added

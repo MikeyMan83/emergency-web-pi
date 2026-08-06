@@ -2,6 +2,8 @@
 
 This is the shortest path to a grab-and-go offline Pi.
 
+If you want fully unattended first boot, use [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
+
 ## What you need
 
 - Raspberry Pi 3B+
@@ -27,6 +29,8 @@ curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/scripts/boo
 ```
 
 6. Write the card.
+
+Alternative: after flashing, run the unattended boot-partition prep script in [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
 
 ## 2. First boot
 

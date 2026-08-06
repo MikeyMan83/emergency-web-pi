@@ -5,6 +5,7 @@ This project supports multiple ways to operate, but one path is clearly simplest
 ## Recommended default (simplest)
 
 Use Docker on the Pi with Raspberry Pi Imager first-boot automation.
+Best variant: prepare the boot partition with `scripts/prepare-sd-autoboot.ps1`.
 
 Why:
 - One stack to maintain.
@@ -22,6 +23,8 @@ Why Pi Imager is better here:
 - It reduces manual post-flash steps to near zero.
 
 Rufus is fine for raw imaging, but you lose first-boot automation convenience.
+
+For unattended setup details, see `AUTOBOOT_SD.md`.
 
 ## Home Assistant as frontend?
 

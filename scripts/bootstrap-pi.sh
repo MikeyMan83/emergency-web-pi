@@ -97,7 +97,7 @@ if [ -n "${BOOTSTRAP_GITHUB_TOKEN:-}" ]; then
   set_env_value "GITHUB_TOKEN_FILE" "/run/secrets/github_token"
 fi
 
-if ! grep -q '^GITHUB_URL=https://raw.githubusercontent.com/<owner>/<repo>/<branch>/zimlist.txt$' .env; then
+if ! grep -Fq 'GITHUB_URL=https://raw.githubusercontent.com/<owner>/<repo>/<branch>/zimlist.txt' .env; then
   log "Bootstrap configuration complete."
 else
   log "IMPORTANT: Set a real GITHUB_URL in .env before sync can run."
