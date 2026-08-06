@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+
+# Choose the first regular user created by Raspberry Pi Imager.
+BOOTSTRAP_USER="$(getent passwd 1000 | cut -d: -f1 || true)"
+if [ -z "$BOOTSTRAP_USER" ]; then
+  BOOTSTRAP_USER="pi"
+fi
+
+curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh \
+  | env BOOTSTRAP_USER="$BOOTSTRAP_USER" bash

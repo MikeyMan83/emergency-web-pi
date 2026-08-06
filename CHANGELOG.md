@@ -12,6 +12,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Changed
 - Bootstrap logic now supports first-boot configuration injection via environment variables (content URL, sync interval, port, optional token file setup).
+- Simplified primary setup docs to default to Raspberry Pi Imager + one-command SSH deployment, with boot-partition scripting moved to advanced optional guidance.
+- Set default bootstrap and docs URLs to `MikeyMan83/pi-kiwix-survival` for copy-paste-ready deployment.
+- Documented explicit offline-first behavior in primary setup docs.
+- Simplified primary setup again to a zero-touch `firstrun.sh` boot-partition flow (flash, paste, boot) with SSH deploy retained as fallback only.
 
 ## [0.1.0] - 2026-08-06
 

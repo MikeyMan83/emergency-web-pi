@@ -1,6 +1,8 @@
-# Fully Unattended SD Prep
+# Fully Unattended SD Prep (Advanced Optional)
 
 This method prepares the SD card so the Pi installs and starts the full stack automatically on first boot.
+
+Most users should use the simpler default path in `SD_CARD_QUICKSTART.md`.
 
 ## What this does
 
@@ -18,10 +20,10 @@ This method prepares the SD card so the Pi installs and starts the full stack au
 ```powershell
 ./scripts/prepare-sd-autoboot.ps1 \
   -BootPath E:\ \
-  -RepoUrl https://github.com/<owner>/<repo>.git \
+  -RepoUrl https://github.com/MikeyMan83/pi-kiwix-survival.git \
   -RepoBranch main \
   -BootstrapUser <pi-username> \
-  -ZimListRawUrl https://raw.githubusercontent.com/<owner>/<repo>/main/profiles/medical-survival-zimlist.txt \
+  -ZimListRawUrl https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/profiles/medical-survival-zimlist.txt \
   -EnableSsh
 ```
 

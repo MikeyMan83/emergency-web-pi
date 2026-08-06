@@ -3,13 +3,13 @@
 HACS-style GitOps workflow for an offline-ready Raspberry Pi Kiwix library.
 
 Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
-For zero-touch first boot, use: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
+Advanced optional helper script path: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 
 ## Documentation
 
 - Setup and architecture: [README.md](README.md)
 - SD card deployment path: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
-- Fully unattended SD prep: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
+- Advanced unattended SD prep: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 - Easiest operating model and tool choices: [WORKFLOW_CHOICES.md](WORKFLOW_CHOICES.md)
 - Day-2 operations: [HOWTO.md](HOWTO.md)
 - Release runbook: [RELEASE.md](RELEASE.md)
@@ -20,10 +20,18 @@ For zero-touch first boot, use: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 
 If your goal is the easiest reliable workflow, use:
 1. Raspberry Pi Imager to create the SD card.
-2. Unattended prep script from [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
-3. Docker stack in this repo (no Home Assistant required).
+2. Add `firstrun.sh` on the SD card boot partition.
+3. Boot once on Wi-Fi and let first-boot automation deploy the stack.
 
 Use Home Assistant only as an optional dashboard later.
+
+### Optional fallback: one-command deploy over SSH
+
+```bash
+ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash"
+```
+
+This command installs Docker (if needed), clones or updates the repo on Pi, writes the default medical-survival content URL into `.env`, and starts the containers.
 
 The Pi runs two containers:
 - `kiwix-server`: serves all `.zim` files in `./zim_data`.
@@ -34,6 +42,15 @@ The Pi runs two containers:
 - Zero routine SSH maintenance after initial setup.
 - Library state lives in Git (simple to audit and update).
 - Interrupted large downloads resume automatically with `aria2c`.
+
+## Offline-first behavior
+
+This stack is designed to degrade gracefully when internet is unavailable:
+- Online: sync agent checks GitHub, downloads new content, and restarts Kiwix.
+- Offline: sync agent cannot reach GitHub, logs a warning, sleeps, and retries later.
+- In both cases: `kiwix-server` still starts and serves every `.zim` file already stored in `zim_data/`.
+
+No toggles are required to switch between connected and disconnected operation.
 
 ## Files in this repo
 
@@ -46,7 +63,7 @@ The Pi runs two containers:
 
 ## One-time setup
 
-1. Create a private GitHub repo with a `zimlist.txt` file.
+1. Create a GitHub repo with a `zimlist.txt` file.
 2. Add one torrent permalink per line in `zimlist.txt`.
 3. On the Pi, clone this repo.
 4. Create `.env` from the example:
@@ -67,12 +84,15 @@ docker compose up -d
 
 7. Open Kiwix at `http://<pi-ip>:8080`.
 
-## Fastest first-boot path
+## Optional first-boot automation
 
-If you use Raspberry Pi Imager Advanced Options, you can run a script at first boot so the Pi auto-installs Docker and starts this stack:
+The default quickstart already uses first-boot automation with `firstrun.sh`.
+If you prefer a generated boot-partition script from Windows, see [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
+
+Manual first-boot script command if needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/scripts/bootstrap-pi.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash
 ```
 
 See [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md) for exact steps.

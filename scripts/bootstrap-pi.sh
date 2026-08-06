@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/<owner>/<repo>.git}"
+REPO_URL="${REPO_URL:-https://github.com/MikeyMan83/pi-kiwix-survival.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
+DEFAULT_PROFILE_URL="https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/profiles/medical-survival-zimlist.txt"
 BOOTSTRAP_USER="${BOOTSTRAP_USER:-${SUDO_USER:-$USER}}"
 DEFAULT_HOME="$(getent passwd "$BOOTSTRAP_USER" | cut -d: -f6 || true)"
 if [ -z "$DEFAULT_HOME" ]; then
@@ -77,6 +78,9 @@ fi
 if [ -n "${BOOTSTRAP_GITHUB_URL:-}" ]; then
   log "Setting GITHUB_URL from BOOTSTRAP_GITHUB_URL"
   set_env_value "GITHUB_URL" "$BOOTSTRAP_GITHUB_URL"
+elif grep -Fq 'GITHUB_URL=https://raw.githubusercontent.com/<owner>/<repo>/<branch>/zimlist.txt' .env; then
+  log "Setting GITHUB_URL to default medical-survival profile"
+  set_env_value "GITHUB_URL" "$DEFAULT_PROFILE_URL"
 fi
 
 if [ -n "${BOOTSTRAP_SYNC_INTERVAL_SECONDS:-}" ]; then
