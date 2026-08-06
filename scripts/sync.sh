@@ -31,10 +31,38 @@ apk add --no-cache aria2 curl docker-cli >/dev/null
 TMP_FILE="/data/zimlist.new"
 NORMALIZED_FILE="/data/zimlist.normalized"
 TARGET_FILE="/data/zimlist.txt"
+CURL_CONFIG_FILE="/tmp/curl.conf"
+
+cleanup() {
+  rm -f "${TMP_FILE}" "${NORMALIZED_FILE}" "${CURL_CONFIG_FILE}"
+}
+
+trap cleanup EXIT
+
+resolve_token() {
+  if [ -n "${GITHUB_TOKEN_FILE:-}" ] && [ -r "${GITHUB_TOKEN_FILE}" ]; then
+    TOKEN="$(tr -d '\r\n' < "${GITHUB_TOKEN_FILE}")"
+  elif [ -n "${GITHUB_TOKEN:-}" ]; then
+    TOKEN="${GITHUB_TOKEN}"
+  else
+    TOKEN=""
+  fi
+}
 
 download_list() {
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" "${GITHUB_URL}" -o "${TMP_FILE}"
+  resolve_token
+
+  if [ -n "${TOKEN}" ]; then
+    {
+      printf 'silent\n'
+      printf 'show-error\n'
+      printf 'fail\n'
+      printf 'location\n'
+      printf 'output = "%s"\n' "${TMP_FILE}"
+      printf 'header = "Authorization: Bearer %s"\n' "${TOKEN}"
+      printf 'url = "%s"\n' "${GITHUB_URL}"
+    } > "${CURL_CONFIG_FILE}"
+    curl -K "${CURL_CONFIG_FILE}"
   else
     curl -fsSL "${GITHUB_URL}" -o "${TMP_FILE}"
   fi
@@ -54,7 +82,7 @@ while true; do
 
   if [ ! -s "${NORMALIZED_FILE}" ]; then
     log "WARN: Downloaded list is empty. Ignoring update."
-    rm -f "${TMP_FILE}" "${NORMALIZED_FILE}"
+    rm -f "${TMP_FILE}" "${NORMALIZED_FILE}" "${CURL_CONFIG_FILE}"
     sleep "${SYNC_INTERVAL_SECONDS}"
     continue
   fi
@@ -80,6 +108,6 @@ while true; do
     log "No changes detected."
   fi
 
-  rm -f "${TMP_FILE}" "${NORMALIZED_FILE}"
+  rm -f "${TMP_FILE}" "${NORMALIZED_FILE}" "${CURL_CONFIG_FILE}"
   sleep "${SYNC_INTERVAL_SECONDS}"
 done

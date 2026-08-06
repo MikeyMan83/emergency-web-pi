@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag/version alignment
+        id: verify
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          EXPECTED_TAG="v$VERSION"
+
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "Tag $TAG does not match VERSION file ($EXPECTED_TAG)."
+            exit 1
+          fi
+
+          grep -q "^## \[$VERSION\]" CHANGELOG.md || (echo "Missing changelog section for $VERSION"; exit 1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.verify.outputs.version }}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {in_section=1; next}
+            in_section && $0 ~ /^## \[/ {exit}
+            in_section {print}
+          ' CHANGELOG.md > release_notes.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release_notes.md
