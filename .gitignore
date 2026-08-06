@@ -1,0 +1,3 @@
+.env
+zim_data/*
+!zim_data/.gitkeep

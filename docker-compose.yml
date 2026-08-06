@@ -1,0 +1,29 @@
+name: pi-kiwix-survival
+
+services:
+  kiwix-server:
+    image: ghcr.io/kiwix/kiwix-serve:latest
+    container_name: kiwix-server
+    restart: unless-stopped
+    ports:
+      - "${KIWIX_PORT:-8080}:8080"
+    volumes:
+      - ./zim_data:/data
+    command: "*.zim"
+
+  kiwix-sync-agent:
+    image: alpine:3.22
+    container_name: kiwix-sync
+    restart: unless-stopped
+    depends_on:
+      - kiwix-server
+    environment:
+      GITHUB_URL: "${GITHUB_URL}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      SYNC_INTERVAL_SECONDS: "${SYNC_INTERVAL_SECONDS:-86400}"
+      ARIA2_MAX_CONCURRENT_DOWNLOADS: "${ARIA2_MAX_CONCURRENT_DOWNLOADS:-3}"
+    volumes:
+      - ./zim_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/sync.sh:/usr/local/bin/sync.sh:ro
+    command: sh /usr/local/bin/sync.sh
