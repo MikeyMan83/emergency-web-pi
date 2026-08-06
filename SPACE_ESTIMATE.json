@@ -1,13 +1,105 @@
 {
-  "generated_at": "pending",
+  "generated_at": "2026-08-06T14:17:38Z",
   "source_list": "profiles/medical-survival-zimlist.txt",
   "repository": "https://github.com/MikeyMan83/pi-kiwix-survival",
-  "item_count": 0,
-  "known_count": 0,
-  "unknown_count": 0,
-  "total_known_bytes": 0,
-  "total_known_human": "pending",
-  "recommended_min_sd_bytes": 0,
-  "recommended_min_sd_human": "pending",
-  "rows": []
+  "item_count": 11,
+  "known_count": 4,
+  "unknown_count": 7,
+  "total_known_bytes": 61175061050,
+  "total_known_human": "56.97 GB",
+  "recommended_min_sd_bytes": 73410073260,
+  "recommended_min_sd_human": "68.37 GB",
+  "is_complete": false,
+  "published_total_human": "withheld (incomplete)",
+  "published_recommended_human": "withheld (incomplete)",
+  "rows": [
+    {
+      "source_url": "https://download.kiwix.org/zim/wikipedia_nl_all_nopic.zim.torrent",
+      "title": "Wikipedia Dutch (no images)",
+      "content_url": "https://download.kiwix.org/zim/wikipedia_nl_all_nopic.zim",
+      "size_bytes": 5806883365,
+      "size_human": "5.41 GB",
+      "probe_method": "HEAD:Content-Length"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/wikipedia_en_all_nopic.zim.torrent",
+      "title": "Wikipedia English (no images)",
+      "content_url": "https://download.kiwix.org/zim/wikipedia_en_all_nopic.zim",
+      "size_bytes": 52690706555,
+      "size_human": "49.07 GB",
+      "probe_method": "HEAD:Content-Length"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/mdwiki_en_all_maxi.zim.torrent",
+      "title": "MDWiki (medical encyclopedia)",
+      "content_url": "https://download.kiwix.org/zim/mdwiki_en_all_maxi.zim",
+      "size_bytes": 2302838768,
+      "size_human": "2.14 GB",
+      "probe_method": "HEAD:Content-Length"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/wikem_en_all_maxi.zim.torrent",
+      "title": "WikEM (emergency medicine)",
+      "content_url": "https://download.kiwix.org/zim/wikem_en_all_maxi.zim",
+      "size_bytes": 374632362,
+      "size_human": "357.28 MB",
+      "probe_method": "HEAD:Content-Length"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/survivalmanual_en_all_maxi.zim.torrent",
+      "title": "Survival Manual",
+      "content_url": "https://download.kiwix.org/zim/survivalmanual_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/ready.gov_en_all_maxi.zim.torrent",
+      "title": "Ready.gov",
+      "content_url": "https://download.kiwix.org/zim/ready.gov_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/ifixit_en_all_maxi.zim.torrent",
+      "title": "iFixit",
+      "content_url": "https://download.kiwix.org/zim/ifixit_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/diy.stackexchange.com_en_all_maxi.zim.torrent",
+      "title": "DIY Stack Exchange",
+      "content_url": "https://download.kiwix.org/zim/diy.stackexchange.com_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/mechanics.stackexchange.com_en_all_maxi.zim.torrent",
+      "title": "Mechanics Stack Exchange",
+      "content_url": "https://download.kiwix.org/zim/mechanics.stackexchange.com_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/woodworking.stackexchange.com_en_all_maxi.zim.torrent",
+      "title": "Woodworking Stack Exchange",
+      "content_url": "https://download.kiwix.org/zim/woodworking.stackexchange.com_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    },
+    {
+      "source_url": "https://download.kiwix.org/zim/raspberrypi.stackexchange.com_en_all_maxi.zim.torrent",
+      "title": "Raspberry Pi Stack Exchange",
+      "content_url": "https://download.kiwix.org/zim/raspberrypi.stackexchange.com_en_all_maxi.zim",
+      "size_bytes": null,
+      "size_human": "unknown",
+      "probe_method": "HEAD:404,GET:404"
+    }
+  ]
 }

@@ -82,6 +82,31 @@ def map_to_content_url(source_url: str) -> str:
     return source_url
 
 
+def infer_title(source_url: str) -> str:
+    slug = source_url.rstrip("/").split("/")[-1]
+    if slug.endswith(".torrent"):
+        slug = slug[: -len(".torrent")]
+    if slug.endswith(".zim"):
+        slug = slug[: -len(".zim")]
+
+    known = {
+        "wikipedia_nl_all_nopic": "Wikipedia Dutch (no images)",
+        "wikipedia_en_all_nopic": "Wikipedia English (no images)",
+        "mdwiki_en_all_maxi": "MDWiki (medical encyclopedia)",
+        "wikem_en_all_maxi": "WikEM (emergency medicine)",
+        "survivalmanual_en_all_maxi": "Survival Manual",
+        "ready.gov_en_all_maxi": "Ready.gov",
+        "ifixit_en_all_maxi": "iFixit",
+        "diy.stackexchange.com_en_all_maxi": "DIY Stack Exchange",
+        "mechanics.stackexchange.com_en_all_maxi": "Mechanics Stack Exchange",
+        "woodworking.stackexchange.com_en_all_maxi": "Woodworking Stack Exchange",
+        "raspberrypi.stackexchange.com_en_all_maxi": "Raspberry Pi Stack Exchange",
+    }
+    if slug in known:
+        return known[slug]
+    return slug.replace("_", " ")
+
+
 def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
     urls = read_urls(input_path)
     rows: list[dict] = []
@@ -98,6 +123,7 @@ def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
         rows.append(
             {
                 "source_url": source_url,
+                "title": infer_title(source_url),
                 "content_url": content_url,
                 "size_bytes": size,
                 "size_human": human_size(size),
@@ -107,6 +133,7 @@ def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
 
     now = dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
     safety_target = int(total_known * 1.2) if total_known > 0 else 0
+    is_complete = unknown_count == 0
 
     return {
         "generated_at": now,
@@ -119,6 +146,9 @@ def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
         "total_known_human": human_size(total_known),
         "recommended_min_sd_bytes": safety_target,
         "recommended_min_sd_human": human_size(safety_target),
+        "is_complete": is_complete,
+        "published_total_human": human_size(total_known) if is_complete else "withheld (incomplete)",
+        "published_recommended_human": human_size(safety_target) if is_complete else "withheld (incomplete)",
         "rows": rows,
     }
 
@@ -137,16 +167,28 @@ def build_report(data: dict) -> str:
     lines.append(f"- Items checked: `{data['item_count']}`")
     lines.append(f"- Known sizes: `{data['known_count']}`")
     lines.append(f"- Unknown sizes: `{data['unknown_count']}`")
-    lines.append(f"- Total known size: `{data['total_known_human']}`")
-    lines.append(f"- Recommended minimum SD size (known + 20%): `{data['recommended_min_sd_human']}`")
+    lines.append(f"- Published total size: `{data['published_total_human']}`")
+    lines.append(f"- Published recommended minimum SD size: `{data['published_recommended_human']}`")
+    lines.append(f"- Internal known subtotal: `{data['total_known_human']}`")
+    if data["unknown_count"] > 0:
+        lines.append(f"- Warning: total is incomplete because `{data['unknown_count']}` item(s) have unknown size")
+    if data["known_count"] == 0:
+        lines.append("- Warning: no remote size headers were available, so no reliable total could be calculated")
+    elif data["known_count"] < data["item_count"]:
+        lines.append("- Warning: partial total only; treat recommended SD size as a lower bound")
+    lines.append("")
+    lines.append("## Included Libraries")
+    lines.append("")
+    for row in data["rows"]:
+        lines.append(f"- {row['title']}")
     lines.append("")
     lines.append("## Per Item")
     lines.append("")
-    lines.append("| Source URL | Estimated Size | Probe Method |")
-    lines.append("|---|---:|---|")
+    lines.append("| Library | Estimated Size | Probe Method | Source URL |")
+    lines.append("|---|---:|---|---|")
 
     for row in data["rows"]:
-        lines.append(f"| {row['source_url']} | {row['size_human']} | {row['probe_method']} |")
+        lines.append(f"| {row['title']} | {row['size_human']} | {row['probe_method']} | {row['source_url']} |")
 
     lines.append("")
     lines.append("## Notes")
@@ -168,8 +210,9 @@ def update_readme_status(readme_path: pathlib.Path, data: dict) -> None:
     block = "\n".join(
         [
             start,
-            f"Current known content size: **{data['total_known_human']}**",
-            f"Recommended minimum SD size (known + 20%): **{data['recommended_min_sd_human']}**",
+            f"Published content size: **{data['published_total_human']}**",
+            f"Published recommended minimum SD size: **{data['published_recommended_human']}**",
+            f"Known subtotal (diagnostic): {data['total_known_human']}",
             f"Last estimate refresh: {data['generated_at']}",
             end,
         ]

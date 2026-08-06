@@ -3,9 +3,10 @@
 HACS-style GitOps workflow for an offline-ready Raspberry Pi Kiwix library.
 
 <!-- SPACE_ESTIMATE:START -->
-Current known content size: **pending**
-Recommended minimum SD size (known + 20%): **pending**
-Last estimate refresh: pending
+Published content size: **withheld (incomplete)**
+Published recommended minimum SD size: **withheld (incomplete)**
+Known subtotal (diagnostic): 56.97 GB
+Last estimate refresh: 2026-08-06T14:17:38Z
 <!-- SPACE_ESTIMATE:END -->
 
 Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
@@ -120,6 +121,28 @@ The included medical-survival profile prioritizes:
 - Repair/recovery content (`ifixit`, selected Stack Exchange archives).
 - Broad reference (`wikipedia_en_all_nopic`, `wikipedia_nl_all_nopic`).
 
+Practical storage expectation:
+- English + Dutch Wikipedia (nopic) dominate size and are typically far above a few GB.
+- If any estimate is single-digit GB for this profile, treat it as incomplete until all item sizes are resolved.
+
+### What's Included (Current Profile)
+
+- Wikipedia Dutch (no images): `wikipedia_nl_all_nopic`
+- Wikipedia English (no images): `wikipedia_en_all_nopic`
+- MDWiki medical encyclopedia: `mdwiki_en_all_maxi`
+- WikEM emergency medicine reference: `wikem_en_all_maxi`
+- Survival Manual: `survivalmanual_en_all_maxi`
+- Ready.gov preparedness guidance: `ready.gov_en_all_maxi`
+- iFixit repair manuals: `ifixit_en_all_maxi`
+- DIY Stack Exchange archive: `diy.stackexchange.com_en_all_maxi`
+- Mechanics Stack Exchange archive: `mechanics.stackexchange.com_en_all_maxi`
+- Woodworking Stack Exchange archive: `woodworking.stackexchange.com_en_all_maxi`
+- Raspberry Pi Stack Exchange archive: `raspberrypi.stackexchange.com_en_all_maxi`
+
+High-overhead items:
+- `wikipedia_en_all_nopic`
+- `wikipedia_nl_all_nopic`
+
 ## Realtime SD space estimate
 
 GitHub Actions updates [SPACE_ESTIMATE.md](SPACE_ESTIMATE.md) from the current profile list.
@@ -128,6 +151,7 @@ Machine-readable values are published to [SPACE_ESTIMATE.json](SPACE_ESTIMATE.js
 - Triggered automatically on profile changes in `main`.
 - Visible in PR job summary before merge.
 - Uses remote size headers, so values are practical estimates.
+- Strict publish policy: if any library size cannot be resolved, published totals are withheld instead of showing a misleading number.
 
 ## Versioning and releases
 

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+- Space estimate publishing now withholds totals when any item size is unresolved, to avoid sharing misleading SD-size numbers.
+- README now includes an explicit current-profile inventory and highlights high-overhead content.
+
 ## [0.1.1] - 2026-08-06
 
 ### Added
@@ -21,6 +25,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Documented explicit offline-first behavior in primary setup docs.
 - Simplified primary setup again to a zero-touch `firstrun.sh` boot-partition flow (flash, paste, boot) with SSH deploy retained as fallback only.
 - Space estimate workflow now refreshes a top-level README status block with current known required size and recommended SD target.
+- Space estimate report now includes readable library names and explicit warning lines when totals are partial or unresolved.
 
 ## [0.1.0] - 2026-08-06
 
