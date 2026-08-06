@@ -2,6 +2,12 @@
 
 HACS-style GitOps workflow for an offline-ready Raspberry Pi Kiwix library.
 
+<!-- SPACE_ESTIMATE:START -->
+Current known content size: **pending**
+Recommended minimum SD size (known + 20%): **pending**
+Last estimate refresh: pending
+<!-- SPACE_ESTIMATE:END -->
+
 Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
 Advanced optional helper script path: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 
@@ -13,6 +19,7 @@ Advanced optional helper script path: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
 - Easiest operating model and tool choices: [WORKFLOW_CHOICES.md](WORKFLOW_CHOICES.md)
 - Day-2 operations: [HOWTO.md](HOWTO.md)
 - Release runbook: [RELEASE.md](RELEASE.md)
+- Realtime SD size estimate: [SPACE_ESTIMATE.md](SPACE_ESTIMATE.md)
 - Release history: [CHANGELOG.md](CHANGELOG.md)
 - Current release version: [VERSION](VERSION)
 
@@ -112,6 +119,15 @@ The included medical-survival profile prioritizes:
 - Disaster and wilderness readiness (`ready.gov`, `survivalmanual`).
 - Repair/recovery content (`ifixit`, selected Stack Exchange archives).
 - Broad reference (`wikipedia_en_all_nopic`, `wikipedia_nl_all_nopic`).
+
+## Realtime SD space estimate
+
+GitHub Actions updates [SPACE_ESTIMATE.md](SPACE_ESTIMATE.md) from the current profile list.
+Machine-readable values are published to [SPACE_ESTIMATE.json](SPACE_ESTIMATE.json).
+
+- Triggered automatically on profile changes in `main`.
+- Visible in PR job summary before merge.
+- Uses remote size headers, so values are practical estimates.
 
 ## Versioning and releases
 

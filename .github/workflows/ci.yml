@@ -31,3 +31,12 @@ jobs:
         run: |
           bash -n scripts/sync.sh
           bash -n scripts/bootstrap-pi.sh
+
+      - name: Validate estimator script syntax
+        run: |
+          python -m py_compile scripts/estimate_space.py
+
+      - name: Validate README estimate markers
+        run: |
+          grep -q '<!-- SPACE_ESTIMATE:START -->' README.md || (echo "Missing SPACE_ESTIMATE start marker"; exit 1)
+          grep -q '<!-- SPACE_ESTIMATE:END -->' README.md || (echo "Missing SPACE_ESTIMATE end marker"; exit 1)

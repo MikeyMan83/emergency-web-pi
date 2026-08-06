@@ -6,9 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-06
+
 ### Added
 - Unattended SD preparation script for Windows (`scripts/prepare-sd-autoboot.ps1`) that writes first-boot automation to the Pi boot partition.
 - Dedicated unattended setup guide (`AUTOBOOT_SD.md`) for zero-touch first boot.
+- Realtime SD space estimate automation on GitHub via `.github/workflows/space-estimate.yml` and `scripts/estimate_space.py`.
+- Machine-readable estimate artifact (`SPACE_ESTIMATE.json`) for tooling and dashboards.
 
 ### Changed
 - Bootstrap logic now supports first-boot configuration injection via environment variables (content URL, sync interval, port, optional token file setup).
@@ -16,6 +20,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Set default bootstrap and docs URLs to `MikeyMan83/pi-kiwix-survival` for copy-paste-ready deployment.
 - Documented explicit offline-first behavior in primary setup docs.
 - Simplified primary setup again to a zero-touch `firstrun.sh` boot-partition flow (flash, paste, boot) with SSH deploy retained as fallback only.
+- Space estimate workflow now refreshes a top-level README status block with current known required size and recommended SD target.
 
 ## [0.1.0] - 2026-08-06
 

@@ -1,0 +1,60 @@
+name: Space Estimate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - profiles/**
+      - zimlist.txt.example
+      - scripts/estimate_space.py
+      - .github/workflows/space-estimate.yml
+  push:
+    branches:
+      - main
+    paths:
+      - profiles/**
+      - zimlist.txt.example
+      - scripts/estimate_space.py
+      - .github/workflows/space-estimate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  estimate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate estimate report
+        run: |
+          python scripts/estimate_space.py \
+            --input profiles/medical-survival-zimlist.txt \
+            --output SPACE_ESTIMATE.md \
+            --json-output SPACE_ESTIMATE.json \
+            --readme README.md \
+            --repo-url https://github.com/MikeyMan83/pi-kiwix-survival
+
+      - name: Publish summary
+        run: |
+          cat SPACE_ESTIMATE.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit report on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- SPACE_ESTIMATE.md SPACE_ESTIMATE.json README.md; then
+            echo "No report changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SPACE_ESTIMATE.md SPACE_ESTIMATE.json README.md
+          git commit -m "docs: update SD space estimate"
+          git push
