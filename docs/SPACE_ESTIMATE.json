@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-08-07T10:31:48Z",
+  "generated_at": "2026-08-07T14:55:06Z",
   "source_list": "profiles/medical-survival-zimlist.txt",
   "repository": "https://github.com/MikeyMan83/pi-kiwix-survival",
   "item_count": 11,
-  "known_count": 4,
-  "unknown_count": 7,
-  "total_known_bytes": 61175061050,
-  "total_known_human": "56.97 GB",
-  "recommended_min_sd_bytes": 73410073260,
-  "recommended_min_sd_human": "68.37 GB",
-  "is_complete": false,
-  "published_total_human": "withheld (incomplete)",
-  "published_recommended_human": "withheld (incomplete)",
+  "known_count": 11,
+  "unknown_count": 0,
+  "total_known_bytes": 69607567411,
+  "total_known_human": "64.83 GB",
+  "recommended_min_sd_bytes": 83529080893,
+  "recommended_min_sd_human": "77.79 GB",
+  "is_complete": true,
+  "published_total_human": "64.83 GB",
+  "published_recommended_human": "77.79 GB",
   "rows": [
     {
       "source_url": "https://download.kiwix.org/zim/wikipedia_nl_all_nopic.zim.torrent",
@@ -46,60 +46,60 @@
       "probe_method": "TORRENT:info.length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/survivalmanual_en_all_maxi.zim.torrent",
-      "title": "Survival Manual",
-      "content_url": "https://download.kiwix.org/zim/survivalmanual_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "source_url": "https://lb.download.kiwix.org/zim/other/trueprepper.com_en_all_2026-05.zim",
+      "title": "TruePrepper survival guidance",
+      "content_url": "https://lb.download.kiwix.org/zim/other/trueprepper.com_en_all_2026-05.zim",
+      "size_bytes": 1423584895,
+      "size_human": "1.33 GB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/ready.gov_en_all_maxi.zim.torrent",
-      "title": "Ready.gov",
-      "content_url": "https://download.kiwix.org/zim/ready.gov_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "source_url": "https://lb.download.kiwix.org/zim/other/zimgit-post-disaster_en_2024-05.zim",
+      "title": "Post-disaster recovery guide",
+      "content_url": "https://lb.download.kiwix.org/zim/other/zimgit-post-disaster_en_2024-05.zim",
+      "size_bytes": 644665513,
+      "size_human": "614.80 MB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/ifixit_en_all_maxi.zim.torrent",
+      "source_url": "https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
       "title": "iFixit",
-      "content_url": "https://download.kiwix.org/zim/ifixit_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "content_url": "https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim",
+      "size_bytes": 3570695757,
+      "size_human": "3.33 GB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/diy.stackexchange.com_en_all_maxi.zim.torrent",
+      "source_url": "https://lb.download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-02.zim",
       "title": "DIY Stack Exchange",
-      "content_url": "https://download.kiwix.org/zim/diy.stackexchange.com_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "content_url": "https://lb.download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-02.zim",
+      "size_bytes": 2050957131,
+      "size_human": "1.91 GB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/mechanics.stackexchange.com_en_all_maxi.zim.torrent",
+      "source_url": "https://lb.download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-02.zim",
       "title": "Mechanics Stack Exchange",
-      "content_url": "https://download.kiwix.org/zim/mechanics.stackexchange.com_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "content_url": "https://lb.download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-02.zim",
+      "size_bytes": 338835916,
+      "size_human": "323.14 MB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/woodworking.stackexchange.com_en_all_maxi.zim.torrent",
+      "source_url": "https://lb.download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-02.zim",
       "title": "Woodworking Stack Exchange",
-      "content_url": "https://download.kiwix.org/zim/woodworking.stackexchange.com_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "content_url": "https://lb.download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-02.zim",
+      "size_bytes": 105105615,
+      "size_human": "100.24 MB",
+      "probe_method": "HEAD:Content-Length"
     },
     {
-      "source_url": "https://download.kiwix.org/zim/raspberrypi.stackexchange.com_en_all_maxi.zim.torrent",
+      "source_url": "https://lb.download.kiwix.org/zim/stack_exchange/raspberrypi.stackexchange.com_en_all_2026-02.zim",
       "title": "Raspberry Pi Stack Exchange",
-      "content_url": "https://download.kiwix.org/zim/raspberrypi.stackexchange.com_en_all_maxi.zim",
-      "size_bytes": null,
-      "size_human": "unknown",
-      "probe_method": "TORRENT:404"
+      "content_url": "https://lb.download.kiwix.org/zim/stack_exchange/raspberrypi.stackexchange.com_en_all_2026-02.zim",
+      "size_bytes": 298661534,
+      "size_human": "284.83 MB",
+      "probe_method": "HEAD:Content-Length"
     }
   ]
 }

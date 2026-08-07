@@ -24,7 +24,7 @@ $releasedSection = @"
 ## [$Version] - $today
 
 ### Changed
-- Describe user-visible changes here.
+- Add final user-visible release notes.
 
 "@
 
@@ -43,9 +43,4 @@ Set-Content -Path $changelogFile -Value $updated
 
 Write-Host "Updated VERSION to $Version"
 Write-Host "Inserted release section in docs/CHANGELOG.md"
-Write-Host "Next steps:"
-Write-Host "  1) Fill in the release notes section"
-Write-Host "  2) git add docs/VERSION docs/CHANGELOG.md"
-Write-Host "  3) git commit -m \"release: v$Version\""
-Write-Host "  4) git tag v$Version"
-Write-Host "  5) git push && git push --tags"
+Write-Host "Continue with release steps in docs/RELEASE.md"

@@ -12,6 +12,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Moved content sync to host-level weekly systemd timer (`pi-kiwix-sync.timer`).
 - Added one-command installer (`scripts/install.sh`) and AP/read-only helper scripts.
 - Consolidated setup docs into the top-level README quickstart.
+- Updated sync/docs wording to support both torrent and direct `.zim` content URLs.
+
+### Added
+- Added repository smoke validator (`scripts/validate_repo.py`) and wired it into CI.
+
+### Docs
+- Reworked PR template confirmations to avoid persistent unchecked task boxes while preserving required review checks.
 
 ## [0.1.1] - 2026-08-06
 

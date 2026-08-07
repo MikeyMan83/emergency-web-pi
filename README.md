@@ -3,10 +3,10 @@
 Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
 <!-- SPACE_ESTIMATE:START -->
-Published content size: **withheld (incomplete)**
-Published recommended minimum SD size: **withheld (incomplete)**
-Known subtotal (diagnostic): 56.97 GB
-Last estimate refresh: 2026-08-07T10:31:48Z
+Published content size: **64.83 GB**
+Published recommended minimum SD size: **77.79 GB**
+Known subtotal (diagnostic): 64.83 GB
+Last estimate refresh: 2026-08-07T14:55:06Z
 <!-- SPACE_ESTIMATE:END -->
 
 ## Quickstart
@@ -107,20 +107,20 @@ No toggles are required to switch between connected and disconnected operation.
 
 ## Files in this repo
 
-- `docker-compose.yml`: two-service stack.
+- `docker-compose.yml`: one-service stack (`kiwix-server` only).
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for compose + timer.
 - `scripts/setup-ap.sh`: standalone AP setup (`hostapd` + `dnsmasq`).
 - `scripts/enable-readonly.sh`: enables overlayfs read-only root mode.
 - `.env.example`: environment values to copy into `.env`.
-- `zimlist.txt.example`: starter format for your torrent list.
+- `zimlist.txt.example`: starter format for your content list.
 - `profiles/medical-survival-zimlist.txt`: recommended baseline list for emergency readiness.
 - `zim_data/`: persistent data folder for downloaded `.zim` files and current `zimlist.txt`.
 
 ## One-time setup
 
 1. Create a GitHub repo with a `zimlist.txt` file.
-2. Add one torrent permalink per line in `zimlist.txt`.
+2. Add one content URL per line in `zimlist.txt` (torrent or direct `.zim`).
 3. On the Pi, clone this repo.
 4. Create `.env` from the example:
 
@@ -146,13 +146,13 @@ docker compose up -d
 2. Commit changes.
 3. Weekly sync timer picks changes up automatically.
 
-Set `SYNC_INTERVAL_SECONDS` in `.env` to tune check frequency. Default is `86400` (24h).
+Set `SYNC_INTERVAL_SECONDS` in `.env` to tune check frequency. Default is `604800` (weekly).
 
 ## Recommended baseline content
 
 The included medical-survival profile prioritizes:
 - Medical reference for non-clinicians and clinicians (`mdwiki`, `wikem`).
-- Disaster and wilderness readiness (`ready.gov`, `survivalmanual`).
+- Disaster and wilderness readiness (`trueprepper`, `zimgit-post-disaster`).
 - Repair/recovery content (`ifixit`, selected Stack Exchange archives).
 - Broad reference (`wikipedia_en_all_nopic`, `wikipedia_nl_all_nopic`).
 
@@ -166,13 +166,13 @@ Practical storage expectation:
 - Wikipedia English (no images): `wikipedia_en_all_nopic`
 - MDWiki medical encyclopedia: `mdwiki_en_all_maxi`
 - WikEM emergency medicine reference: `wikem_en_all_maxi`
-- Survival Manual: `survivalmanual_en_all_maxi`
-- Ready.gov preparedness guidance: `ready.gov_en_all_maxi`
-- iFixit repair manuals: `ifixit_en_all_maxi`
-- DIY Stack Exchange archive: `diy.stackexchange.com_en_all_maxi`
-- Mechanics Stack Exchange archive: `mechanics.stackexchange.com_en_all_maxi`
-- Woodworking Stack Exchange archive: `woodworking.stackexchange.com_en_all_maxi`
-- Raspberry Pi Stack Exchange archive: `raspberrypi.stackexchange.com_en_all_maxi`
+- TruePrepper survival guidance: `trueprepper.com_en_all_2026-05`
+- Post-disaster recovery guide: `zimgit-post-disaster_en_2024-05`
+- iFixit repair manuals: `ifixit_en_all_2025-12`
+- DIY Stack Exchange archive: `diy.stackexchange.com_en_all_2026-02`
+- Mechanics Stack Exchange archive: `mechanics.stackexchange.com_en_all_2026-02`
+- Woodworking Stack Exchange archive: `woodworking.stackexchange.com_en_all_2026-02`
+- Raspberry Pi Stack Exchange archive: `raspberrypi.stackexchange.com_en_all_2026-02`
 
 High-overhead items:
 - `wikipedia_en_all_nopic`
@@ -185,7 +185,7 @@ Machine-readable values are published to [docs/SPACE_ESTIMATE.json](docs/SPACE_E
 
 - Triggered automatically on profile changes in `main`.
 - Visible in PR job summary before merge.
-- Uses remote size headers, so values are practical estimates.
+- Uses torrent metadata when available (with a header-based fallback for non-torrent links).
 - Strict publish policy: if any library size cannot be resolved, published totals are withheld instead of showing a misleading number.
 
 ## Versioning and releases

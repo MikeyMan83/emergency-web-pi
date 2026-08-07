@@ -50,13 +50,13 @@ def infer_title(source_url: str) -> str:
         "wikipedia_en_all_nopic": "Wikipedia English (no images)",
         "mdwiki_en_all_maxi": "MDWiki (medical encyclopedia)",
         "wikem_en_all_maxi": "WikEM (emergency medicine)",
-        "survivalmanual_en_all_maxi": "Survival Manual",
-        "ready.gov_en_all_maxi": "Ready.gov",
-        "ifixit_en_all_maxi": "iFixit",
-        "diy.stackexchange.com_en_all_maxi": "DIY Stack Exchange",
-        "mechanics.stackexchange.com_en_all_maxi": "Mechanics Stack Exchange",
-        "woodworking.stackexchange.com_en_all_maxi": "Woodworking Stack Exchange",
-        "raspberrypi.stackexchange.com_en_all_maxi": "Raspberry Pi Stack Exchange",
+        "trueprepper.com_en_all_2026-05": "TruePrepper survival guidance",
+        "zimgit-post-disaster_en_2024-05": "Post-disaster recovery guide",
+        "ifixit_en_all_2025-12": "iFixit",
+        "diy.stackexchange.com_en_all_2026-02": "DIY Stack Exchange",
+        "mechanics.stackexchange.com_en_all_2026-02": "Mechanics Stack Exchange",
+        "woodworking.stackexchange.com_en_all_2026-02": "Woodworking Stack Exchange",
+        "raspberrypi.stackexchange.com_en_all_2026-02": "Raspberry Pi Stack Exchange",
     }
     if slug in known:
         return known[slug]

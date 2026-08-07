@@ -1,15 +1,19 @@
 ## Summary
 
-Describe what changed and why.
+What changed and why:
 
-## Checklist
+## Required Statements
 
-- [ ] I updated docs if behavior or setup changed.
-- [ ] I updated `docs/CHANGELOG.md` under `## [Unreleased]` for user-visible changes.
-- [ ] If this is a release PR: I bumped `docs/VERSION` and moved release notes from `Unreleased` into a dated section.
-- [ ] I did not commit secrets (`.env`, token files).
-- [ ] I tested the impacted path locally (or explained why not).
+Docs updated for behavior/setup changes:
+
+Changelog updated under `## [Unreleased]` for user-visible changes:
+
+If release PR, version/changelog release section updated:
+
+No secrets committed (`.env`, token files):
+
+Impacted path tested locally (or clear reason provided):
 
 ## Testing notes
 
-Provide the commands you ran and expected outcomes.
+Commands run and expected outcomes:

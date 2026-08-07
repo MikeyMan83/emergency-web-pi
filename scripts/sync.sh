@@ -49,7 +49,7 @@ while IFS= read -r line; do
     -d "$ZIM_DATA_DIR" \
     -o "$fname" \
     "$line"; then
-    log "WARNING: $fname failed to download (dead torrent / no seeders?)"
+    log "WARNING: $fname failed to download (dead torrent / no seeders / unreachable URL?)"
     continue
   fi
 

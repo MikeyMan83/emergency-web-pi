@@ -10,7 +10,7 @@ Run:
 ./scripts/new-release.ps1 -Version 0.1.2
 ```
 
-Then edit `docs/CHANGELOG.md` and replace placeholder bullet points with real notes.
+Then edit `docs/CHANGELOG.md` and write the final release notes for this version.
 
 ## 2. Commit
 

@@ -9,7 +9,7 @@ param(
   [string]$BootstrapRawUrl = "",
   [string]$ZimListRawUrl = "",
   [string]$BootstrapUser = "",
-  [int]$SyncIntervalSeconds = 86400,
+  [int]$SyncIntervalSeconds = 604800,
   [int]$KiwixPort = 8080,
   [string]$GitHubToken = "",
   [switch]$EnableSsh

@@ -1,19 +1,18 @@
 # SD Space Estimate
 
 Source list: `profiles/medical-survival-zimlist.txt`
-Generated: `2026-08-07T10:31:48Z`
+Generated: `2026-08-07T14:55:06Z`
 
 This estimate uses torrent metadata for size and withholds totals if any item cannot be resolved.
 
 ## Summary
 
 - Items checked: `11`
-- Known sizes: `4`
-- Unknown sizes: `7`
-- Published total size: `withheld (incomplete)`
-- Published recommended minimum SD size: `withheld (incomplete)`
-- Internal known subtotal: `56.97 GB`
-- Warning: total is incomplete because `7` item(s) have unknown size
+- Known sizes: `11`
+- Unknown sizes: `0`
+- Published total size: `64.83 GB`
+- Published recommended minimum SD size: `77.79 GB`
+- Internal known subtotal: `64.83 GB`
 
 ## Included Libraries
 
@@ -21,8 +20,8 @@ This estimate uses torrent metadata for size and withholds totals if any item ca
 - Wikipedia English (no images)
 - MDWiki (medical encyclopedia)
 - WikEM (emergency medicine)
-- Survival Manual
-- Ready.gov
+- TruePrepper survival guidance
+- Post-disaster recovery guide
 - iFixit
 - DIY Stack Exchange
 - Mechanics Stack Exchange
@@ -37,13 +36,13 @@ This estimate uses torrent metadata for size and withholds totals if any item ca
 | Wikipedia English (no images) | 49.07 GB | TORRENT:info.length | https://download.kiwix.org/zim/wikipedia_en_all_nopic.zim.torrent |
 | MDWiki (medical encyclopedia) | 2.14 GB | TORRENT:info.length | https://download.kiwix.org/zim/mdwiki_en_all_maxi.zim.torrent |
 | WikEM (emergency medicine) | 357.28 MB | TORRENT:info.length | https://download.kiwix.org/zim/wikem_en_all_maxi.zim.torrent |
-| Survival Manual | unknown | TORRENT:404 | https://download.kiwix.org/zim/survivalmanual_en_all_maxi.zim.torrent |
-| Ready.gov | unknown | TORRENT:404 | https://download.kiwix.org/zim/ready.gov_en_all_maxi.zim.torrent |
-| iFixit | unknown | TORRENT:404 | https://download.kiwix.org/zim/ifixit_en_all_maxi.zim.torrent |
-| DIY Stack Exchange | unknown | TORRENT:404 | https://download.kiwix.org/zim/diy.stackexchange.com_en_all_maxi.zim.torrent |
-| Mechanics Stack Exchange | unknown | TORRENT:404 | https://download.kiwix.org/zim/mechanics.stackexchange.com_en_all_maxi.zim.torrent |
-| Woodworking Stack Exchange | unknown | TORRENT:404 | https://download.kiwix.org/zim/woodworking.stackexchange.com_en_all_maxi.zim.torrent |
-| Raspberry Pi Stack Exchange | unknown | TORRENT:404 | https://download.kiwix.org/zim/raspberrypi.stackexchange.com_en_all_maxi.zim.torrent |
+| TruePrepper survival guidance | 1.33 GB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/other/trueprepper.com_en_all_2026-05.zim |
+| Post-disaster recovery guide | 614.80 MB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/other/zimgit-post-disaster_en_2024-05.zim |
+| iFixit | 3.33 GB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim |
+| DIY Stack Exchange | 1.91 GB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-02.zim |
+| Mechanics Stack Exchange | 323.14 MB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-02.zim |
+| Woodworking Stack Exchange | 100.24 MB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-02.zim |
+| Raspberry Pi Stack Exchange | 284.83 MB | HEAD:Content-Length | https://lb.download.kiwix.org/zim/stack_exchange/raspberrypi.stackexchange.com_en_all_2026-02.zim |
 
 ## Notes
 

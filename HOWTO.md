@@ -114,7 +114,7 @@ If sync cannot download list:
 3. Check outbound internet on the Pi.
 4. Check logs: `journalctl -u pi-kiwix-sync.service -n 200 --no-pager`.
 
-If a torrent entry is dead/unseeded:
+If a content entry is unavailable (dead torrent, no seeders, or unreachable URL):
 1. Check `zim_data/sync.log` for warnings.
 2. Sync continues to next entries by design.
 
