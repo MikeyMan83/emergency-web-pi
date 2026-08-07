@@ -1,0 +1,52 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "remote-main-sha",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"--heads",
+				"origin",
+				"main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "remote-tag-012",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"--tags",
+				"origin",
+				"v0.1.2"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "local-head-status",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"-1",
+				"--oneline",
+				"--decorate"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "local-tag-check",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"show-ref",
+				"--tags",
+				"v0.1.2"
+			],
+			"isBackground": false
+		}
+	]
+}
