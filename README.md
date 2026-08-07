@@ -6,7 +6,7 @@ Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 Published content size: **64.83 GB**
 Published recommended minimum SD size: **77.79 GB**
 Known subtotal (diagnostic): 64.83 GB
-Last estimate refresh: 2026-08-07T14:55:06Z
+Last estimate refresh: 2026-08-07T15:01:20Z
 <!-- SPACE_ESTIMATE:END -->
 
 ## Quickstart
