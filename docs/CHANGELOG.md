@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-07
+
 ### Changed
 - Refactored architecture to a single `kiwix-server` container using `--monitorLibrary` for auto-reload.
 - Removed Docker socket dependency and sidecar polling container.
