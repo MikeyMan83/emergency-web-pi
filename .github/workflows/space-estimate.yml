@@ -36,25 +36,25 @@ jobs:
         run: |
           python scripts/estimate_space.py \
             --input profiles/medical-survival-zimlist.txt \
-            --output SPACE_ESTIMATE.md \
-            --json-output SPACE_ESTIMATE.json \
+            --output docs/SPACE_ESTIMATE.md \
+            --json-output docs/SPACE_ESTIMATE.json \
             --readme README.md \
             --repo-url https://github.com/MikeyMan83/pi-kiwix-survival
 
       - name: Publish summary
         run: |
-          cat SPACE_ESTIMATE.md >> "$GITHUB_STEP_SUMMARY"
+          cat docs/SPACE_ESTIMATE.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit report on main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          if git diff --quiet -- SPACE_ESTIMATE.md SPACE_ESTIMATE.json README.md; then
+          if git diff --quiet -- docs/SPACE_ESTIMATE.md docs/SPACE_ESTIMATE.json README.md; then
             echo "No report changes to commit."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SPACE_ESTIMATE.md SPACE_ESTIMATE.json README.md
+          git add docs/SPACE_ESTIMATE.md docs/SPACE_ESTIMATE.json README.md
           git commit -m "docs: update SD space estimate"
           git push

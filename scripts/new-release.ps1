@@ -10,8 +10,8 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$versionFile = Join-Path $repoRoot "VERSION"
-$changelogFile = Join-Path $repoRoot "CHANGELOG.md"
+$versionFile = Join-Path $repoRoot "docs\VERSION"
+$changelogFile = Join-Path $repoRoot "docs\CHANGELOG.md"
 
 $today = Get-Date -Format "yyyy-MM-dd"
 $changelog = Get-Content $changelogFile -Raw
@@ -29,7 +29,7 @@ $releasedSection = @"
 "@
 
 if ($changelog -notmatch '(?m)^## \[Unreleased\]\s*$') {
-  throw "CHANGELOG.md must contain ## [Unreleased]"
+  throw "docs/CHANGELOG.md must contain ## [Unreleased]"
 }
 
 $updated = [regex]::Replace(
@@ -42,10 +42,10 @@ Set-Content -Path $versionFile -Value $Version -NoNewline
 Set-Content -Path $changelogFile -Value $updated
 
 Write-Host "Updated VERSION to $Version"
-Write-Host "Inserted release section in CHANGELOG.md"
+Write-Host "Inserted release section in docs/CHANGELOG.md"
 Write-Host "Next steps:"
 Write-Host "  1) Fill in the release notes section"
-Write-Host "  2) git add VERSION CHANGELOG.md"
+Write-Host "  2) git add docs/VERSION docs/CHANGELOG.md"
 Write-Host "  3) git commit -m \"release: v$Version\""
 Write-Host "  4) git tag v$Version"
 Write-Host "  5) git push && git push --tags"

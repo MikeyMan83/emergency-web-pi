@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Estimate total storage required for ZIM files listed by torrent URLs.
-
-This script reads a text file containing one URL per line. For each URL ending
-with ".torrent", it probes the corresponding content URL (without ".torrent")
-and tries to read size headers from the remote server.
-"""
+"""Estimate total storage required for ZIM files listed by torrent URLs."""
 
 from __future__ import annotations
 
@@ -16,6 +11,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from typing import Any
 
 
 def read_urls(path: pathlib.Path) -> list[str]:
@@ -40,46 +36,6 @@ def human_size(num_bytes: int | None) -> str:
             return f"{value:.2f} {unit}"
         value /= 1024
     return f"{num_bytes} B"
-
-
-def probe_size(url: str, timeout: int = 20) -> tuple[int | None, str]:
-    # First attempt: HEAD request for Content-Length.
-    req = urllib.request.Request(url=url, method="HEAD")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content_length = resp.headers.get("Content-Length")
-            if content_length and content_length.isdigit():
-                return int(content_length), "HEAD:Content-Length"
-    except urllib.error.HTTPError as exc:
-        # Allow fallback attempt for servers that do not support HEAD cleanly.
-        head_error = f"HEAD:{exc.code}"
-    except Exception:
-        head_error = "HEAD:error"
-    else:
-        head_error = "HEAD:no-length"
-
-    # Second attempt: range GET and parse Content-Range bytes start-end/total.
-    req = urllib.request.Request(url=url, method="GET", headers={"Range": "bytes=0-0"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content_range = resp.headers.get("Content-Range", "")
-            match = re.search(r"/([0-9]+)$", content_range)
-            if match:
-                return int(match.group(1)), "GET:Content-Range"
-            content_length = resp.headers.get("Content-Length")
-            if content_length and content_length.isdigit():
-                return int(content_length), "GET:Content-Length"
-            return None, f"{head_error},GET:no-length"
-    except urllib.error.HTTPError as exc:
-        return None, f"{head_error},GET:{exc.code}"
-    except Exception:
-        return None, f"{head_error},GET:error"
-
-
-def map_to_content_url(source_url: str) -> str:
-    if source_url.endswith(".torrent"):
-        return source_url[: -len(".torrent")]
-    return source_url
 
 
 def infer_title(source_url: str) -> str:
@@ -107,6 +63,126 @@ def infer_title(source_url: str) -> str:
     return slug.replace("_", " ")
 
 
+def parse_bencode(data: bytes, idx: int = 0) -> tuple[Any, int]:
+    lead = data[idx : idx + 1]
+    if lead == b"i":
+        end = data.index(b"e", idx)
+        return int(data[idx + 1 : end]), end + 1
+    if lead == b"l":
+        idx += 1
+        out: list[Any] = []
+        while data[idx : idx + 1] != b"e":
+            value, idx = parse_bencode(data, idx)
+            out.append(value)
+        return out, idx + 1
+    if lead == b"d":
+        idx += 1
+        out: dict[str, Any] = {}
+        while data[idx : idx + 1] != b"e":
+            key_raw, idx = parse_bencode(data, idx)
+            value, idx = parse_bencode(data, idx)
+            if isinstance(key_raw, bytes):
+                out[key_raw.decode("utf-8", errors="replace")] = value
+            else:
+                out[str(key_raw)] = value
+        return out, idx + 1
+
+    if lead.isdigit():
+        colon = data.index(b":", idx)
+        length = int(data[idx:colon])
+        start = colon + 1
+        end = start + length
+        return data[start:end], end
+
+    raise ValueError("Unsupported bencode format")
+
+
+def torrent_size_from_bytes(payload: bytes) -> int | None:
+    try:
+        parsed, _ = parse_bencode(payload)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+
+    info = parsed.get("info")
+    if not isinstance(info, dict):
+        return None
+
+    if isinstance(info.get("length"), int):
+        return int(info["length"])
+
+    files = info.get("files")
+    if isinstance(files, list):
+        total = 0
+        for item in files:
+            if isinstance(item, dict) and isinstance(item.get("length"), int):
+                total += int(item["length"])
+        return total if total > 0 else None
+
+    return None
+
+
+def fetch_url_bytes(url: str, timeout: int = 30) -> bytes:
+    req = urllib.request.Request(url=url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def probe_size_from_headers(url: str, timeout: int = 20) -> tuple[int | None, str]:
+    req = urllib.request.Request(url=url, method="HEAD")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content_length = resp.headers.get("Content-Length")
+            if content_length and content_length.isdigit():
+                return int(content_length), "HEAD:Content-Length"
+    except urllib.error.HTTPError as exc:
+        head_error = f"HEAD:{exc.code}"
+    except Exception:
+        head_error = "HEAD:error"
+    else:
+        head_error = "HEAD:no-length"
+
+    req = urllib.request.Request(url=url, method="GET", headers={"Range": "bytes=0-0"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content_range = resp.headers.get("Content-Range", "")
+            match = re.search(r"/([0-9]+)$", content_range)
+            if match:
+                return int(match.group(1)), "GET:Content-Range"
+            content_length = resp.headers.get("Content-Length")
+            if content_length and content_length.isdigit():
+                return int(content_length), "GET:Content-Length"
+            return None, f"{head_error},GET:no-length"
+    except urllib.error.HTTPError as exc:
+        return None, f"{head_error},GET:{exc.code}"
+    except Exception:
+        return None, f"{head_error},GET:error"
+
+
+def map_to_content_url(source_url: str) -> str:
+    if source_url.endswith(".torrent"):
+        return source_url[: -len(".torrent")]
+    return source_url
+
+
+def probe_size(source_url: str) -> tuple[int | None, str]:
+    if source_url.endswith(".torrent"):
+        try:
+            payload = fetch_url_bytes(source_url)
+            size = torrent_size_from_bytes(payload)
+            if size is not None:
+                return size, "TORRENT:info.length"
+            return None, "TORRENT:unparsed"
+        except urllib.error.HTTPError as exc:
+            return None, f"TORRENT:{exc.code}"
+        except Exception:
+            return None, "TORRENT:error"
+
+    content_url = map_to_content_url(source_url)
+    return probe_size_from_headers(content_url)
+
+
 def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
     urls = read_urls(input_path)
     rows: list[dict] = []
@@ -114,8 +190,7 @@ def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
     unknown_count = 0
 
     for source_url in urls:
-        content_url = map_to_content_url(source_url)
-        size, method = probe_size(content_url)
+        size, method = probe_size(source_url)
         if size is None:
             unknown_count += 1
         else:
@@ -124,7 +199,7 @@ def build_data(input_path: pathlib.Path, repo_url: str) -> dict:
             {
                 "source_url": source_url,
                 "title": infer_title(source_url),
-                "content_url": content_url,
+                "content_url": map_to_content_url(source_url),
                 "size_bytes": size,
                 "size_human": human_size(size),
                 "probe_method": method,
@@ -160,7 +235,7 @@ def build_report(data: dict) -> str:
     lines.append(f"Source list: `{data['source_list']}`")
     lines.append(f"Generated: `{data['generated_at']}`")
     lines.append("")
-    lines.append("This is an estimate from remote file-size headers. Real on-disk usage can differ slightly.")
+    lines.append("This estimate uses torrent metadata for size and withholds totals if any item cannot be resolved.")
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -172,10 +247,6 @@ def build_report(data: dict) -> str:
     lines.append(f"- Internal known subtotal: `{data['total_known_human']}`")
     if data["unknown_count"] > 0:
         lines.append(f"- Warning: total is incomplete because `{data['unknown_count']}` item(s) have unknown size")
-    if data["known_count"] == 0:
-        lines.append("- Warning: no remote size headers were available, so no reliable total could be calculated")
-    elif data["known_count"] < data["item_count"]:
-        lines.append("- Warning: partial total only; treat recommended SD size as a lower bound")
     lines.append("")
     lines.append("## Included Libraries")
     lines.append("")
@@ -186,14 +257,12 @@ def build_report(data: dict) -> str:
     lines.append("")
     lines.append("| Library | Estimated Size | Probe Method | Source URL |")
     lines.append("|---|---:|---|---|")
-
     for row in data["rows"]:
         lines.append(f"| {row['title']} | {row['size_human']} | {row['probe_method']} | {row['source_url']} |")
 
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- Private torrents, CDN behavior, or missing headers can produce `unknown` entries.")
     lines.append("- Keep at least 20% free SD space beyond known content for filesystem health.")
     lines.append(f"- Repository: {data['repository']}")
     lines.append("")

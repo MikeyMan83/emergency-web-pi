@@ -1,28 +1,70 @@
 # pi-kiwix-survival
 
-HACS-style GitOps workflow for an offline-ready Raspberry Pi Kiwix library.
+Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
 <!-- SPACE_ESTIMATE:START -->
 Published content size: **withheld (incomplete)**
 Published recommended minimum SD size: **withheld (incomplete)**
 Known subtotal (diagnostic): 56.97 GB
-Last estimate refresh: 2026-08-06T14:17:38Z
+Last estimate refresh: 2026-08-07T10:31:48Z
 <!-- SPACE_ESTIMATE:END -->
 
-Start here for fastest setup on an RPi 3B+: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
-Advanced optional helper script path: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
+## Quickstart
+
+### 1. Flash SD card
+
+1. Open Raspberry Pi Imager.
+2. Select Raspberry Pi OS Lite (64-bit).
+3. In Advanced Options, set:
+    - hostname,
+    - username/password,
+    - Wi-Fi credentials,
+    - SSH enabled.
+4. Write the card.
+
+### 2. Zero-touch first boot setup
+
+Add a file named `firstrun.sh` to the SD card boot partition:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+BOOTSTRAP_USER="$(getent passwd 1000 | cut -d: -f1 || true)"
+if [ -z "$BOOTSTRAP_USER" ]; then
+   BOOTSTRAP_USER="pi"
+fi
+
+curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh \
+   | env BOOTSTRAP_USER="$BOOTSTRAP_USER" bash
+```
+
+### 3. Boot and verify
+
+1. Boot the Pi once while internet is available.
+2. Wait for provisioning and first sync attempt.
+3. Access Kiwix:
+    - home network mode: `http://<pi-ip>:8080`
+    - standalone AP mode: `http://10.42.0.1:8080`
+
+### 4. Optional standalone AP mode
+
+Run once on Pi to make it independent from home router/DHCP:
+
+```bash
+./scripts/setup-ap.sh
+```
+
+This configures `hostapd` + `dnsmasq` with defaults from `.env`.
 
 ## Documentation
 
 - Setup and architecture: [README.md](README.md)
-- SD card deployment path: [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md)
-- Advanced unattended SD prep: [AUTOBOOT_SD.md](AUTOBOOT_SD.md)
-- Easiest operating model and tool choices: [WORKFLOW_CHOICES.md](WORKFLOW_CHOICES.md)
 - Day-2 operations: [HOWTO.md](HOWTO.md)
-- Release runbook: [RELEASE.md](RELEASE.md)
-- Realtime SD size estimate: [SPACE_ESTIMATE.md](SPACE_ESTIMATE.md)
-- Release history: [CHANGELOG.md](CHANGELOG.md)
-- Current release version: [VERSION](VERSION)
+- Release runbook: [docs/RELEASE.md](docs/RELEASE.md)
+- Realtime SD size estimate: [docs/SPACE_ESTIMATE.md](docs/SPACE_ESTIMATE.md)
+- Release history: [docs/CHANGELOG.md](docs/CHANGELOG.md)
+- Current release version: [docs/VERSION](docs/VERSION)
 
 ## Practical recommendation
 
@@ -30,6 +72,7 @@ If your goal is the easiest reliable workflow, use:
 1. Raspberry Pi Imager to create the SD card.
 2. Add `firstrun.sh` on the SD card boot partition.
 3. Boot once on Wi-Fi and let first-boot automation deploy the stack.
+4. Enable AP mode with `./scripts/setup-ap.sh` for router-independent access.
 
 Use Home Assistant only as an optional dashboard later.
 
@@ -41,21 +84,23 @@ ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyM
 
 This command installs Docker (if needed), clones or updates the repo on Pi, writes the default medical-survival content URL into `.env`, and starts the containers.
 
-The Pi runs two containers:
+The stack runs one container:
 - `kiwix-server`: serves all `.zim` files in `./zim_data`.
-- `kiwix-sync-agent`: checks your GitHub-hosted `zimlist.txt`, downloads new torrents with resume support, then restarts Kiwix.
+
+Content syncing is handled by a host-level weekly systemd timer (`pi-kiwix-sync.timer`) that runs `scripts/sync.sh`.
 
 ## Why this pattern works
 
 - Zero routine SSH maintenance after initial setup.
 - Library state lives in Git (simple to audit and update).
 - Interrupted large downloads resume automatically with `aria2c`.
+- No Docker socket mount and no always-on polling sidecar.
 
 ## Offline-first behavior
 
 This stack is designed to degrade gracefully when internet is unavailable:
-- Online: sync agent checks GitHub, downloads new content, and restarts Kiwix.
-- Offline: sync agent cannot reach GitHub, logs a warning, sleeps, and retries later.
+- Online: weekly sync task checks GitHub and downloads new content.
+- Offline: sync task exits success, logs offline warning, leaves existing content untouched.
 - In both cases: `kiwix-server` still starts and serves every `.zim` file already stored in `zim_data/`.
 
 No toggles are required to switch between connected and disconnected operation.
@@ -63,7 +108,10 @@ No toggles are required to switch between connected and disconnected operation.
 ## Files in this repo
 
 - `docker-compose.yml`: two-service stack.
-- `scripts/sync.sh`: sidecar loop that polls GitHub and syncs changes.
+- `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
+- `scripts/install.sh`: one-command installer for compose + timer.
+- `scripts/setup-ap.sh`: standalone AP setup (`hostapd` + `dnsmasq`).
+- `scripts/enable-readonly.sh`: enables overlayfs read-only root mode.
 - `.env.example`: environment values to copy into `.env`.
 - `zimlist.txt.example`: starter format for your torrent list.
 - `profiles/medical-survival-zimlist.txt`: recommended baseline list for emergency readiness.
@@ -92,24 +140,11 @@ docker compose up -d
 
 7. Open Kiwix at `http://<pi-ip>:8080`.
 
-## Optional first-boot automation
-
-The default quickstart already uses first-boot automation with `firstrun.sh`.
-If you prefer a generated boot-partition script from Windows, see [AUTOBOOT_SD.md](AUTOBOOT_SD.md).
-
-Manual first-boot script command if needed:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash
-```
-
-See [SD_CARD_QUICKSTART.md](SD_CARD_QUICKSTART.md) for exact steps.
-
 ## Updating content later
 
 1. Edit `zimlist.txt` in GitHub (phone or PC).
 2. Commit changes.
-3. The sidecar detects changes on the next poll and syncs automatically.
+3. Weekly sync timer picks changes up automatically.
 
 Set `SYNC_INTERVAL_SECONDS` in `.env` to tune check frequency. Default is `86400` (24h).
 
@@ -145,8 +180,8 @@ High-overhead items:
 
 ## Realtime SD space estimate
 
-GitHub Actions updates [SPACE_ESTIMATE.md](SPACE_ESTIMATE.md) from the current profile list.
-Machine-readable values are published to [SPACE_ESTIMATE.json](SPACE_ESTIMATE.json).
+GitHub Actions updates [docs/SPACE_ESTIMATE.md](docs/SPACE_ESTIMATE.md) from the current profile list.
+Machine-readable values are published to [docs/SPACE_ESTIMATE.json](docs/SPACE_ESTIMATE.json).
 
 - Triggered automatically on profile changes in `main`.
 - Visible in PR job summary before merge.
@@ -156,27 +191,27 @@ Machine-readable values are published to [SPACE_ESTIMATE.json](SPACE_ESTIMATE.js
 ## Versioning and releases
 
 - Versioning follows Semantic Versioning (`MAJOR.MINOR.PATCH`).
-- The authoritative current version is stored in [VERSION](VERSION).
-- Every user-visible change should be recorded in [CHANGELOG.md](CHANGELOG.md) under `Unreleased`, then moved to a dated release section.
+- The authoritative current version is stored in [docs/VERSION](docs/VERSION).
+- Every user-visible change should be recorded in [docs/CHANGELOG.md](docs/CHANGELOG.md) under `Unreleased`, then moved to a dated release section.
 
 ## Safety notes
 
-- This setup mounts `/var/run/docker.sock` in the sidecar so it can restart `kiwix-server`.
 - Keep this Pi trusted and avoid running untrusted containers alongside this stack.
 - Never commit `.env` (it may contain your token).
 - Prefer `GITHUB_TOKEN_FILE` over `GITHUB_TOKEN` so tokens are read from a file instead of env values.
+- Enable overlayfs via `./scripts/enable-readonly.sh` for power-loss resilience.
 
 ## Troubleshooting
 
 - Check logs:
 
 ```bash
-docker compose logs -f kiwix-sync-agent
 docker compose logs -f kiwix-server
+journalctl -u pi-kiwix-sync.service -n 200 --no-pager
 ```
 
-- Force a manual sync test by temporarily setting `SYNC_INTERVAL_SECONDS=60`, then restart the sync container:
+- Force a manual sync test:
 
 ```bash
-docker compose restart kiwix-sync-agent
+sudo systemctl start pi-kiwix-sync.service
 ```

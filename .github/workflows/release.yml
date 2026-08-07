@@ -19,7 +19,7 @@ jobs:
         id: verify
         run: |
           TAG="${GITHUB_REF_NAME}"
-          VERSION="$(tr -d '[:space:]' < VERSION)"
+          VERSION="$(tr -d '[:space:]' < docs/VERSION)"
           EXPECTED_TAG="v$VERSION"
 
           if [ "$TAG" != "$EXPECTED_TAG" ]; then
@@ -27,7 +27,7 @@ jobs:
             exit 1
           fi
 
-          grep -q "^## \[$VERSION\]" CHANGELOG.md || (echo "Missing changelog section for $VERSION"; exit 1)
+          grep -q "^## \[$VERSION\]" docs/CHANGELOG.md || (echo "Missing changelog section for $VERSION"; exit 1)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Extract release notes
@@ -38,7 +38,7 @@ jobs:
             $0 ~ "^## \\[" v "\\]" {in_section=1; next}
             in_section && $0 ~ /^## \[/ {exit}
             in_section {print}
-          ' CHANGELOG.md > release_notes.md
+          ' docs/CHANGELOG.md > release_notes.md
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

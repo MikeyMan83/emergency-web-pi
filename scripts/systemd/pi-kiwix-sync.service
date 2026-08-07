@@ -1,0 +1,10 @@
+[Unit]
+Description=Pi Kiwix Survival - content sync
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=__REPO_DIR__/.env
+ExecStart=__REPO_DIR__/scripts/sync.sh

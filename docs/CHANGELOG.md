@@ -7,8 +7,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Changed
-- Space estimate publishing now withholds totals when any item size is unresolved, to avoid sharing misleading SD-size numbers.
-- README now includes an explicit current-profile inventory and highlights high-overhead content.
+- Refactored architecture to a single `kiwix-server` container using `--monitorLibrary` for auto-reload.
+- Removed Docker socket dependency and sidecar polling container.
+- Moved content sync to host-level weekly systemd timer (`pi-kiwix-sync.timer`).
+- Added one-command installer (`scripts/install.sh`) and AP/read-only helper scripts.
+- Consolidated setup docs into the top-level README quickstart.
 
 ## [0.1.1] - 2026-08-06
 
@@ -26,6 +29,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Simplified primary setup again to a zero-touch `firstrun.sh` boot-partition flow (flash, paste, boot) with SSH deploy retained as fallback only.
 - Space estimate workflow now refreshes a top-level README status block with current known required size and recommended SD target.
 - Space estimate report now includes readable library names and explicit warning lines when totals are partial or unresolved.
+- Space estimate publishing now withholds totals when any item size is unresolved, to avoid sharing misleading SD-size numbers.
+- README now includes an explicit current-profile inventory and highlights high-overhead content.
 
 ## [0.1.0] - 2026-08-06
 
