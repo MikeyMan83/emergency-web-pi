@@ -6,11 +6,22 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-22
+
+### Changed
+- `scripts/create-sd.ps1` now auto-generates an emergency AP password when config uses placeholder values and writes the resolved private config to `config/appliance.local.json`.
+- `scripts/create-sd.ps1` now writes a provided appliance image directly to the selected physical disk with `-Force` and verifies the written image prefix hash.
+- `scripts/create-sd.ps1` now auto-discovers appliance images from common local artifact paths when `-ImagePath` is omitted.
+- `config/appliance.example.json` now uses `__GENERATE__` for AP password instead of a reusable static example password.
+
+### Docs
+- Simplified appliance-builder wording to keep implementation details out of user-facing contract language.
+
 ## [0.1.3] - 2026-09-22
 
 ### Added
 - Optional zero-touch AP enablement through first-boot automation via `BOOTSTRAP_ENABLE_AP` and `scripts/prepare-sd-autoboot.ps1 -EnableAp`.
-- Added first-class appliance builder contract documentation and a Windows `scripts/create-sd.ps1` entry-point scaffold.
+- Added first-class appliance builder contract documentation and a Windows `scripts/create-sd.ps1` entry point.
 
 ### Changed
 - `docker-compose.yml` now mounts Kiwix content from configurable `ZIM_DATA_DIR` with a safe default.

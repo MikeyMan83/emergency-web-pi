@@ -6,6 +6,8 @@ param(
 
   [string]$ImagePath = "",
 
+  [string]$ResolvedConfigPath = "config/appliance.local.json",
+
   [switch]$Force
 )
 
@@ -69,6 +71,47 @@ function Validate-Config {
   }
 }
 
+function New-ApPassword {
+  $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*+-_'
+  $bytes = New-Object byte[] 20
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $sb = New-Object System.Text.StringBuilder
+  foreach ($b in $bytes) {
+    [void]$sb.Append($chars[$b % $chars.Length])
+  }
+  return $sb.ToString()
+}
+
+function Resolve-ApPassword {
+  param(
+    [Parameter(Mandatory = $true)]$Config,
+    [Parameter(Mandatory = $true)][string]$ConfigPath,
+    [Parameter(Mandatory = $true)][string]$ResolvedConfigPath
+  )
+
+  $needsGenerated = $Config.network.ap.password -eq "__GENERATE__" -or
+                    $Config.network.ap.password -eq "ChangeThisEmergencyPassword123"
+
+  if (-not $needsGenerated) {
+    return
+  }
+
+  $generated = New-ApPassword
+  $Config.network.ap.password = $generated
+
+  $resolvedDir = Split-Path -Parent $ResolvedConfigPath
+  if (-not [string]::IsNullOrWhiteSpace($resolvedDir) -and -not (Test-Path $resolvedDir)) {
+    New-Item -ItemType Directory -Path $resolvedDir | Out-Null
+  }
+
+  ($Config | ConvertTo-Json -Depth 10) + "`n" | Set-Content -Path $ResolvedConfigPath -Encoding utf8
+
+  Write-Host "Generated AP password and wrote resolved config: $ResolvedConfigPath"
+  if ($ConfigPath -eq "config/appliance.example.json") {
+    Write-Host "Using generated credentials from resolved config for this run."
+  }
+}
+
 function Get-TargetDisk {
   param([int]$Number)
 
@@ -81,6 +124,142 @@ function Get-TargetDisk {
   return $disk
 }
 
+function Resolve-ImagePath {
+  param([string]$ProvidedImagePath)
+
+  if (-not [string]::IsNullOrWhiteSpace($ProvidedImagePath)) {
+    if (-not (Test-Path $ProvidedImagePath)) {
+      throw "Image artifact not found: $ProvidedImagePath"
+    }
+    return (Resolve-Path $ProvidedImagePath).Path
+  }
+
+  $candidates = @(
+    "artifacts/appliance.img",
+    "artifacts/pi-kiwix-survival.img",
+    "appliance.img"
+  )
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path $candidate) {
+      return (Resolve-Path $candidate).Path
+    }
+  }
+
+  $imgFiles = @(Get-ChildItem -Path "artifacts" -Filter "*.img" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+  if ($imgFiles.Count -gt 0) {
+    return $imgFiles[0].FullName
+  }
+
+  throw "No appliance image found. Provide -ImagePath or place a .img file in artifacts/."
+}
+
+function Confirm-ImageFitsDisk {
+  param(
+    [Parameter(Mandatory = $true)][string]$ImagePath,
+    [Parameter(Mandatory = $true)]$Disk
+  )
+
+  $imageSize = (Get-Item $ImagePath).Length
+  if ($imageSize -gt $Disk.Size) {
+    throw "Image size ($([math]::Round($imageSize / 1GB, 2)) GB) exceeds disk size ($([math]::Round($Disk.Size / 1GB, 2)) GB)."
+  }
+}
+
+function Unmount-DiskVolumes {
+  param([int]$DiskNumber)
+
+  $partitions = @(Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue)
+  foreach ($partition in $partitions) {
+    if ($partition.DriveLetter) {
+      $drive = "{0}:" -f $partition.DriveLetter
+      try {
+        mountvol $drive /p | Out-Null
+      } catch {
+        Write-Warning "Could not dismount $drive cleanly. Continuing."
+      }
+    }
+  }
+}
+
+function Get-PartialHash {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][Int64]$BytesToHash
+  )
+
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  try {
+    $buffer = New-Object byte[] (4MB)
+    [Int64]$remaining = $BytesToHash
+    while ($remaining -gt 0) {
+      $toRead = [Math]::Min($buffer.Length, $remaining)
+      $read = $stream.Read($buffer, 0, [int]$toRead)
+      if ($read -le 0) { break }
+      [void]$hasher.TransformBlock($buffer, 0, $read, $null, 0)
+      $remaining -= $read
+    }
+    [void]$hasher.TransformFinalBlock(@(), 0, 0)
+    return ([BitConverter]::ToString($hasher.Hash)).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $hasher.Dispose()
+  }
+}
+
+function Write-ImageToDisk {
+  param(
+    [Parameter(Mandatory = $true)][string]$ImagePath,
+    [Parameter(Mandatory = $true)][int]$DiskNumber,
+    [Parameter(Mandatory = $true)]$Disk
+  )
+
+  Confirm-ImageFitsDisk -ImagePath $ImagePath -Disk $Disk
+  Unmount-DiskVolumes -DiskNumber $DiskNumber
+
+  try {
+    Set-Disk -Number $DiskNumber -IsReadOnly $false -ErrorAction SilentlyContinue | Out-Null
+  } catch {
+    Write-Warning "Could not clear read-only flag on disk $DiskNumber before write."
+  }
+
+  $targetPath = "\\.\PhysicalDrive$DiskNumber"
+  $source = [System.IO.File]::Open($ImagePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+  $target = New-Object System.IO.FileStream($targetPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+
+  try {
+    $buffer = New-Object byte[] (4MB)
+    [Int64]$totalBytes = $source.Length
+    [Int64]$written = 0
+    $lastPercent = -1
+
+    while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $target.Write($buffer, 0, $read)
+      $written += $read
+
+      $percent = [int](($written * 100) / $totalBytes)
+      if ($percent -ne $lastPercent) {
+        Write-Progress -Activity "Writing appliance image" -Status "$percent%" -PercentComplete $percent
+        $lastPercent = $percent
+      }
+    }
+
+    $target.Flush($true)
+    Write-Progress -Activity "Writing appliance image" -Completed
+  } finally {
+    $source.Dispose()
+    $target.Dispose()
+  }
+
+  $verifyBytes = [Math]::Min((Get-Item $ImagePath).Length, 8MB)
+  $imageHash = Get-PartialHash -Path $ImagePath -BytesToHash $verifyBytes
+  $diskHash = Get-PartialHash -Path $targetPath -BytesToHash $verifyBytes
+  if ($imageHash -ne $diskHash) {
+    throw "Post-write verification failed: disk prefix hash does not match image prefix hash."
+  }
+}
+
 Require-Admin
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -88,6 +267,7 @@ Set-Location $repoRoot
 
 $config = Read-Config -Path $ConfigPath
 Validate-Config -Config $config
+Resolve-ApPassword -Config $config -ConfigPath $ConfigPath -ResolvedConfigPath $ResolvedConfigPath
 
 $disk = Get-TargetDisk -Number $DiskNumber
 
@@ -111,22 +291,21 @@ if ($config.network.upstream.enabled) {
   Write-Host "Upstream Wi-Fi:    disabled"
 }
 
-if ([string]::IsNullOrWhiteSpace($ImagePath)) {
-  throw @"
-No appliance image artifact was provided.
-
-`scripts/create-sd.ps1` expects a finished appliance image artifact.
-Provide -ImagePath with that artifact, then re-run the command.
-"@
-}
-
-if (-not (Test-Path $ImagePath)) {
-  throw "Image artifact not found: $ImagePath"
-}
+$resolvedImagePath = Resolve-ImagePath -ProvidedImagePath $ImagePath
+Write-Host "Image:             $resolvedImagePath"
 
 if (-not $Force) {
-  Write-Warning "Image writing is destructive. Re-run with -Force to allow writing once an appliance image artifact is provided."
+  Write-Warning "Image writing is destructive. Re-run with -Force to write the appliance image to disk #$DiskNumber."
   return
 }
 
-throw "Image writing is not available from this script revision. See docs/APPLIANCE.md for the appliance contract."
+Write-Host ""
+Write-Host "Writing appliance image to disk #$DiskNumber ..."
+Write-ImageToDisk -ImagePath $resolvedImagePath -DiskNumber $DiskNumber -Disk $disk
+
+Write-Host ""
+Write-Host "Build successful"
+Write-Host "Emergency Wi-Fi"
+Write-Host "SSID:     $($config.network.ap.ssid)"
+Write-Host "Password: $($config.network.ap.password)"
+Write-Host "Kiwix:    http://$($config.network.ap.address):$($config.network.ap.port)"

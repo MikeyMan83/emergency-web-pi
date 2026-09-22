@@ -26,7 +26,7 @@ is required for the appliance to function.
 7. Browse to `http://10.42.0.1:8080`.
 8. Confirm Kiwix starts and all expected ZIMs are present.
 
-Optional maintenance path:
+Maintenance path:
 
 1. Provide upstream internet later.
 2. Leave the emergency AP and Kiwix available locally.
@@ -50,21 +50,21 @@ Runtime:
 - Optional upstream internet only for content refresh
 - Software/OS/appliance updates via a newly built SD card
 
-## Current implementation boundary
+## Legacy first-boot mode
 
-The current stable implementation in this repository is still the first-boot provisioning path:
+The repository also includes a first-boot provisioning mode:
 
 - `scripts/prepare-sd-autoboot.ps1`
 - `scripts/bootstrap-pi.sh`
 - `scripts/install.sh`
 
-That path is the current development and recovery path. It is separate from the finished offline appliance contract defined above.
+This mode is useful for development and recovery. It is separate from the offline appliance contract defined above.
 
 ## Builder inputs
 
 - Target SD card / physical disk
 - Appliance config file
-- Appliance image artifact or staged rootfs payload
+- Appliance image file (`.img`) provided via `-ImagePath` or discovered in `artifacts/`
 
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.

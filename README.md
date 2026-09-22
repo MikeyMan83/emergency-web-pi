@@ -14,9 +14,11 @@ The product target for this repository is a Windows-first, one-command appliance
 No first-boot installation, internet connection, GitHub access, or manual configuration
 should be required for the finished appliance to function.
 
-That appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
-The current stable implementation in this repository is still the first-boot provisioning path,
-which remains the development and recovery path.
+The appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
+
+Two supported modes exist in this repository:
+- Appliance-build mode: `scripts/create-sd.ps1` writes a prepared appliance image to SD.
+- Legacy first-boot mode: `firstrun.sh` + `bootstrap-pi.sh` + `install.sh` provision on first boot.
 
 <!-- SPACE_ESTIMATE:START -->
 Published content size: **64.83 GB**
@@ -25,7 +27,7 @@ Known subtotal (diagnostic): 64.83 GB
 Last estimate refresh: 2026-08-07T15:01:20Z
 <!-- SPACE_ESTIMATE:END -->
 
-## Current quickstart
+## Legacy first-boot quickstart
 
 ### 1. Flash SD card
 
@@ -94,10 +96,13 @@ If your goal is the easiest reliable workflow, use:
 
 Use Home Assistant only as an optional dashboard later.
 
-`scripts/create-sd.ps1` is reserved as the Windows appliance-builder entry point.
-The repo still ships the first-boot installer flow as the stable implementation.
+`scripts/create-sd.ps1` is the Windows appliance-builder entry point.
+If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
+`artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
+When using the builder path, copy `config/appliance.example.json` to
+`config/appliance.local.json` and keep private credentials only in that local file.
 
-### Optional fallback: one-command deploy over SSH
+### One-command deploy over SSH
 
 ```bash
 ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash"

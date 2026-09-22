@@ -8,7 +8,7 @@
   "network": {
     "ap": {
       "ssid": "PI-KIWIX-SURVIVAL",
-      "password": "ChangeThisEmergencyPassword123",
+      "password": "__GENERATE__",
       "address": "10.42.0.1",
       "port": 8080
     },
