@@ -56,6 +56,8 @@ Run once on Pi to make it independent from home router/DHCP:
 ```
 
 This configures `hostapd` + `dnsmasq` with defaults from `.env`.
+If you want AP mode from first boot with no follow-up SSH step, use `-EnableAp`
+with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after install.
 
 ## Documentation
 
@@ -70,9 +72,9 @@ This configures `hostapd` + `dnsmasq` with defaults from `.env`.
 
 If your goal is the easiest reliable workflow, use:
 1. Raspberry Pi Imager to create the SD card.
-2. Add `firstrun.sh` on the SD card boot partition.
-3. Boot once on Wi-Fi and let first-boot automation deploy the stack.
-4. Enable AP mode with `./scripts/setup-ap.sh` for router-independent access.
+2. Run `scripts/prepare-sd-autoboot.ps1` against the boot partition.
+3. Add `-EnableAp` if you want the Pi to become its own Wi-Fi hotspot automatically after setup.
+4. Boot once on Wi-Fi and let first-boot automation deploy the stack.
 
 Use Home Assistant only as an optional dashboard later.
 

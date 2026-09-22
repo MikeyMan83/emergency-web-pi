@@ -12,7 +12,8 @@ param(
   [int]$SyncIntervalSeconds = 604800,
   [int]$KiwixPort = 8080,
   [string]$GitHubToken = "",
-  [switch]$EnableSsh
+  [switch]$EnableSsh,
+  [switch]$EnableAp
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +62,10 @@ if (-not [string]::IsNullOrWhiteSpace($ZimListRawUrl)) {
 $scriptLines += "export BOOTSTRAP_SYNC_INTERVAL_SECONDS='$SyncIntervalSeconds'"
 $scriptLines += "export BOOTSTRAP_KIWIX_PORT='$KiwixPort'"
 
+if ($EnableAp) {
+  $scriptLines += "export BOOTSTRAP_ENABLE_AP='1'"
+}
+
 if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
   $scriptLines += "export BOOTSTRAP_GITHUB_TOKEN='$(Escape-BashSingleQuotedValue $GitHubToken)'"
 }
@@ -84,5 +89,8 @@ if ($EnableSsh) {
 Write-Host "Wrote $firstrunPath"
 if ($EnableSsh) {
   Write-Host "Enabled SSH via boot partition flag file"
+}
+if ($EnableAp) {
+  Write-Host "Configured first boot to switch the Pi into standalone AP mode after install"
 }
 Write-Host "Unattended first boot is prepared."

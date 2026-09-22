@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Optional zero-touch AP enablement through first-boot automation via `BOOTSTRAP_ENABLE_AP` and `scripts/prepare-sd-autoboot.ps1 -EnableAp`.
+
+### Changed
+- `docker-compose.yml` now mounts Kiwix content from configurable `ZIM_DATA_DIR` with a safe default.
+- `scripts/setup-ap.sh` now uses configurable `AP_COUNTRY_CODE` and validates it before writing `hostapd` configuration.
+- `scripts/enable-readonly.sh` now migrates `zim_data` to separate persistent storage before enabling overlayfs, preventing content loss on reboot.
+
+### Docs
+- Clarified the zero-touch SD-card workflow and standalone AP behavior in the primary setup and operations docs.
+
 ## [0.1.2] - 2026-08-07
 
 ### Changed

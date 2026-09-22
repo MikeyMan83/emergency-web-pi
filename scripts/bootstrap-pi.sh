@@ -62,6 +62,10 @@ if [ -n "${BOOTSTRAP_GITHUB_URL:-}" ] || [ -n "${BOOTSTRAP_SYNC_INTERVAL_SECONDS
   export BOOTSTRAP_KIWIX_PORT="${BOOTSTRAP_KIWIX_PORT:-}"
 fi
 
+if [ -n "${BOOTSTRAP_ENABLE_AP:-}" ]; then
+  export BOOTSTRAP_ENABLE_AP
+fi
+
 log "Running installer..."
 ./scripts/install.sh
 

@@ -57,6 +57,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now pi-kiwix-sync.timer
 sudo systemctl start pi-kiwix-sync.service
 
+if [[ "${BOOTSTRAP_ENABLE_AP:-0}" == "1" ]]; then
+  echo "==> Enabling standalone AP mode"
+  ./scripts/setup-ap.sh
+fi
+
 IP=$(hostname -I | awk '{print $1}')
 echo
 echo "Done. Kiwix is live at http://$IP:8080"
