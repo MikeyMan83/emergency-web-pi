@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-22
+
 ### Changed
 - `scripts/setup-ap.sh` now provisions standalone AP mode through NetworkManager (`nmcli`) shared mode instead of `dhcpcd` + `hostapd` + external `dnsmasq`, preventing failures on modern Raspberry Pi OS Bookworm defaults.
 - `scripts/setup-ap.sh` now installs a captive-portal DNS sinkhole (`address=/#/<AP_IP>`) for offline AP mode so mobile clients remain on the network and resolve local browsing reliably.
