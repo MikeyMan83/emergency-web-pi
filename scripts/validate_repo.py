@@ -28,6 +28,8 @@ def main() -> int:
     appliance_config_path = repo_root / "config" / "appliance.example.json"
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
+    portable_ps1_path = repo_root / "portable" / "PiKiwixPortable.ps1"
+    portable_cmd_path = repo_root / "portable" / "Launch-PiKiwixPortable.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
@@ -57,6 +59,7 @@ def main() -> int:
     require("Default is `604800` (weekly)." in readme, "README must state weekly default sync interval")
     require("scripts/create-sd.ps1" in readme, "README must mention scripts/create-sd.ps1")
     require("scripts/build-appliance-image.ps1" in readme, "README must mention scripts/build-appliance-image.ps1")
+    require("portable/Launch-PiKiwixPortable.cmd" in readme, "README must mention portable launcher")
     require(
         "Uses torrent metadata when available (with a header-based fallback for non-torrent links)." in readme,
         "README must describe estimate probe method",
@@ -69,6 +72,8 @@ def main() -> int:
     require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
+    require(portable_ps1_path.exists(), "portable/PiKiwixPortable.ps1 must exist")
+    require(portable_cmd_path.exists(), "portable/Launch-PiKiwixPortable.cmd must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
 
     # Estimate completeness checks.

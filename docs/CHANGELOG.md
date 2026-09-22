@@ -9,6 +9,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Docs
 - Updated README practical recommendation to prioritize the Windows appliance image build-and-write flow, with first-boot automation positioned as development/recovery only.
 
+### Added
+- Added a portable Windows frontend (`portable/PiKiwixPortable.ps1` + `portable/Launch-PiKiwixPortable.cmd`) that wraps the existing safe build and SD-write scripts.
+
 ## [0.1.6] - 2026-09-22
 
 ### Changed

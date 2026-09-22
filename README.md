@@ -6,6 +6,14 @@ Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
 Build and write a complete appliance SD card from Windows:
 
+Portable frontend option:
+
+```powershell
+.\portable\Launch-PiKiwixPortable.cmd
+```
+
+The portable app wraps the same validated script engine used below.
+
 1. Download Raspberry Pi OS Lite (64-bit) image (`.img`, `.img.xz`, or `.zip`).
 2. Ensure WSL with Ubuntu is installed (`wsl --install`).
 3. Build appliance image + manifest in WSL:
@@ -166,6 +174,8 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
 - `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
+- `portable/PiKiwixPortable.ps1`: portable Windows frontend for build + SD write.
+- `portable/Launch-PiKiwixPortable.cmd`: one-click launcher for the portable frontend.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for native kiwix service + timer.
 - `scripts/systemd/pi-kiwix-serve.service`: native kiwix runtime service.
