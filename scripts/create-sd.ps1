@@ -6,6 +6,8 @@ param(
 
   [string]$ImagePath = "",
 
+  [string]$ManifestPath = "",
+
   [string]$ResolvedConfigPath = "config/appliance.local.json",
 
   [switch]$Force
@@ -154,6 +156,92 @@ function Resolve-ImagePath {
   throw "No appliance image found. Provide -ImagePath or place a .img file in artifacts/."
 }
 
+function Get-FileSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $hash = Get-FileHash -Path $Path -Algorithm SHA256
+  return $hash.Hash.ToLowerInvariant()
+}
+
+function Resolve-ManifestPath {
+  param(
+    [Parameter(Mandatory = $true)][string]$ResolvedImagePath,
+    [string]$ProvidedManifestPath
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($ProvidedManifestPath)) {
+    if (-not (Test-Path $ProvidedManifestPath)) {
+      throw "Manifest file not found: $ProvidedManifestPath"
+    }
+    return (Resolve-Path $ProvidedManifestPath).Path
+  }
+
+  $direct = "$ResolvedImagePath.manifest.json"
+  if (Test-Path $direct) {
+    return (Resolve-Path $direct).Path
+  }
+
+  $imageName = [System.IO.Path]::GetFileName($ResolvedImagePath)
+  $sibling = Join-Path ([System.IO.Path]::GetDirectoryName($ResolvedImagePath)) "$imageName.manifest.json"
+  if (Test-Path $sibling) {
+    return (Resolve-Path $sibling).Path
+  }
+
+  throw "No image manifest found. Provide -ManifestPath or add '$imageName.manifest.json' next to the image."
+}
+
+function Read-Manifest {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  try {
+    return Get-Content $Path -Raw | ConvertFrom-Json
+  } catch {
+    throw "Manifest file is not valid JSON: $Path"
+  }
+}
+
+function Validate-Manifest {
+  param(
+    [Parameter(Mandatory = $true)]$Manifest,
+    [Parameter(Mandatory = $true)][string]$ResolvedImagePath
+  )
+
+  Require-Value $Manifest.schemaVersion "Manifest must set schemaVersion."
+  Require-Value $Manifest.applianceVersion "Manifest must set applianceVersion."
+  Require-Value $Manifest.image.sha256 "Manifest must set image.sha256."
+  Require-Value $Manifest.storage.partitions "Manifest must set storage.partitions."
+  Require-Value $Manifest.runtime.overlayRootEnabled "Manifest must set runtime.overlayRootEnabled."
+  Require-Value $Manifest.runtime.zimDataOnDedicatedPartition "Manifest must set runtime.zimDataOnDedicatedPartition."
+  Require-Value $Manifest.runtime.docker.storageDriver "Manifest must set runtime.docker.storageDriver."
+
+  $partitionNames = @($Manifest.storage.partitions | ForEach-Object { $_.name.ToString().ToLowerInvariant() })
+  if ($partitionNames -notcontains "boot") {
+    throw "Manifest storage.partitions must include a 'boot' partition."
+  }
+  if ($partitionNames -notcontains "root") {
+    throw "Manifest storage.partitions must include a 'root' partition."
+  }
+  if ($partitionNames -notcontains "zimdata") {
+    throw "Manifest storage.partitions must include a dedicated 'zimdata' partition."
+  }
+
+  if (-not [bool]$Manifest.runtime.zimDataOnDedicatedPartition) {
+    throw "Manifest indicates ZIM data is not on a dedicated partition. This image is rejected."
+  }
+
+  $overlayEnabled = [bool]$Manifest.runtime.overlayRootEnabled
+  $dockerDriver = $Manifest.runtime.docker.storageDriver.ToString().ToLowerInvariant()
+  if ($overlayEnabled -and $dockerDriver -eq "overlay2") {
+    throw "Manifest indicates root overlayfs with Docker overlay2. This nested-overlay combination is rejected."
+  }
+
+  $actual = Get-FileSha256 -Path $ResolvedImagePath
+  $expected = $Manifest.image.sha256.ToString().ToLowerInvariant()
+  if ($actual -ne $expected) {
+    throw "Image SHA256 does not match manifest. expected=$expected actual=$actual"
+  }
+}
+
 function Confirm-ImageFitsDisk {
   param(
     [Parameter(Mandatory = $true)][string]$ImagePath,
@@ -292,7 +380,12 @@ if ($config.network.upstream.enabled) {
 }
 
 $resolvedImagePath = Resolve-ImagePath -ProvidedImagePath $ImagePath
+$resolvedManifestPath = Resolve-ManifestPath -ResolvedImagePath $resolvedImagePath -ProvidedManifestPath $ManifestPath
+$manifest = Read-Manifest -Path $resolvedManifestPath
+Validate-Manifest -Manifest $manifest -ResolvedImagePath $resolvedImagePath
+
 Write-Host "Image:             $resolvedImagePath"
+Write-Host "Manifest:          $resolvedManifestPath"
 
 if (-not $Force) {
   Write-Warning "Image writing is destructive. Re-run with -Force to write the appliance image to disk #$DiskNumber."

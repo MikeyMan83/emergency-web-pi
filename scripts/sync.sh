@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure docker compose and relative paths resolve correctly under systemd.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 : "${GITHUB_URL:?Set GITHUB_URL in .env}"
 : "${ZIM_DATA_DIR:=./zim_data}"
 : "${COMPOSE_SERVICE:=kiwix-server}"
@@ -28,7 +31,7 @@ if ! curl -fsSL "${AUTH[@]}" "$GITHUB_URL" -o "$TMP_LIST"; then
   exit 0
 fi
 
-added=0
+processed=0
 
 while IFS= read -r line; do
   [[ -z "$line" || "$line" =~ ^# ]] && continue
@@ -36,11 +39,7 @@ while IFS= read -r line; do
   fname="$(basename "${line%%.torrent}")"
   target="$ZIM_DATA_DIR/$fname"
 
-  if [[ -f "$target" && -s "$target" ]]; then
-    continue
-  fi
-
-  log "Downloading $fname"
+  log "Checking/Downloading $fname"
   if ! aria2c \
     -c \
     --timeout=1800 \
@@ -49,7 +48,7 @@ while IFS= read -r line; do
     -d "$ZIM_DATA_DIR" \
     -o "$fname" \
     "$line"; then
-    log "WARNING: $fname failed to download (dead torrent / no seeders / unreachable URL?)"
+    log "WARNING: $fname failed to download or resume cleanly"
     continue
   fi
 
@@ -58,20 +57,18 @@ while IFS= read -r line; do
     continue
   fi
 
-  size_a="$(stat -c%s "$target" 2>/dev/null || echo 0)"
-  sleep 2
-  size_b="$(stat -c%s "$target" 2>/dev/null || echo 0)"
-  if [[ "$size_a" -le 0 || "$size_a" -ne "$size_b" ]]; then
-    log "WARNING: $fname size is unstable ($size_a -> $size_b), skipping registration"
-    continue
-  fi
-
-  log "Registering $fname"
-  if docker compose exec -T "$COMPOSE_SERVICE" kiwix-manage /data/library.xml add "/data/$fname"; then
-    added=$((added + 1))
-  else
-    log "WARNING: failed to register $fname in library.xml"
-  fi
+  processed=$((processed + 1))
 done < "$TMP_LIST"
 
-log "Done. $added new ZIM(s) added."
+log "Rebuilding library.xml from current ZIM files"
+docker compose exec -T "$COMPOSE_SERVICE" sh -c '
+  : > /data/library.xml
+  for zim in /data/*.zim; do
+    [ -f "$zim" ] || continue
+    if ! kiwix-manage /data/library.xml add "$zim" 2>/dev/null; then
+      echo "[sync] WARNING: failed to register $zim" >&2
+    fi
+  done
+'
+
+log "Done. Sync and registration complete. $processed item(s) validated/downloaded."

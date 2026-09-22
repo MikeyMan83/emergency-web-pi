@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+- `scripts/setup-ap.sh` now provisions standalone AP mode through NetworkManager (`nmcli`) shared mode instead of `dhcpcd` + `hostapd` + external `dnsmasq`, preventing failures on modern Raspberry Pi OS Bookworm defaults.
+- `scripts/setup-ap.sh` now installs a captive-portal DNS sinkhole (`address=/#/<AP_IP>`) for offline AP mode so mobile clients remain on the network and resolve local browsing reliably.
+
+### Docs
+- Updated AP setup guidance to describe NetworkManager hotspot behavior and captive DNS handling.
+
+## [0.1.5] - 2026-09-22
+
+### Changed
+- `scripts/sync.sh` now always lets `aria2c -c` evaluate existing files so interrupted downloads reliably resume instead of being skipped.
+- `scripts/sync.sh` now rebuilds `library.xml` from on-disk `.zim` files after sync, preventing orphaned libraries after power loss between download and registration.
+- `scripts/sync.sh` now forces repository-root execution context so relative paths and `docker compose` behave consistently under systemd.
+- `scripts/create-sd.ps1` now requires and validates an image manifest with SHA256, dedicated `zimdata` partition declaration, and overlay/docker safety checks before writing SD media.
+
+### Docs
+- Added explicit appliance image manifest requirements and runtime invariants for the Windows builder flow.
+
 ## [0.1.4] - 2026-09-22
 
 ### Changed

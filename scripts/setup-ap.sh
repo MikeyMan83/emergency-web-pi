@@ -17,9 +17,6 @@ set +a
 : "${AP_PASSPHRASE:?Set AP_PASSPHRASE in .env}"
 : "${AP_INTERFACE:=wlan0}"
 : "${AP_ADDRESS:=10.42.0.1/24}"
-: "${AP_DHCP_START:=10.42.0.10}"
-: "${AP_DHCP_END:=10.42.0.50}"
-: "${AP_DHCP_LEASE:=24h}"
 : "${AP_COUNTRY_CODE:=NL}"
 
 if [[ ${#AP_PASSPHRASE} -lt 8 || ${#AP_PASSPHRASE} -gt 63 ]]; then
@@ -32,57 +29,52 @@ if [[ ! "$AP_COUNTRY_CODE" =~ ^[A-Z]{2}$ ]]; then
   exit 1
 fi
 
+if [[ ! "$AP_ADDRESS" =~ / ]]; then
+  AP_ADDRESS="${AP_ADDRESS}/24"
+fi
+AP_HOST="${AP_ADDRESS%%/*}"
+
 echo "==> Installing AP packages"
 sudo apt-get update -y
-sudo apt-get install -y hostapd dnsmasq
+sudo apt-get install -y network-manager dnsmasq-base iw
 
-echo "==> Configuring dhcpcd static address"
-sudo sed -i '/^# PI-KIWIX-SURVIVAL AP START$/,/^# PI-KIWIX-SURVIVAL AP END$/d' /etc/dhcpcd.conf
-sudo tee -a /etc/dhcpcd.conf >/dev/null <<EOF
-# PI-KIWIX-SURVIVAL AP START
-interface ${AP_INTERFACE}
-static ip_address=${AP_ADDRESS}
-nohook wpa_supplicant
-# PI-KIWIX-SURVIVAL AP END
-EOF
-
-echo "==> Writing dnsmasq config"
-sudo tee /etc/dnsmasq.d/pi-kiwix-survival.conf >/dev/null <<EOF
-interface=${AP_INTERFACE}
-bind-interfaces
-dhcp-range=${AP_DHCP_START},${AP_DHCP_END},${AP_DHCP_LEASE}
-EOF
-
-echo "==> Writing hostapd config"
-sudo tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
-country_code=${AP_COUNTRY_CODE}
-interface=${AP_INTERFACE}
-ssid=${AP_SSID}
-hw_mode=g
-channel=6
-wmm_enabled=0
-macaddr_acl=0
-auth_algs=1
-ignore_broadcast_ssid=0
-wpa=2
-wpa_passphrase=${AP_PASSPHRASE}
-wpa_key_mgmt=WPA-PSK
-rsn_pairwise=CCMP
-EOF
-
-echo "==> Enabling hostapd config path"
-if grep -q '^DAEMON_CONF=' /etc/default/hostapd; then
-  sudo sed -i 's|^DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
-else
-  echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' | sudo tee -a /etc/default/hostapd >/dev/null
+if ! command -v nmcli >/dev/null 2>&1; then
+  echo "nmcli not found after package install. NetworkManager setup cannot continue." >&2
+  exit 1
 fi
 
-echo "==> Enabling services"
-sudo systemctl unmask hostapd || true
-sudo systemctl enable --now hostapd
-sudo systemctl enable --now dnsmasq
-sudo systemctl restart dhcpcd
+echo "==> Ensuring NetworkManager is active"
+sudo systemctl enable --now NetworkManager
+
+echo "==> Removing legacy AP services"
+sudo systemctl disable --now hostapd 2>/dev/null || true
+sudo systemctl disable --now dnsmasq 2>/dev/null || true
+sudo systemctl stop dhcpcd 2>/dev/null || true
+
+echo "==> Configuring NetworkManager hotspot"
+sudo nmcli connection delete id pi-kiwix-ap 2>/dev/null || true
+sudo nmcli connection add type wifi ifname "$AP_INTERFACE" con-name pi-kiwix-ap autoconnect yes ssid "$AP_SSID"
+sudo nmcli connection modify pi-kiwix-ap \
+  802-11-wireless.mode ap \
+  802-11-wireless.band bg \
+  802-11-wireless.country "$AP_COUNTRY_CODE" \
+  ipv4.method shared \
+  ipv4.addresses "$AP_ADDRESS"
+sudo nmcli connection modify pi-kiwix-ap \
+  wifi-sec.key-mgmt wpa-psk \
+  wifi-sec.psk "$AP_PASSPHRASE"
+
+echo "==> Configuring captive-portal DNS sinkhole"
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+sudo tee /etc/NetworkManager/dnsmasq-shared.d/pi-kiwix-survival.conf >/dev/null <<EOF
+address=/#/${AP_HOST}
+EOF
+
+echo "==> Restarting NetworkManager and bringing AP online"
+sudo systemctl restart NetworkManager
+sudo nmcli connection up pi-kiwix-ap
+sudo iw reg set "$AP_COUNTRY_CODE" || true
 
 echo
 echo "AP mode configured. Connect to SSID: ${AP_SSID}"
-echo "Kiwix URL: http://10.42.0.1:8080"
+echo "Kiwix URL: http://${AP_HOST}:8080"

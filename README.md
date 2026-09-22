@@ -73,7 +73,8 @@ Run once on Pi to make it independent from home router/DHCP:
 ./scripts/setup-ap.sh
 ```
 
-This configures `hostapd` + `dnsmasq` with defaults from `.env`.
+This configures a NetworkManager hotspot with defaults from `.env`, including
+a captive-portal DNS sinkhole so phones stay attached to the offline AP.
 If you want AP mode from first boot with no follow-up SSH step, use `-EnableAp`
 with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after install.
 
@@ -99,6 +100,11 @@ Use Home Assistant only as an optional dashboard later.
 `scripts/create-sd.ps1` is the Windows appliance-builder entry point.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
+The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
+- dedicated `zimdata` partition,
+- `runtime.zimDataOnDedicatedPartition=true`,
+- no `overlayRootEnabled=true` with Docker `overlay2`,
+- matching SHA256 for the image file.
 When using the builder path, copy `config/appliance.example.json` to
 `config/appliance.local.json` and keep private credentials only in that local file.
 
@@ -137,7 +143,7 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for compose + timer.
-- `scripts/setup-ap.sh`: standalone AP setup (`hostapd` + `dnsmasq`).
+- `scripts/setup-ap.sh`: standalone AP setup (NetworkManager hotspot + captive DNS).
 - `scripts/enable-readonly.sh`: enables overlayfs read-only root mode.
 - `config/appliance.example.json`: example private appliance build config.
 - `.env.example`: environment values to copy into `.env`.

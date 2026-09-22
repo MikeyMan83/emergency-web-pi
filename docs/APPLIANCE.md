@@ -65,6 +65,16 @@ This mode is useful for development and recovery. It is separate from the offlin
 - Target SD card / physical disk
 - Appliance config file
 - Appliance image file (`.img`) provided via `-ImagePath` or discovered in `artifacts/`
+- Appliance image manifest (`.img.manifest.json`) with build/runtime invariants
 
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.
+
+## Required manifest invariants
+
+`scripts/create-sd.ps1` verifies the manifest before writing:
+
+- `storage.partitions` includes `boot`, `root`, and `zimdata`
+- `runtime.zimDataOnDedicatedPartition=true`
+- reject `runtime.overlayRootEnabled=true` when `runtime.docker.storageDriver=overlay2`
+- `image.sha256` matches the actual image file hash

@@ -85,6 +85,9 @@ To configure own Wi-Fi AP (no router dependency):
 
 Client access URL after connecting to AP SSID: `http://10.42.0.1:8080`.
 
+`scripts/setup-ap.sh` configures AP mode through NetworkManager shared mode and
+adds a wildcard DNS sinkhole to keep modern phones connected to the offline network.
+
 For zero-touch deployment from Windows, `scripts/prepare-sd-autoboot.ps1 -EnableAp`
 adds `BOOTSTRAP_ENABLE_AP=1` to `firstrun.sh`, so first boot installs the stack,
 runs the first sync while internet is still available, and only then switches
