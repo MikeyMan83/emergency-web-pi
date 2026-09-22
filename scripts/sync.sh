@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Ensure docker compose and relative paths resolve correctly under systemd.
+# Ensure relative paths resolve correctly under systemd.
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 : "${GITHUB_URL:?Set GITHUB_URL in .env}"
 : "${ZIM_DATA_DIR:=./zim_data}"
-: "${COMPOSE_SERVICE:=kiwix-server}"
 
 mkdir -p "$ZIM_DATA_DIR"
 LOG_FILE="$ZIM_DATA_DIR/sync.log"
@@ -61,14 +60,13 @@ while IFS= read -r line; do
 done < "$TMP_LIST"
 
 log "Rebuilding library.xml from current ZIM files"
-docker compose exec -T "$COMPOSE_SERVICE" sh -c '
-  : > /data/library.xml
-  for zim in /data/*.zim; do
-    [ -f "$zim" ] || continue
-    if ! kiwix-manage /data/library.xml add "$zim" 2>/dev/null; then
-      echo "[sync] WARNING: failed to register $zim" >&2
-    fi
-  done
-'
+LIBRARY_FILE="$ZIM_DATA_DIR/library.xml"
+: > "$LIBRARY_FILE"
+for zim in "$ZIM_DATA_DIR"/*.zim; do
+  [ -f "$zim" ] || continue
+  if ! kiwix-manage "$LIBRARY_FILE" add "$zim" 2>/dev/null; then
+    log "WARNING: failed to register $zim"
+  fi
+done
 
 log "Done. Sync and registration complete. $processed item(s) validated/downloaded."

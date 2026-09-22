@@ -82,10 +82,9 @@ else
     printf "\nZIM_DATA_DIR=%s\n" "$MOUNT_POINT" >> "$ENV_FILE"
   fi
 
-  echo "==> Recreating kiwix-server with the new data path"
+  echo "==> Restarting kiwix service with the new data path"
   cd "$REPO_DIR"
-  docker compose down
-  docker compose up -d
+  sudo systemctl restart pi-kiwix-serve.service
 fi
 
 if ! command -v raspi-config >/dev/null 2>&1; then

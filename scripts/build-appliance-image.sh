@@ -240,27 +240,13 @@ sudo sed -i "s|^AP_PASSPHRASE=.*|AP_PASSPHRASE=$password|" "$MOUNT_ROOT/opt/pi-k
 sudo sed -i "s|^AP_ADDRESS=.*|AP_ADDRESS=${ap_cidr}|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^SYNC_INTERVAL_SECONDS=.*|SYNC_INTERVAL_SECONDS=$interval|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^ZIM_DATA_DIR=.*|ZIM_DATA_DIR=/var/lib/pi-kiwix-zimdata|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
+sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 
+sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service"
 sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service"
+sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-serve.service"
 sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.service"
 sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.timer" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.timer"
-
-sudo tee "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-stack.service" >/dev/null <<'EOF'
-[Unit]
-Description=Pi Kiwix Survival stack
-After=network-online.target docker.service
-Wants=network-online.target docker.service
-
-[Service]
-Type=oneshot
-WorkingDirectory=/opt/pi-kiwix-survival
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
 sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection" >/dev/null <<EOF
@@ -294,6 +280,9 @@ sudo tee "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d/pi-kiwix-survival.conf
 address=/#/$ap_host
 EOF
 
+sudo mkdir -p "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata"
+sudo touch "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata/library.xml"
+
 echo "$hostname_cfg" | sudo tee "$MOUNT_ROOT/etc/hostname" >/dev/null
 
 sudo mount --bind /dev "$MOUNT_ROOT/dev"
@@ -307,12 +296,11 @@ sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /bin/bash -c '
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y docker.io docker-compose-plugin aria2 curl git network-manager dnsmasq-base iw ca-certificates || apt-get install -y docker.io aria2 curl git network-manager dnsmasq-base iw ca-certificates
+apt-get install -y kiwix-tools aria2 curl git network-manager dnsmasq-base iw ca-certificates
 '
 
-sudo systemctl --root "$MOUNT_ROOT" enable docker.service
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
-sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-stack.service
+sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-serve.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-sync.timer
 
 sudo umount "$MOUNT_ROOT/proc"
@@ -352,10 +340,11 @@ cat > "$MANIFEST_PATH" <<EOF
     ]
   },
   "runtime": {
+    "serverMode": "native-kiwix-serve",
     "overlayRootEnabled": false,
     "zimDataOnDedicatedPartition": true,
     "docker": {
-      "storageDriver": "overlay2"
+      "storageDriver": "none"
     }
   }
 }

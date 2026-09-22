@@ -22,18 +22,17 @@ def require(condition: bool, message: str) -> None:
 def main() -> int:
     repo_root = pathlib.Path(__file__).resolve().parent.parent
 
-    compose_path = repo_root / "docker-compose.yml"
     env_example_path = repo_root / ".env.example"
     readme_path = repo_root / "README.md"
     appliance_doc_path = repo_root / "docs" / "APPLIANCE.md"
     appliance_config_path = repo_root / "config" / "appliance.example.json"
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
+    kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
-    compose = compose_path.read_text(encoding="utf-8")
     env_example = env_example_path.read_text(encoding="utf-8")
     readme = readme_path.read_text(encoding="utf-8")
     appliance_doc = appliance_doc_path.read_text(encoding="utf-8")
@@ -41,10 +40,9 @@ def main() -> int:
     estimate_md = estimate_md_path.read_text(encoding="utf-8")
     estimate_json = json.loads(estimate_json_path.read_text(encoding="utf-8"))
 
-    # Compose architecture checks.
-    require("docker.sock" not in compose, "docker-compose.yml must not mount docker.sock")
-    services = re.findall(r"^  ([A-Za-z0-9_.-]+):\s*$", compose, flags=re.MULTILINE)
-    require(services == ["kiwix-server"], f"Expected exactly one service 'kiwix-server', got: {services}")
+    # Runtime architecture checks.
+    require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
+    require("COMPOSE_SERVICE=" not in env_example, ".env.example must not define COMPOSE_SERVICE")
 
     # Default sync interval.
     require(
@@ -55,7 +53,7 @@ def main() -> int:
     # README consistency checks.
     require("<!-- SPACE_ESTIMATE:START -->" in readme, "README missing SPACE_ESTIMATE start marker")
     require("<!-- SPACE_ESTIMATE:END -->" in readme, "README missing SPACE_ESTIMATE end marker")
-    require("one-service stack (`kiwix-server` only)" in readme, "README must describe one-service stack")
+    require("pi-kiwix-serve.service" in readme, "README must mention pi-kiwix-serve.service")
     require("Default is `604800` (weekly)." in readme, "README must state weekly default sync interval")
     require("scripts/create-sd.ps1" in readme, "README must mention scripts/create-sd.ps1")
     require("scripts/build-appliance-image.ps1" in readme, "README must mention scripts/build-appliance-image.ps1")

@@ -100,6 +100,7 @@ Private local overrides belong in `config/appliance.local.json` and must not be 
 `scripts/create-sd.ps1` verifies the manifest before writing:
 
 - `storage.partitions` includes `boot`, `root`, and `zimdata`
+- `runtime.serverMode=native-kiwix-serve`
 - `runtime.zimDataOnDedicatedPartition=true`
 - reject `runtime.overlayRootEnabled=true` when `runtime.docker.storageDriver=overlay2`
 - `image.sha256` matches the actual image file hash

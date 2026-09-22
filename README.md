@@ -122,6 +122,7 @@ If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
 The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
 - dedicated `zimdata` partition,
+- `runtime.serverMode=native-kiwix-serve`,
 - `runtime.zimDataOnDedicatedPartition=true`,
 - no `overlayRootEnabled=true` with Docker `overlay2`,
 - matching SHA256 for the image file.
@@ -134,10 +135,13 @@ When using the builder path, copy `config/appliance.example.json` to
 ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash"
 ```
 
-This command installs Docker (if needed), clones or updates the repo on Pi, writes the default medical-survival content URL into `.env`, and starts the containers.
+This command installs required host dependencies, clones or updates the repo on Pi,
+writes the default medical-survival content URL into `.env`, and enables native
+`kiwix-serve` and sync services.
 
-The stack runs one container:
-- `kiwix-server`: serves all `.zim` files in `./zim_data`.
+Runtime services:
+- `pi-kiwix-serve.service`: serves all `.zim` files from `ZIM_DATA_DIR`.
+- `pi-kiwix-sync.timer`: runs periodic sync and library rebuild.
 
 Content syncing is handled by a host-level weekly systemd timer (`pi-kiwix-sync.timer`) that runs `scripts/sync.sh`.
 
@@ -146,25 +150,25 @@ Content syncing is handled by a host-level weekly systemd timer (`pi-kiwix-sync.
 - Zero routine SSH maintenance after initial setup.
 - Library state lives in Git (simple to audit and update).
 - Interrupted large downloads resume automatically with `aria2c`.
-- No Docker socket mount and no always-on polling sidecar.
+- No container runtime dependency in appliance mode.
 
 ## Offline-first behavior
 
 This stack is designed to degrade gracefully when internet is unavailable:
 - Online: weekly sync task checks GitHub and downloads new content.
 - Offline: sync task exits success, logs offline warning, leaves existing content untouched.
-- In both cases: `kiwix-server` still starts and serves every `.zim` file already stored in `zim_data/`.
+- In both cases: `kiwix-serve` still starts and serves every `.zim` file already stored in `zim_data/`.
 
 No toggles are required to switch between connected and disconnected operation.
 
 ## Files in this repo
 
-- `docker-compose.yml`: one-service stack (`kiwix-server` only).
 - `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
 - `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
-- `scripts/install.sh`: one-command installer for compose + timer.
+- `scripts/install.sh`: one-command installer for native kiwix service + timer.
+- `scripts/systemd/pi-kiwix-serve.service`: native kiwix runtime service.
 - `scripts/setup-ap.sh`: standalone AP setup (NetworkManager hotspot + captive DNS).
 - `scripts/enable-readonly.sh`: enables overlayfs read-only root mode.
 - `config/appliance.example.json`: example private appliance build config.
@@ -194,7 +198,7 @@ cp .env.example .env
 6. Start the stack:
 
 ```bash
-docker compose up -d
+./scripts/install.sh
 ```
 
 7. Open Kiwix at `http://<pi-ip>:8080`.
@@ -255,7 +259,7 @@ Machine-readable values are published to [docs/SPACE_ESTIMATE.json](docs/SPACE_E
 
 ## Safety notes
 
-- Keep this Pi trusted and avoid running untrusted containers alongside this stack.
+- Keep this Pi trusted and avoid running untrusted software alongside this stack.
 - Never commit `.env` (it may contain your token).
 - Prefer `GITHUB_TOKEN_FILE` over `GITHUB_TOKEN` so tokens are read from a file instead of env values.
 - Enable overlayfs via `./scripts/enable-readonly.sh` for power-loss resilience.
@@ -265,7 +269,7 @@ Machine-readable values are published to [docs/SPACE_ESTIMATE.json](docs/SPACE_E
 - Check logs:
 
 ```bash
-docker compose logs -f kiwix-server
+journalctl -u pi-kiwix-serve.service -n 200 --no-pager
 journalctl -u pi-kiwix-sync.service -n 200 --no-pager
 ```
 

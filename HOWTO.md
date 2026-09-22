@@ -6,7 +6,7 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 ## First bring-up
 
 This section is for the current live-Pi install path.
-It remains useful for development and recovery while the finished SD-card builder is being completed.
+It remains useful for development and recovery.
 
 ## Build appliance image on Windows
 
@@ -45,14 +45,14 @@ Then write the SD card:
 ## Verify health
 
 ```bash
-docker compose ps
-docker compose logs --tail=100 kiwix-server
+systemctl status pi-kiwix-serve.service --no-pager
+journalctl -u pi-kiwix-serve.service -n 100 --no-pager
 systemctl status pi-kiwix-sync.timer --no-pager
 systemctl status pi-kiwix-sync.service --no-pager
 ```
 
 Expected:
-- `kiwix-server` is running and reachable on port `8080`.
+- `pi-kiwix-serve.service` is active and reachable on port `8080`.
 - `pi-kiwix-sync.timer` is enabled and scheduled weekly.
 
 ## Run sync now
@@ -65,14 +65,12 @@ journalctl -u pi-kiwix-sync.service -n 200 --no-pager
 Expected:
 - Offline: sync exits 0 and leaves existing content untouched.
 - Online: new ZIM files download and are added to `library.xml`.
-- `kiwix-server` is running and reachable on port `8080`.
+- `pi-kiwix-serve.service` is running and reachable on port `8080`.
 
 ## Update software stack
 
 ```bash
 git pull --ff-only
-docker compose pull
-docker compose up -d
 ./scripts/install.sh
 ```
 
@@ -169,11 +167,11 @@ If Kiwix UI is empty:
 2. Rebuild library:
 
 ```bash
-docker compose exec -T kiwix-server sh -c '
-	: > /data/library.xml
-	for f in /data/*.zim; do
-		[ -e "$f" ] || continue
-		kiwix-manage /data/library.xml add "$f" 2>/dev/null || true
-	done
-'
+LIBRARY="$(grep '^ZIM_DATA_DIR=' .env | cut -d= -f2-)/library.xml"
+: > "$LIBRARY"
+for f in "$(dirname "$LIBRARY")"/*.zim; do
+  [ -e "$f" ] || continue
+  kiwix-manage "$LIBRARY" add "$f" 2>/dev/null || true
+done
+sudo systemctl restart pi-kiwix-serve.service
 ```

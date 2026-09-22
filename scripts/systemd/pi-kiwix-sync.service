@@ -1,6 +1,6 @@
 [Unit]
 Description=Pi Kiwix Survival - content sync
-After=network-online.target docker.service
+After=network-online.target pi-kiwix-serve.service
 Wants=network-online.target
 
 [Service]

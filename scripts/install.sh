@@ -32,28 +32,40 @@ if [[ -n "${BOOTSTRAP_KIWIX_PORT:-}" ]]; then
   set_env_value "KIWIX_PORT" "$BOOTSTRAP_KIWIX_PORT"
 fi
 
-echo "==> Checking dependencies"
-command -v docker >/dev/null || { echo "Install Docker first: https://get.docker.com"; exit 1; }
-docker compose version >/dev/null || { echo "docker compose plugin missing."; exit 1; }
-command -v aria2c >/dev/null || sudo apt-get install -y aria2
+set -a
+. ./.env
+set +a
 
-echo "==> Starting kiwix-server"
-docker compose up -d
+: "${ZIM_DATA_DIR:=./zim_data}"
+: "${KIWIX_PORT:=8080}"
+
+echo "==> Checking dependencies"
+sudo apt-get update -y
+command -v aria2c >/dev/null || sudo apt-get install -y aria2
+command -v kiwix-serve >/dev/null || sudo apt-get install -y kiwix-tools
+command -v kiwix-manage >/dev/null || sudo apt-get install -y kiwix-tools
+
+echo "==> Preparing data directory"
+mkdir -p "$ZIM_DATA_DIR"
 
 echo "==> Bootstrapping library.xml from any existing content"
-docker compose exec -T kiwix-server sh -c '
-  [ -f /data/library.xml ] || : > /data/library.xml
-  for f in /data/*.zim; do
-    [ -e "$f" ] || continue
-    kiwix-manage /data/library.xml add "$f" 2>/dev/null || true
-  done
-'
+LIBRARY_FILE="$ZIM_DATA_DIR/library.xml"
+: > "$LIBRARY_FILE"
+for f in "$ZIM_DATA_DIR"/*.zim; do
+  [ -e "$f" ] || continue
+  kiwix-manage "$LIBRARY_FILE" add "$f" 2>/dev/null || true
+done
+
+echo "==> Installing kiwix service"
+sudo cp scripts/systemd/pi-kiwix-serve.service /etc/systemd/system/
+sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-serve.service
 
 echo "==> Installing sync timer"
 sudo cp scripts/systemd/pi-kiwix-sync.service /etc/systemd/system/
 sudo cp scripts/systemd/pi-kiwix-sync.timer /etc/systemd/system/
 sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-sync.service
 sudo systemctl daemon-reload
+sudo systemctl enable --now pi-kiwix-serve.service
 sudo systemctl enable --now pi-kiwix-sync.timer
 sudo systemctl start pi-kiwix-sync.service
 
@@ -64,5 +76,5 @@ fi
 
 IP=$(hostname -I | awk '{print $1}')
 echo
-echo "Done. Kiwix is live at http://$IP:8080"
+echo "Done. Kiwix is live at http://$IP:$KIWIX_PORT"
 echo "Content updates weekly - check: systemctl list-timers pi-kiwix-sync.timer"

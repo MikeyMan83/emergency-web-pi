@@ -23,16 +23,6 @@ log "Updating package index and ensuring prerequisites..."
 sudo apt-get update -y
 sudo apt-get install -y ca-certificates curl git
 
-if ! command -v docker >/dev/null 2>&1; then
-  log "Installing Docker..."
-  curl -fsSL https://get.docker.com | sh
-fi
-
-if [ "$BOOTSTRAP_USER" != "root" ] && id -u "$BOOTSTRAP_USER" >/dev/null 2>&1 && ! id -nG "$BOOTSTRAP_USER" | grep -qw docker; then
-  log "Adding ${BOOTSTRAP_USER} to docker group..."
-  sudo usermod -aG docker "$BOOTSTRAP_USER"
-fi
-
 if [ ! -d "$INSTALL_DIR/.git" ]; then
   log "Cloning repository into ${INSTALL_DIR}..."
   git clone --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"

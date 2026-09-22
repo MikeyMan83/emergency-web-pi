@@ -9,6 +9,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Changed
 - `scripts/setup-ap.sh` now provisions standalone AP mode through NetworkManager (`nmcli`) shared mode instead of `dhcpcd` + `hostapd` + external `dnsmasq`, preventing failures on modern Raspberry Pi OS Bookworm defaults.
 - `scripts/setup-ap.sh` now installs a captive-portal DNS sinkhole (`address=/#/<AP_IP>`) for offline AP mode so mobile clients remain on the network and resolve local browsing reliably.
+- Runtime stack now uses native `kiwix-serve` systemd service (`pi-kiwix-serve.service`) instead of Docker/Compose, reducing dependencies and avoiding overlayfs container storage conflicts.
+- `scripts/install.sh`, `scripts/bootstrap-pi.sh`, `scripts/sync.sh`, and `scripts/enable-readonly.sh` now operate on the native runtime path.
+- Removed `docker-compose.yml` from the active appliance runtime.
 
 ### Added
 - Added `scripts/build-appliance-image.sh` to build a bootable appliance image from Raspberry Pi OS Lite, create a dedicated `zimdata` partition, preconfigure AP/network/systemd services, and emit a manifest consumed by `scripts/create-sd.ps1`.
@@ -17,6 +20,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Docs
 - Updated AP setup guidance to describe NetworkManager hotspot behavior and captive DNS handling.
 - Added explicit Windows end-to-end appliance build and write flow documentation.
+- Updated operations/setup documentation for native `kiwix-serve` service management.
 
 ## [0.1.5] - 2026-09-22
 

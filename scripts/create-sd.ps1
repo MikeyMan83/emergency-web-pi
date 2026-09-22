@@ -210,9 +210,9 @@ function Validate-Manifest {
   Require-Value $Manifest.applianceVersion "Manifest must set applianceVersion."
   Require-Value $Manifest.image.sha256 "Manifest must set image.sha256."
   Require-Value $Manifest.storage.partitions "Manifest must set storage.partitions."
+  Require-Value $Manifest.runtime.serverMode "Manifest must set runtime.serverMode."
   Require-Value $Manifest.runtime.overlayRootEnabled "Manifest must set runtime.overlayRootEnabled."
   Require-Value $Manifest.runtime.zimDataOnDedicatedPartition "Manifest must set runtime.zimDataOnDedicatedPartition."
-  Require-Value $Manifest.runtime.docker.storageDriver "Manifest must set runtime.docker.storageDriver."
 
   $partitionNames = @($Manifest.storage.partitions | ForEach-Object { $_.name.ToString().ToLowerInvariant() })
   if ($partitionNames -notcontains "boot") {
@@ -225,12 +225,20 @@ function Validate-Manifest {
     throw "Manifest storage.partitions must include a dedicated 'zimdata' partition."
   }
 
+  $serverMode = $Manifest.runtime.serverMode.ToString().ToLowerInvariant()
+  if ($serverMode -ne "native-kiwix-serve") {
+    throw "Manifest runtime.serverMode must be native-kiwix-serve."
+  }
+
   if (-not [bool]$Manifest.runtime.zimDataOnDedicatedPartition) {
     throw "Manifest indicates ZIM data is not on a dedicated partition. This image is rejected."
   }
 
   $overlayEnabled = [bool]$Manifest.runtime.overlayRootEnabled
-  $dockerDriver = $Manifest.runtime.docker.storageDriver.ToString().ToLowerInvariant()
+  $dockerDriver = "none"
+  if ($null -ne $Manifest.runtime.docker -and $null -ne $Manifest.runtime.docker.storageDriver) {
+    $dockerDriver = $Manifest.runtime.docker.storageDriver.ToString().ToLowerInvariant()
+  }
   if ($overlayEnabled -and $dockerDriver -eq "overlay2") {
     throw "Manifest indicates root overlayfs with Docker overlay2. This nested-overlay combination is rejected."
   }

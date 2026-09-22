@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi Kiwix Survival - kiwix-serve
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=__REPO_DIR__/.env
+ExecStart=/bin/bash -lc 'exec kiwix-serve --library --monitorLibrary --port="${KIWIX_PORT:-8080}" "${ZIM_DATA_DIR:-./zim_data}/library.xml"'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
