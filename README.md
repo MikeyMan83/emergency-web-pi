@@ -110,12 +110,12 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 ## Practical recommendation
 
 If your goal is the easiest reliable workflow, use:
-1. Raspberry Pi Imager to create the SD card.
-2. Run `scripts/prepare-sd-autoboot.ps1` against the boot partition.
-3. Add `-EnableAp` if you want the Pi to become its own Wi-Fi hotspot automatically after setup.
-4. Boot once on Wi-Fi and let first-boot automation deploy the stack.
+1. Build the appliance image from Windows with `scripts/build-appliance-image.ps1`.
+2. Write that image with `scripts/create-sd.ps1 -Force`.
+3. Boot the SD card in the Pi with no internet.
+4. Connect to the AP and browse to `http://10.42.0.1:8080`.
 
-Use Home Assistant only as an optional dashboard later.
+Use the legacy first-boot path only for development or recovery.
 
 `scripts/create-sd.ps1` is the Windows appliance-builder entry point.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
