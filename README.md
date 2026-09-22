@@ -2,6 +2,22 @@
 
 Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
+## Appliance target
+
+The product target for this repository is a Windows-first, one-command appliance builder:
+
+- Run `scripts/create-sd.ps1` on a Windows PC with a blank SD card inserted.
+- Write a complete Raspberry Pi appliance to that SD card.
+- Insert the SD card into the Pi and boot without internet.
+- Connect to the emergency Wi-Fi and browse the preloaded Kiwix library.
+
+No first-boot installation, internet connection, GitHub access, or manual configuration
+should be required for the finished appliance to function.
+
+That appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
+The current stable implementation in this repository is still the first-boot provisioning path,
+which remains the development and recovery path.
+
 <!-- SPACE_ESTIMATE:START -->
 Published content size: **64.83 GB**
 Published recommended minimum SD size: **77.79 GB**
@@ -9,7 +25,7 @@ Known subtotal (diagnostic): 64.83 GB
 Last estimate refresh: 2026-08-07T15:01:20Z
 <!-- SPACE_ESTIMATE:END -->
 
-## Quickstart
+## Current quickstart
 
 ### 1. Flash SD card
 
@@ -78,6 +94,9 @@ If your goal is the easiest reliable workflow, use:
 
 Use Home Assistant only as an optional dashboard later.
 
+`scripts/create-sd.ps1` is reserved as the Windows appliance-builder entry point.
+The repo still ships the first-boot installer flow as the stable implementation.
+
 ### Optional fallback: one-command deploy over SSH
 
 ```bash
@@ -110,16 +129,21 @@ No toggles are required to switch between connected and disconnected operation.
 ## Files in this repo
 
 - `docker-compose.yml`: one-service stack (`kiwix-server` only).
+- `scripts/create-sd.ps1`: Windows appliance-builder entry point.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for compose + timer.
 - `scripts/setup-ap.sh`: standalone AP setup (`hostapd` + `dnsmasq`).
 - `scripts/enable-readonly.sh`: enables overlayfs read-only root mode.
+- `config/appliance.example.json`: example private appliance build config.
 - `.env.example`: environment values to copy into `.env`.
 - `zimlist.txt.example`: starter format for your content list.
 - `profiles/medical-survival-zimlist.txt`: recommended baseline list for emergency readiness.
 - `zim_data/`: persistent data folder for downloaded `.zim` files and current `zimlist.txt`.
 
 ## One-time setup
+
+This section describes the current development/recovery path on a live Pi.
+It is not the final offline appliance-builder workflow.
 
 1. Create a GitHub repo with a `zimlist.txt` file.
 2. Add one content URL per line in `zimlist.txt` (torrent or direct `.zim`).

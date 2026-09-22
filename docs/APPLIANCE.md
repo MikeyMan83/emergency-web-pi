@@ -1,0 +1,70 @@
+# Appliance Builder Contract
+
+This document defines the Windows-first appliance build model for this repository.
+
+## Product definition
+
+Run one command on a Windows PC with a blank SD card inserted.
+The builder writes a complete, self-contained Raspberry Pi appliance to the SD card,
+including the OS, Kiwix, the selected ZIM content, configuration, and emergency Wi-Fi setup.
+It may optionally inject private configuration during the build.
+
+Insert the SD card into the Raspberry Pi, power it on without internet,
+and it automatically starts its own emergency Wi-Fi and serves the preloaded Kiwix library.
+
+No first-boot installation, internet connection, GitHub access, or manual configuration
+is required for the appliance to function.
+
+## Acceptance test
+
+1. Insert a blank SD card into a Windows machine.
+2. Run `scripts/create-sd.ps1`.
+3. Remove the finished SD card.
+4. Insert it into a Raspberry Pi 3B+.
+5. Boot with no internet connectivity.
+6. Connect a phone or laptop to the emergency Wi-Fi.
+7. Browse to `http://10.42.0.1:8080`.
+8. Confirm Kiwix starts and all expected ZIMs are present.
+
+Optional maintenance path:
+
+1. Provide upstream internet later.
+2. Leave the emergency AP and Kiwix available locally.
+3. Allow content updates in the background.
+
+## Build-time vs runtime
+
+Build time:
+
+- Windows builder entry point: `scripts/create-sd.ps1`
+- Base OS image
+- Application and system configuration
+- Preloaded ZIM snapshot
+- Private config injection
+- Verification and manifest output
+
+Runtime:
+
+- Emergency AP always available
+- Kiwix always available on the local appliance network
+- Optional upstream internet only for content refresh
+- Software/OS/appliance updates via a newly built SD card
+
+## Current implementation boundary
+
+The current stable implementation in this repository is still the first-boot provisioning path:
+
+- `scripts/prepare-sd-autoboot.ps1`
+- `scripts/bootstrap-pi.sh`
+- `scripts/install.sh`
+
+That path is the current development and recovery path. It is separate from the finished offline appliance contract defined above.
+
+## Builder inputs
+
+- Target SD card / physical disk
+- Appliance config file
+- Appliance image artifact or staged rootfs payload
+
+The initial config example is provided at `config/appliance.example.json`.
+Private local overrides belong in `config/appliance.local.json` and must not be committed.

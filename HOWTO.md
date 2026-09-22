@@ -1,8 +1,12 @@
 # How-To Operations Guide
 
 This page is for routine operations after the Pi is deployed.
+For the Windows appliance-builder contract and offline acceptance target, see [docs/APPLIANCE.md](docs/APPLIANCE.md).
 
 ## First bring-up
+
+This section is for the current live-Pi install path.
+It remains useful for development and recovery while the finished SD-card builder is being completed.
 
 1. Run installer:
 

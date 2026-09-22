@@ -1,0 +1,28 @@
+{
+  "applianceVersion": "0.1.3-dev",
+  "buildDate": "2026-09-22",
+  "content": {
+    "profile": "medical-survival",
+    "snapshot": "2026-09-22"
+  },
+  "network": {
+    "ap": {
+      "ssid": "PI-KIWIX-SURVIVAL",
+      "password": "ChangeThisEmergencyPassword123",
+      "address": "10.42.0.1",
+      "port": 8080
+    },
+    "upstream": {
+      "enabled": false,
+      "ssid": "",
+      "password": ""
+    }
+  },
+  "updates": {
+    "contentSync": true,
+    "intervalSeconds": 604800
+  },
+  "system": {
+    "hostname": "pi-kiwix-survival"
+  }
+}

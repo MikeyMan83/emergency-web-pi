@@ -25,12 +25,17 @@ def main() -> int:
     compose_path = repo_root / "docker-compose.yml"
     env_example_path = repo_root / ".env.example"
     readme_path = repo_root / "README.md"
+    appliance_doc_path = repo_root / "docs" / "APPLIANCE.md"
+    appliance_config_path = repo_root / "config" / "appliance.example.json"
+    create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
     compose = compose_path.read_text(encoding="utf-8")
     env_example = env_example_path.read_text(encoding="utf-8")
     readme = readme_path.read_text(encoding="utf-8")
+    appliance_doc = appliance_doc_path.read_text(encoding="utf-8")
+    appliance_config = json.loads(appliance_config_path.read_text(encoding="utf-8"))
     estimate_md = estimate_md_path.read_text(encoding="utf-8")
     estimate_json = json.loads(estimate_json_path.read_text(encoding="utf-8"))
 
@@ -50,10 +55,18 @@ def main() -> int:
     require("<!-- SPACE_ESTIMATE:END -->" in readme, "README missing SPACE_ESTIMATE end marker")
     require("one-service stack (`kiwix-server` only)" in readme, "README must describe one-service stack")
     require("Default is `604800` (weekly)." in readme, "README must state weekly default sync interval")
+    require("scripts/create-sd.ps1" in readme, "README must mention scripts/create-sd.ps1")
     require(
         "Uses torrent metadata when available (with a header-based fallback for non-torrent links)." in readme,
         "README must describe estimate probe method",
     )
+
+    # Appliance builder contract checks.
+    require("No first-boot installation" in appliance_doc, "docs/APPLIANCE.md must define the offline appliance contract")
+    require("scripts/create-sd.ps1" in appliance_doc, "docs/APPLIANCE.md must define create-sd.ps1 as the Windows entry point")
+    require(isinstance(appliance_config.get("applianceVersion"), str), "config/appliance.example.json must set applianceVersion")
+    require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
+    require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

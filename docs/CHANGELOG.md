@@ -6,8 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-22
+
 ### Added
 - Optional zero-touch AP enablement through first-boot automation via `BOOTSTRAP_ENABLE_AP` and `scripts/prepare-sd-autoboot.ps1 -EnableAp`.
+- Added first-class appliance builder contract documentation and a Windows `scripts/create-sd.ps1` entry-point scaffold.
 
 ### Changed
 - `docker-compose.yml` now mounts Kiwix content from configurable `ZIM_DATA_DIR` with a safe default.
@@ -16,6 +19,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Docs
 - Clarified the zero-touch SD-card workflow and standalone AP behavior in the primary setup and operations docs.
+- Repositioned the first-boot path as development/recovery while documenting the finished offline-appliance target.
 
 ## [0.1.2] - 2026-08-07
 
