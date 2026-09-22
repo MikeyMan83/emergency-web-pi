@@ -37,6 +37,8 @@ Maintenance path:
 Build time:
 
 - Windows builder entry point: `scripts/create-sd.ps1`
+- Windows image build entry point: `scripts/build-appliance-image.ps1`
+- Linux image build engine (invoked through WSL): `scripts/build-appliance-image.sh`
 - Base OS image
 - Application and system configuration
 - Preloaded ZIM snapshot
@@ -64,8 +66,31 @@ This mode is useful for development and recovery. It is separate from the offlin
 
 - Target SD card / physical disk
 - Appliance config file
+- Raspberry Pi OS Lite base image (`.img`, `.img.xz`, or `.zip`)
 - Appliance image file (`.img`) provided via `-ImagePath` or discovered in `artifacts/`
 - Appliance image manifest (`.img.manifest.json`) with build/runtime invariants
+- Optional local ZIM folder for preload into dedicated `zimdata` partition
+
+## Build command
+
+From Windows PowerShell:
+
+Prerequisite: WSL with Ubuntu installed.
+
+```powershell
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz
+```
+
+This produces:
+
+- `artifacts/appliance.img`
+- `artifacts/appliance.img.manifest.json`
+
+Then write SD media:
+
+```powershell
+./scripts/create-sd.ps1 -DiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+```
 
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.

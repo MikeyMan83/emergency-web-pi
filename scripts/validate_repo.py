@@ -27,6 +27,8 @@ def main() -> int:
     readme_path = repo_root / "README.md"
     appliance_doc_path = repo_root / "docs" / "APPLIANCE.md"
     appliance_config_path = repo_root / "config" / "appliance.example.json"
+    build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
+    build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
@@ -56,6 +58,7 @@ def main() -> int:
     require("one-service stack (`kiwix-server` only)" in readme, "README must describe one-service stack")
     require("Default is `604800` (weekly)." in readme, "README must state weekly default sync interval")
     require("scripts/create-sd.ps1" in readme, "README must mention scripts/create-sd.ps1")
+    require("scripts/build-appliance-image.ps1" in readme, "README must mention scripts/build-appliance-image.ps1")
     require(
         "Uses torrent metadata when available (with a header-based fallback for non-torrent links)." in readme,
         "README must describe estimate probe method",
@@ -66,6 +69,8 @@ def main() -> int:
     require("scripts/create-sd.ps1" in appliance_doc, "docs/APPLIANCE.md must define create-sd.ps1 as the Windows entry point")
     require(isinstance(appliance_config.get("applianceVersion"), str), "config/appliance.example.json must set applianceVersion")
     require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
+    require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
+    require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
 
     # Estimate completeness checks.

@@ -2,6 +2,26 @@
 
 Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
+## Windows end-to-end appliance flow
+
+Build and write a complete appliance SD card from Windows:
+
+1. Download Raspberry Pi OS Lite (64-bit) image (`.img`, `.img.xz`, or `.zip`).
+2. Ensure WSL with Ubuntu is installed (`wsl --install`).
+3. Build appliance image + manifest in WSL:
+
+```powershell
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\2026-xx-xx-raspios-bookworm-arm64-lite.img.xz
+```
+
+4. Write the built image to SD:
+
+```powershell
+./scripts/create-sd.ps1 -DiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+```
+
+This path enforces manifest invariants and image hash verification before write.
+
 ## Appliance target
 
 The product target for this repository is a Windows-first, one-command appliance builder:
@@ -140,6 +160,8 @@ No toggles are required to switch between connected and disconnected operation.
 ## Files in this repo
 
 - `docker-compose.yml`: one-service stack (`kiwix-server` only).
+- `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
+- `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for compose + timer.

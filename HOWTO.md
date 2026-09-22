@@ -8,6 +8,28 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 This section is for the current live-Pi install path.
 It remains useful for development and recovery while the finished SD-card builder is being completed.
 
+## Build appliance image on Windows
+
+Use WSL-backed image build before writing the SD card:
+
+Prerequisite: install WSL with an Ubuntu distribution (`wsl --install`).
+
+```powershell
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz
+```
+
+Optional local ZIM preload:
+
+```powershell
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
+```
+
+Then write the SD card:
+
+```powershell
+./scripts/create-sd.ps1 -DiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+```
+
 1. Run installer:
 
 ```bash

@@ -1,5 +1,6 @@
 .env
 config/appliance.local.json
+artifacts/*
 zim_data/*
 !zim_data/.gitkeep
 secrets/*
