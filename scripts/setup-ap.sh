@@ -20,9 +20,15 @@ set +a
 : "${AP_DHCP_START:=10.42.0.10}"
 : "${AP_DHCP_END:=10.42.0.50}"
 : "${AP_DHCP_LEASE:=24h}"
+: "${AP_COUNTRY_CODE:=NL}"
 
 if [[ ${#AP_PASSPHRASE} -lt 8 || ${#AP_PASSPHRASE} -gt 63 ]]; then
   echo "AP_PASSPHRASE must be 8-63 characters for WPA2." >&2
+  exit 1
+fi
+
+if [[ ! "$AP_COUNTRY_CODE" =~ ^[A-Z]{2}$ ]]; then
+  echo "AP_COUNTRY_CODE must be a 2-letter uppercase ISO code (example: NL, US, DE)." >&2
   exit 1
 fi
 
@@ -49,7 +55,7 @@ EOF
 
 echo "==> Writing hostapd config"
 sudo tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
-country_code=US
+country_code=${AP_COUNTRY_CODE}
 interface=${AP_INTERFACE}
 ssid=${AP_SSID}
 hw_mode=g

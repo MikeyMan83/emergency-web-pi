@@ -8,5 +8,5 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./zim_data:/data
+      - ${ZIM_DATA_DIR:-./zim_data}:/data
     command: ["--library", "--monitorLibrary", "--port=8080", "/data/library.xml"]

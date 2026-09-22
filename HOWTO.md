@@ -83,15 +83,27 @@ Client access URL after connecting to AP SSID: `http://10.42.0.1:8080`.
 
 ## Read-only root mode (power-loss resilience)
 
-Enable overlayfs read-only root:
+Overlayfs backs the root filesystem with RAM: writes appear to succeed but
+are discarded on reboot. `zim_data/` must live on separate, real storage
+*before* enabling overlay, or downloaded content will silently vanish every
+reboot instead of persisting. `enable-readonly.sh` handles this migration
+first, then enables overlay:
 
 ```bash
 ./scripts/enable-readonly.sh
-sudo reboot
 ```
+
+You'll be prompted for a device to hold `zim_data/` - a spare SD partition
+or (recommended, simplest) a separate USB flash drive/SSD. The script
+formats it, migrates any existing content, updates `.env`, and only then
+enables overlay. Reboot once it finishes.
+
+If you've already separated `zim_data/` onto its own storage and just want
+to (re-)enable overlay, answer `skip` when prompted.
 
 Important trade-off:
 - While overlayfs is enabled, persistent OS/package/script edits are not retained.
+- `zim_data/` is unaffected - it's on separate storage now, so weekly sync keeps working normally.
 - Before upgrades or config edits, disable overlayfs:
 
 ```bash
