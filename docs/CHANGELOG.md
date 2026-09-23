@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.40] - 2026-09-23
+
+### Fixed
+- Keep portable caches, generated profiles, and temporary build output in the app-data workspace instead of the extracted release folder.
+- Prevent library row selection from toggling checks, guard pre-handle UI updates, filter invalid zero-capacity disks, and widen wizard summaries to avoid clipped capacity text.
+
 ## [0.1.39] - 2026-09-23
 
 ### Tests

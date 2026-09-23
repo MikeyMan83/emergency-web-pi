@@ -17,6 +17,8 @@ param(
 
   [string]$CacheDir = "artifacts/zim-cache",
 
+  [string]$WorkspaceDir = "artifacts",
+
   [ValidateSet("FirstBoot", "Prebuilt")]
   [string]$ContentMode = "FirstBoot",
 
@@ -33,6 +35,16 @@ function Require-Admin {
   if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "create-sd-dynamic.ps1 must be run from an elevated PowerShell session."
   }
+}
+
+function Resolve-WorkspacePath {
+  param([Parameter(Mandatory = $true)][string]$PathValue)
+
+  if ([System.IO.Path]::IsPathRooted($PathValue)) {
+    return [System.IO.Path]::GetFullPath($PathValue)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
 }
 
 function Read-ProfileEntries {
@@ -196,10 +208,12 @@ $resolvedBaseManifest = (Resolve-Path $BaseManifestPath).Path
 $resolvedBaseImage = Resolve-BaseImage -ProvidedImagePath $BaseImagePath -ManifestPath $resolvedBaseManifest -CacheDir $BaseImageCacheDir
 $resolvedBaseConfig = (Resolve-Path $BaseConfigPath).Path
 $resolvedProfile = (Resolve-Path $ProfilePath).Path
-$resolvedCacheDir = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $CacheDir))
-$resolvedConfigPath = Join-Path $repoRoot "artifacts/dynamic-appliance-config.json"
-$stageDir = Join-Path $repoRoot "artifacts/dynamic-zim-stage"
-$outputImagePath = Join-Path $repoRoot "artifacts/dynamic-appliance.img"
+$resolvedCacheDir = Resolve-WorkspacePath -PathValue $CacheDir
+$resolvedWorkspaceDir = Resolve-WorkspacePath -PathValue $WorkspaceDir
+New-Item -ItemType Directory -Path $resolvedWorkspaceDir -Force | Out-Null
+$resolvedConfigPath = Join-Path $resolvedWorkspaceDir "dynamic-appliance-config.json"
+$stageDir = Join-Path $resolvedWorkspaceDir "dynamic-zim-stage"
+$outputImagePath = Join-Path $resolvedWorkspaceDir "dynamic-appliance.img"
 $outputManifestPath = "$outputImagePath.manifest.json"
 
 $urls = Read-ProfileEntries -Path $resolvedProfile

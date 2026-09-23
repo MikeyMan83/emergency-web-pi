@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 $appDisplayName = "Emergency Web Pi"
 $logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$workspaceDirectory = Join-Path $logDirectory "workspace"
 $logPath = Join-Path $logDirectory ("startup-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
 
 function Write-AppLog {
@@ -17,6 +18,7 @@ Write-AppLog "Frontend startup requested."
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
 trap {
   Write-AppLog ("Unhandled error: {0}" -f $_.Exception.ToString())
@@ -471,7 +473,7 @@ $btnZimDir = Add-BrowseButton -Top $y
 $y += 40
 
 $lblOutputImage = Add-Label -Text "Output Image Path" -Top $y
-$txtImagePath = Add-TextBox -DefaultText "artifacts/appliance.img" -Top $y
+$txtImagePath = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "appliance.img") -Top $y
 $y += 40
 
 $lblProfilePath = Add-Label -Text "Dynamic Profile List (file)" -Top $y
@@ -510,7 +512,7 @@ $lstProfileItems.Left = 240
 $lstProfileItems.Top = $y
 $lstProfileItems.Width = 800
 $lstProfileItems.Height = 130
-$lstProfileItems.CheckOnClick = $true
+$lstProfileItems.CheckOnClick = $false
 $lstProfileItems.DisplayMember = "Display"
 $form.Controls.Add($lstProfileItems)
 $y += 140
@@ -532,7 +534,7 @@ $form.Controls.Add($lblMainContentInfo)
 $y += 30
 
 $lblCacheDir = Add-Label -Text "Dynamic Cache Dir" -Top $y
-$txtCacheDir = Add-TextBox -DefaultText "artifacts/zim-cache" -Top $y
+$txtCacheDir = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "zim-cache") -Top $y
 $y += 40
 
 $lblDisk = Add-Label -Text "Target Disk Number" -Top $y
@@ -622,7 +624,7 @@ $btnDisks.Width = 130
 $form.Controls.Add($btnDisks)
 
 $btnArtifacts = New-Object System.Windows.Forms.Button
-$btnArtifacts.Text = "Open Artifacts"
+$btnArtifacts.Text = "Open Workspace"
 $btnArtifacts.Left = 930
 $btnArtifacts.Top = $y
 $btnArtifacts.Width = 110
@@ -837,7 +839,7 @@ function Resolve-EntriesForDynamicRun {
 function Write-GeneratedProfileFile {
   param([Parameter(Mandatory = $true)][string[]]$Entries)
 
-  $generatedDir = Join-Path (Join-Path $repoRoot "artifacts") "generated-profiles"
+  $generatedDir = Join-Path $workspaceDirectory "generated-profiles"
   if (-not (Test-Path $generatedDir)) {
     New-Item -ItemType Directory -Path $generatedDir | Out-Null
   }
@@ -870,7 +872,7 @@ function Log-PreflightEstimate {
 }
 
 function Get-SelectableDisks {
-  $all = Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem }
+  $all = Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem -and $_.Size -gt 0 }
   $preferred = $all | Where-Object { $_.BusType -in @("USB", "SD") }
   if ($preferred.Count -gt 0) {
     return $preferred
@@ -923,7 +925,7 @@ function Show-EndUserWizard {
   $wizard = New-Object System.Windows.Forms.Form
   Write-AppLog "Opening end-user wizard."
   $wizard.Text = "Emergency Web Pi Wizard"
-  $wizard.Size = New-Object System.Drawing.Size(900, 760)
+  $wizard.ClientSize = New-Object System.Drawing.Size(980, 740)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"
   $wizard.MaximizeBox = $false
@@ -982,8 +984,8 @@ function Show-EndUserWizard {
   $lblProfileInfo = New-Object System.Windows.Forms.Label
   $lblProfileInfo.Left = 210
   $lblProfileInfo.Top = $wy - 2
-  $lblProfileInfo.Width = 660
-  $lblProfileInfo.Height = 34
+  $lblProfileInfo.Width = 740
+  $lblProfileInfo.Height = 42
   $wizard.Controls.Add($lblProfileInfo)
   $wy += 40
 
@@ -997,9 +999,9 @@ function Show-EndUserWizard {
   $lstWizardItems = New-Object System.Windows.Forms.CheckedListBox
   $lstWizardItems.Left = 210
   $lstWizardItems.Top = $wy
-  $lstWizardItems.Width = 660
+  $lstWizardItems.Width = 740
   $lstWizardItems.Height = 210
-  $lstWizardItems.CheckOnClick = $true
+  $lstWizardItems.CheckOnClick = $false
   $lstWizardItems.DisplayMember = "Display"
   $wizard.Controls.Add($lstWizardItems)
   $wy += 220
@@ -1020,21 +1022,22 @@ function Show-EndUserWizard {
   $wy += 36
 
   $lblSelection = New-Object System.Windows.Forms.Label
-  $lblSelection.Left = 430
+  $lblSelection.Left = 250
   $lblSelection.Top = $wy - 32
-  $lblSelection.Width = 440
+  $lblSelection.Width = 720
+  $lblSelection.Height = 36
   $wizard.Controls.Add($lblSelection)
 
   $lblItemInfo = New-Object System.Windows.Forms.Label
   $lblItemInfo.Left = 210
   $lblItemInfo.Top = $wy - 2
-  $lblItemInfo.Width = 540
+  $lblItemInfo.Width = 620
   $lblItemInfo.Height = 34
   $wizard.Controls.Add($lblItemInfo)
 
   $btnLearnMore = New-Object System.Windows.Forms.Button
   $btnLearnMore.Text = "Learn More"
-  $btnLearnMore.Left = 760
+  $btnLearnMore.Left = 840
   $btnLearnMore.Top = $wy - 4
   $btnLearnMore.Width = 110
   $btnLearnMore.Enabled = $false
@@ -1051,7 +1054,7 @@ function Show-EndUserWizard {
   $cmbWizardDisk = New-Object System.Windows.Forms.ComboBox
   $cmbWizardDisk.Left = 210
   $cmbWizardDisk.Top = $wy - 3
-  $cmbWizardDisk.Width = 660
+  $cmbWizardDisk.Width = 740
   $cmbWizardDisk.DropDownStyle = "DropDownList"
   foreach ($disk in $Disks) {
     $label = "Disk {0} | {1} | {2} | {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
@@ -1074,7 +1077,7 @@ function Show-EndUserWizard {
   $optFirstBoot = New-Object System.Windows.Forms.RadioButton
   $optFirstBoot.Left = 210
   $optFirstBoot.Top = $wy
-  $optFirstBoot.Width = 660
+  $optFirstBoot.Width = 740
   $optFirstBoot.Checked = $true
   $optFirstBoot.Text = "Recommended: download selected content on first boot (Internet required once)"
   $wizard.Controls.Add($optFirstBoot)
@@ -1083,28 +1086,28 @@ function Show-EndUserWizard {
   $optPrebuilt = New-Object System.Windows.Forms.RadioButton
   $optPrebuilt.Left = 210
   $optPrebuilt.Top = $wy
-  $optPrebuilt.Width = 660
+  $optPrebuilt.Width = 740
   $optPrebuilt.Text = "Fully prebuild: download content now for an offline-ready first boot"
   $wizard.Controls.Add($optPrebuilt)
   $wy += 38
 
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
-  $btnCancelWizard.Left = 550
+  $btnCancelWizard.Left = 630
   $btnCancelWizard.Top = $wy
   $btnCancelWizard.Width = 100
   $wizard.Controls.Add($btnCancelWizard)
 
     $btnDeveloperTools = New-Object System.Windows.Forms.Button
     $btnDeveloperTools.Text = "Developer Tools"
-    $btnDeveloperTools.Left = 660
+    $btnDeveloperTools.Left = 740
     $btnDeveloperTools.Top = $wy
     $btnDeveloperTools.Width = 110
     $wizard.Controls.Add($btnDeveloperTools)
 
   $btnStartWizard = New-Object System.Windows.Forms.Button
   $btnStartWizard.Text = "Estimate + Build"
-  $btnStartWizard.Left = 780
+  $btnStartWizard.Left = 850
   $btnStartWizard.Top = $wy
   $btnStartWizard.Width = 100
   $wizard.Controls.Add($btnStartWizard)
@@ -1162,7 +1165,11 @@ function Show-EndUserWizard {
   }
 
   $lstWizardItems.Add_ItemCheck({
-    $wizard.BeginInvoke([System.Action]$updateSelection) | Out-Null
+    if ($wizard.IsHandleCreated) {
+      $wizard.BeginInvoke([System.Action]$updateSelection) | Out-Null
+    } else {
+      & $updateSelection
+    }
   })
   $lstWizardItems.Add_SelectedIndexChanged({
     if ($lstWizardItems.SelectedItem -ne $null) {
@@ -1312,7 +1319,11 @@ $cmbDisks.Add_SelectedIndexChanged({
 })
 
 $lstProfileItems.Add_ItemCheck({
-  $form.BeginInvoke([System.Action]{ Update-MainContentSummary }) | Out-Null
+  if ($form.IsHandleCreated) {
+    $form.BeginInvoke([System.Action]{ Update-MainContentSummary }) | Out-Null
+  } else {
+    Update-MainContentSummary
+  }
 })
 
 $btnDiskRefreshInline.Add_Click({
@@ -1665,6 +1676,8 @@ $btnDynamic.Add_Click({
     "-BaseConfigPath", (Quote-Arg -Value $configAbs),
     "-ProfilePath", (Quote-Arg -Value $generatedProfile),
     "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text),
+    "-WorkspaceDir", (Quote-Arg -Value $workspaceDirectory),
+    "-BaseImageCacheDir", (Quote-Arg -Value (Join-Path $workspaceDirectory "base-image-cache")),
     "-ContentMode", $contentMode
   )
 
@@ -1733,11 +1746,10 @@ $btnDisks.Add_Click({
 })
 
 $btnArtifacts.Add_Click({
-  $artifacts = Join-Path $repoRoot "artifacts"
-  if (-not (Test-Path $artifacts)) {
-    New-Item -ItemType Directory -Path $artifacts | Out-Null
+  if (-not (Test-Path $workspaceDirectory)) {
+    New-Item -ItemType Directory -Path $workspaceDirectory -Force | Out-Null
   }
-  Start-Process explorer.exe $artifacts
+  Start-Process explorer.exe $workspaceDirectory
 })
 
 $btnAbout.Add_Click({

@@ -46,6 +46,8 @@ you are likely launching from a temporary/partial extraction context. Extract th
 
 If the frontend does not appear, inspect the newest log in `%LOCALAPPDATA%\EmergencyWebPi\startup-*.log`.
 
+The portable app keeps its download cache, generated profiles, and temporary build workspace in `%LOCALAPPDATA%\EmergencyWebPi\workspace` instead of adding files to the extracted release folder.
+
 The portable app wraps the same validated script engine used below.
 
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
