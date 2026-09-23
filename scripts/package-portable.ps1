@@ -60,6 +60,7 @@ $startNote = @(
 Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Encoding utf8
 
 $portableScript = Join-Path $bundleDir "portable/EmergencyWebPi.ps1"
+$portableLauncherScript = Join-Path $bundleDir "portable/EmergencyWebPi-launcher.ps1"
 $portableExe = Join-Path $bundleDir "portable/EmergencyWebPi.exe"
 $rootExe = Join-Path $bundleDir "EmergencyWebPi.exe"
 
@@ -78,9 +79,34 @@ if (-not (Get-Module -ListAvailable -Name ps2exe)) {
   Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
 
-$escapedInput = $portableScript.Replace("'", "''")
 $escapedOutput = $portableExe.Replace("'", "''")
 $escapedVersion = $Version.Replace("'", "''")
+$launcherSource = @'
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Windows.Forms
+$baseDirectory = [System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd("\\")
+$scriptPath = Join-Path $baseDirectory "EmergencyWebPi.ps1"
+
+if (-not (Test-Path $scriptPath)) {
+  $scriptPath = Join-Path $baseDirectory "portable\EmergencyWebPi.ps1"
+}
+
+$logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$logPath = Join-Path $logDirectory "launcher.log"
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+Add-Content -Path $logPath -Value ("[{0}] EXE launcher started. Frontend: {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $scriptPath) -Encoding utf8
+
+if (-not (Test-Path $scriptPath)) {
+  [System.Windows.Forms.MessageBox]::Show("Emergency Web Pi frontend is missing. Extract the complete release ZIP and retry.`n`nDiagnostic log:`n$logPath", "Emergency Web Pi", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+  exit 1
+}
+
+$arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
+Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WorkingDirectory (Split-Path -Parent $scriptPath)
+'@
+Set-Content -Path $portableLauncherScript -Value $launcherSource -Encoding utf8
+
+$escapedInput = $portableLauncherScript.Replace("'", "''")
 $compileCommand = "Import-Module ps2exe -Force; Invoke-ps2exe -inputFile '$escapedInput' -outputFile '$escapedOutput' -noConsole -title 'Emergency Web Pi' -version '$escapedVersion'"
 $powershellHost = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 & $powershellHost -NoProfile -Command $compileCommand

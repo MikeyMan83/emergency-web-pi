@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.35] - 2026-09-23
+
+### Fixed
+- Compile the EXE as a minimal launcher for the external frontend script and log before launching it, avoiding silent GUI-host startup failures.
+- Add CMD launcher logging before PowerShell starts, so pre-frontend failures always leave a diagnostic record.
+
 ## [0.1.34] - 2026-09-23
 
 ### Added
