@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.36] - 2026-09-23
+
+### Fixed
+- Resolve the EXE launcher beside the physical executable instead of a temporary ps2exe directory, and keep CMD visible when startup fails.
+
 ## [0.1.35] - 2026-09-23
 
 ### Fixed

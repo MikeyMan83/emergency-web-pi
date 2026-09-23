@@ -17,8 +17,12 @@ if not exist "%SCRIPT_DIR%EmergencyWebPi.ps1" (
 	exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SCRIPT_DIR%EmergencyWebPi.ps1" >> "%LOG_FILE%" 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%EmergencyWebPi.ps1" >> "%LOG_FILE%" 2>&1
 set ERR=%ERRORLEVEL%
 echo [%DATE% %TIME%] Frontend process exited with code %ERR%. >> "%LOG_FILE%"
+if not "%ERR%"=="0" (
+	echo Emergency Web Pi did not start. Diagnostic log: "%LOG_FILE%"
+	pause
+)
 popd >nul 2>&1
 exit /b %ERR%

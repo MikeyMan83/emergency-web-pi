@@ -84,7 +84,8 @@ $escapedVersion = $Version.Replace("'", "''")
 $launcherSource = @'
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
-$baseDirectory = [System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd("\\")
+$executablePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+$baseDirectory = Split-Path -Parent $executablePath
 $scriptPath = Join-Path $baseDirectory "EmergencyWebPi.ps1"
 
 if (-not (Test-Path $scriptPath)) {
@@ -101,8 +102,11 @@ if (-not (Test-Path $scriptPath)) {
   exit 1
 }
 
-$arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
-Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WorkingDirectory (Split-Path -Parent $scriptPath)
+Add-Content -Path $logPath -Value ("[{0}] Starting frontend PowerShell process." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff")) -Encoding utf8
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+$exitCode = $LASTEXITCODE
+Add-Content -Path $logPath -Value ("[{0}] Frontend PowerShell process exited with code {1}." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $exitCode) -Encoding utf8
+exit $exitCode
 '@
 Set-Content -Path $portableLauncherScript -Value $launcherSource -Encoding utf8
 
