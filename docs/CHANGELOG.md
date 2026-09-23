@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.51] - 2026-09-23
+
+### Fixed
+- Open selected library Learn More links through a validated HTTP(S) handler and show a visible error when Windows cannot launch the link.
+- Put the content selection summary on its own row so it cannot overlap Select All or Select None.
+- Validate Learn More links and wizard layout wiring in the repository checks.
+
 ## [0.1.50] - 2026-09-23
 
 ### Changed

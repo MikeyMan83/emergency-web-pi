@@ -241,6 +241,39 @@ function Get-CatalogItem {
   }
 }
 
+function Open-LearnMoreUrl {
+  param(
+    [Parameter(Mandatory = $true)][string]$Url,
+    [System.Windows.Forms.IWin32Window]$Owner = $null
+  )
+
+  $uri = $null
+  $validUrl = [System.Uri]::TryCreate($Url, [System.UriKind]::Absolute, [ref]$uri) -and
+    $uri.Scheme -in @("http", "https")
+  if (-not $validUrl) {
+    [System.Windows.Forms.MessageBox]::Show(
+      $Owner,
+      "This library does not have a valid Learn More link.",
+      "Emergency Web Pi",
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Warning
+    ) | Out-Null
+    return
+  }
+
+  try {
+    Start-Process -FilePath $uri.AbsoluteUri -ErrorAction Stop
+  } catch {
+    [System.Windows.Forms.MessageBox]::Show(
+      $Owner,
+      "Could not open the Learn More link: $($_.Exception.Message)",
+      "Emergency Web Pi",
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+  }
+}
+
 function Get-ProfileLabel {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -1245,15 +1278,16 @@ function Show-EndUserWizard {
   $wy += 36
 
   $lblSelection = New-Object System.Windows.Forms.Label
-  $lblSelection.Left = 250
-  $lblSelection.Top = $wy - 32
-  $lblSelection.Width = 720
-  $lblSelection.Height = 36
+  $lblSelection.Left = 210
+  $lblSelection.Top = $wy
+  $lblSelection.Width = 740
+  $lblSelection.Height = 24
   $wizard.Controls.Add($lblSelection)
+  $wy += 28
 
   $lblItemInfo = New-Object System.Windows.Forms.Label
   $lblItemInfo.Left = 210
-  $lblItemInfo.Top = $wy - 2
+  $lblItemInfo.Top = $wy
   $lblItemInfo.Width = 620
   $lblItemInfo.Height = 34
   $wizard.Controls.Add($lblItemInfo)
@@ -1408,7 +1442,7 @@ function Show-EndUserWizard {
   $cmbWizardDisk.Add_SelectedIndexChanged({ & $updateSelection })
   $btnLearnMore.Add_Click({
     if ($lstWizardItems.SelectedItem -ne $null) {
-      Start-Process $lstWizardItems.SelectedItem.LearnMoreUrl
+      Open-LearnMoreUrl -Url ([string]$lstWizardItems.SelectedItem.LearnMoreUrl) -Owner $wizard
     }
   })
   & $updateSelection

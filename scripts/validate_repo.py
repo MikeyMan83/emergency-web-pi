@@ -124,6 +124,7 @@ def main() -> int:
         require(isinstance(item.get("description"), str) and item["description"], "catalog entries must have descriptions")
         require(isinstance(item.get("estimatedBytes"), int) and item["estimatedBytes"] > 0, "catalog entries must have positive estimatedBytes")
         require(str(item.get("sourceUrl", "")).startswith("https://"), "catalog entries must have approved HTTPS sourceUrl values")
+        require(str(item.get("learnMoreUrl", "")).startswith("https://"), "catalog entries must have approved HTTPS learnMoreUrl values")
     for profile_path in (repo_root / "profiles").glob("*.txt"):
         for raw_line in profile_path.read_text(encoding="utf-8").splitlines():
             entry = raw_line.strip()
@@ -188,6 +189,11 @@ def main() -> int:
     require("function Get-RemoteContentLength" not in portable_frontend, "preflight estimation must not make blocking per-library network requests")
     require("Content catalog is missing a verified size" in portable_frontend, "preflight estimation must use the bundled catalog")
     require("function Get-ApplianceRequiredBytes" in portable_frontend, "UI capacity estimate must use the appliance partition formula")
+    require("function Open-LearnMoreUrl" in portable_frontend, "portable frontend must provide an explicit Learn More link opener")
+    require("Start-Process -FilePath $uri.AbsoluteUri -ErrorAction Stop" in portable_frontend, "Learn More links must report browser launch errors")
+    require("Open-LearnMoreUrl -Url ([string]$lstWizardItems.SelectedItem.LearnMoreUrl) -Owner $wizard" in portable_frontend, "Learn More must use the validated link opener")
+    require("$lblSelection.Top = $wy" in portable_frontend, "wizard selection summary must occupy its own row")
+    require("$lblSelection.Top = $wy - 32" not in portable_frontend, "wizard selection summary must not overlap Select All or Select None")
     require("portable\\EmergencyWebPi.ps1" in root_cmd and "powershell.exe" in root_cmd, "root CMD launcher must run the bundled PowerShell frontend")
     require("-STA" in root_cmd, "root CMD launcher must start the WinForms frontend in STA mode")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
