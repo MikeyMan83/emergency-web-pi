@@ -1,5 +1,5 @@
 [Unit]
-Description=Pi Kiwix Survival - boot status page
+Description=Emergency Web Pi - boot status page
 After=network-online.target
 Wants=network-online.target
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Pi Kiwix Survival - content sync
+Description=Emergency Web Pi - content sync
 After=network-online.target pi-kiwix-serve.service
 Wants=network-online.target
 

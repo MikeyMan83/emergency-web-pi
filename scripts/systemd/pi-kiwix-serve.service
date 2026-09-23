@@ -1,5 +1,5 @@
 [Unit]
-Description=Pi Kiwix Survival - kiwix-serve
+Description=Emergency Web Pi - offline library service
 After=network-online.target
 Wants=network-online.target
 

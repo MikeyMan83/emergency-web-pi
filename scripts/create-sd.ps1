@@ -383,7 +383,7 @@ if ($disk.Size -lt $minimumBytes) {
   throw "Disk $DiskNumber is too small. Need at least $([math]::Round($minimumBytes / 1GB)) GB for the current appliance target."
 }
 
-Write-Host "Pi Kiwix Survival Builder"
+Write-Host "Emergency Web Pi Builder"
 Write-Host ""
 Write-Host "Disk:              #$DiskNumber ($([math]::Round($disk.Size / 1GB, 2)) GB)"
 Write-Host "Appliance version: $($config.applianceVersion)"

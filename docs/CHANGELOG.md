@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-09-23
+
+### Changed
+- Finalized Emergency Web Pi display branding in the Windows SD-card builder and appliance service descriptions while retaining compatible `pi-kiwix-*` service identifiers.
+
 ## [0.1.16] - 2026-09-23
 
 ### Docs

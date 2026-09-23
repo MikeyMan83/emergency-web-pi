@@ -1,5 +1,5 @@
 [Unit]
-Description=Weekly Pi Kiwix Survival content sync
+Description=Weekly Emergency Web Pi content sync
 
 [Timer]
 OnCalendar=weekly
