@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-09-23
+
+### Fixed
+- Made release publishing fail unless the Windows ZIP and checksum exist, then upload those assets explicitly to GitHub Releases.
+
+### Docs
+- Clarified that only prebuilt cards are immediately offline-ready; first-boot cards show status until selected content finishes installing.
+
 ## [0.1.20] - 2026-09-23
 
 ### Fixed

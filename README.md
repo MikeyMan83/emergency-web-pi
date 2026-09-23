@@ -90,8 +90,8 @@ This project is designed as a Windows-first appliance builder:
 
 - Use the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
 - The guided build creates a complete appliance image and writes it to the SD card. Content downloads either on first boot or during the Windows build, based on the selected mode.
-- Insert the SD card into the Pi and boot without internet.
-- Connect to the emergency Wi-Fi and browse the preloaded offline library.
+- Insert the SD card into the Pi and boot. Prebuilt mode works without Internet immediately; first-boot mode needs temporary Internet for its selected content.
+- Connect to the emergency Wi-Fi and browse the status page while installation runs, then use the offline library when it is ready.
 
 Prebuilt mode requires no first-boot installation or Internet connection. First-boot mode
 requires temporary Pi Internet access until selected content is installed; both modes need
@@ -100,7 +100,7 @@ no manual runtime configuration and work offline after content installation comp
 The appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
 
 Three supported modes exist in this repository:
-- Guided appliance-build mode: the portable wizard or `scripts/create-sd-dynamic.ps1` builds and writes an offline-ready appliance.
+- Guided appliance-build mode: the portable wizard or `scripts/create-sd-dynamic.ps1` builds and writes an appliance with first-boot or prebuilt content installation.
 - Prepared-image mode: `scripts/create-sd.ps1` writes an image previously built by `scripts/build-appliance-image.ps1`.
 - Legacy first-boot mode: `firstrun.sh` + `bootstrap-pi.sh` + `install.sh` provision on first boot.
 

@@ -64,6 +64,19 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body_path: release_notes.md
-          files: |
-            artifacts/release/*.zip
-            artifacts/release/*.sha256.txt
+
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(
+            Get-ChildItem -Path artifacts/release -File -Filter "*.zip"
+            Get-ChildItem -Path artifacts/release -File -Filter "*.sha256.txt"
+          )
+
+          if ($assets.Count -ne 2) {
+            throw "Expected one ZIP and one SHA256 file in artifacts/release; found $($assets.Count)."
+          }
+
+          gh release upload "${{ github.ref_name }}" $assets.FullName --clobber --repo "${{ github.repository }}"
