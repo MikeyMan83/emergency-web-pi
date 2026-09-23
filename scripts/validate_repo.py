@@ -28,6 +28,7 @@ def main() -> int:
     appliance_config_path = repo_root / "config" / "appliance.example.json"
     base_image_manifest_path = repo_root / "config" / "base-image.json"
     content_catalog_path = repo_root / "config" / "content-catalog.json"
+    default_profile_path = repo_root / "profiles" / "medical-survival-zimlist.txt"
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
@@ -99,6 +100,13 @@ def main() -> int:
     require(str(base_image_manifest.get("downloadUrl", "")).startswith("https://downloads.raspberrypi.com/"), "config/base-image.json must use the official Raspberry Pi download endpoint")
     require(isinstance(base_image_manifest.get("installedSizeBytes"), int) and base_image_manifest["installedSizeBytes"] > 0, "config/base-image.json must define installedSizeBytes")
     require(len(content_catalog) > 0, "config/content-catalog.json must contain catalog entries")
+    default_profile_entries = [
+        pathlib.PurePosixPath(line.strip().removesuffix(".torrent")).name
+        for line in default_profile_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    require(len(default_profile_entries) == len(content_catalog), "medical-survival-zimlist.txt must include every catalog entry")
+    require(set(default_profile_entries) == set(content_catalog), "medical-survival-zimlist.txt must remain the complete default collection")
     for file_name, item in content_catalog.items():
         require(file_name.endswith(".zim"), "config/content-catalog.json keys must be ZIM file names")
         require(isinstance(item.get("name"), str) and item["name"], "catalog entries must have names")
