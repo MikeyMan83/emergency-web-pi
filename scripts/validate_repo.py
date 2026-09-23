@@ -47,6 +47,7 @@ def main() -> int:
     initial_sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-initial-sync.service"
     release_workflow_path = repo_root / ".github" / "workflows" / "release.yml"
     release_status_path = repo_root / "scripts" / "release-status.ps1"
+    portable_smoke_path = repo_root / "scripts" / "smoke-portable.ps1"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
     env_example = env_example_path.read_text(encoding="utf-8")
@@ -68,6 +69,7 @@ def main() -> int:
     hardware_acceptance = hardware_acceptance_path.read_text(encoding="utf-8")
     release_workflow = release_workflow_path.read_text(encoding="utf-8")
     release_status = release_status_path.read_text(encoding="utf-8")
+    portable_smoke = portable_smoke_path.read_text(encoding="utf-8")
     root_cmd = root_cmd_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
@@ -190,6 +192,8 @@ def main() -> int:
     require("releases/latest" in release_workflow and "expectedAssets" in release_workflow, "release workflow must verify latest status and expected assets")
     require(release_status_path.exists(), "scripts/release-status.ps1 must exist")
     require("PUBLISHED:" in release_status and "PENDING:" in release_status, "release status command must distinguish pending and published releases")
+    require(portable_smoke_path.exists(), "scripts/smoke-portable.ps1 must exist")
+    require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

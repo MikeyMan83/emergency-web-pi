@@ -55,3 +55,19 @@ jobs:
         run: |
           grep -q '<!-- SPACE_ESTIMATE:START -->' README.md || (echo "Missing SPACE_ESTIMATE start marker"; exit 1)
           grep -q '<!-- SPACE_ESTIMATE:END -->' README.md || (echo "Missing SPACE_ESTIMATE end marker"; exit 1)
+
+  portable-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build portable bundle
+        shell: pwsh
+        run: |
+          ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke
+
+      - name: Smoke test frontend startup
+        shell: pwsh
+        run: |
+          ./scripts/smoke-portable.ps1 -BundleDir artifacts/ci-smoke/EmergencyWebPi-0.0.0-ci-windows
