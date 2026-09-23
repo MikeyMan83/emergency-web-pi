@@ -383,6 +383,16 @@ $form.Controls.Add($chkAutoFetchBase)
 
 $y += 30
 
+$chkDownloadOnPi = New-Object System.Windows.Forms.CheckBox
+$chkDownloadOnPi.Text = "Dynamic mode: download catalogs on Pi after first boot (faster write, requires internet later)"
+$chkDownloadOnPi.Left = 240
+$chkDownloadOnPi.Top = $y
+$chkDownloadOnPi.Width = 700
+$chkDownloadOnPi.Checked = $false
+$form.Controls.Add($chkDownloadOnPi)
+
+$y += 30
+
 Add-Label -Text "Release Repo" -Top $y
 $txtReleaseRepo = Add-TextBox -DefaultText "MikeyMan83/pi-kiwix-survival" -Top $y
 $y += 40
@@ -686,6 +696,15 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($chkWizardFetch)
   $wy += 40
 
+  $chkWizardDownloadOnPi = New-Object System.Windows.Forms.CheckBox
+  $chkWizardDownloadOnPi.Left = 210
+  $chkWizardDownloadOnPi.Top = $wy
+  $chkWizardDownloadOnPi.Width = 660
+  $chkWizardDownloadOnPi.Checked = $false
+  $chkWizardDownloadOnPi.Text = "Download catalogs on Pi after first boot (requires internet)"
+  $wizard.Controls.Add($chkWizardDownloadOnPi)
+  $wy += 40
+
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
   $btnCancelWizard.Left = 670
@@ -772,6 +791,7 @@ function Show-EndUserWizard {
       Entries = $entries
       DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
       AutoFetch = [bool]$chkWizardFetch.Checked
+      DownloadOnPi = [bool]$chkWizardDownloadOnPi.Checked
     }
 
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -861,6 +881,7 @@ $btnWizard.Add_Click({
 
     $txtDisk.Text = [string]$selection.DiskNumber
     $chkAutoFetchBase.Checked = $selection.AutoFetch
+    $chkDownloadOnPi.Checked = $selection.DownloadOnPi
     $chkUsePicker.Checked = $true
     $cmbProfiles.SelectedItem = $selection.Profile
     $txtProfilePath.Text = $selection.Profile
@@ -937,7 +958,11 @@ $btnCheck.Add_Click({
   if (Get-Command aria2c -ErrorAction SilentlyContinue) {
     Add-Log "aria2c detected"
   } else {
-    Add-Log "aria2c not detected; dynamic download mode will fail"
+    if ($chkDownloadOnPi.Checked) {
+      Add-Log "aria2c not detected on Windows: OK for Pi-side download mode"
+    } else {
+      Add-Log "aria2c not detected; Windows-side dynamic download mode will fail"
+    }
   }
 })
 
@@ -1109,7 +1134,8 @@ $btnDynamic.Add_Click({
 
   $requiredText = Format-Bytes -Bytes $estimate.RequiredBytes
   $unknownText = $estimate.UnknownCount
-  $confirmText = "This will erase disk #$diskNum and repopulate content.`n`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
+  $downloadModeText = if ($chkDownloadOnPi.Checked) { "Pi after boot" } else { "Windows during SD creation" }
+  $confirmText = "This will erase disk #$diskNum and repopulate content.`n`nDownload mode: $downloadModeText`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
 
   $confirm = [System.Windows.Forms.MessageBox]::Show(
     $confirmText,
@@ -1136,6 +1162,13 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic mode will auto-fetch latest base artifacts from $($txtReleaseRepo.Text)."
   } else {
     $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs), "-BaseManifestPath", (Quote-Arg -Value $manifestAbs))
+  }
+
+  if ($chkDownloadOnPi.Checked) {
+    $args += "-SkipContentDownload"
+    Add-Log "Dynamic mode will defer catalog downloads to the Pi after first boot."
+  } else {
+    Add-Log "Dynamic mode will preload catalogs on Windows before SD ejection."
   }
 
   Add-Log "Running dynamic SD build on disk #$diskNum"

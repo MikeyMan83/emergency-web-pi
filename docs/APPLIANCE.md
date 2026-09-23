@@ -23,8 +23,9 @@ is required for the appliance to function.
 4. Insert it into a Raspberry Pi 3B+.
 5. Boot with no internet connectivity.
 6. Connect a phone or laptop to the emergency Wi-Fi.
-7. Browse to `http://10.42.0.1:8080`.
-8. Confirm Kiwix starts and all expected ZIMs are present.
+7. Browse to `http://10.42.0.1` and confirm status page is visible shortly after boot.
+8. Browse to `http://10.42.0.1:8080`.
+9. Confirm Kiwix starts and all expected ZIMs are present.
 
 Maintenance path:
 
@@ -78,6 +79,7 @@ Dynamic mode inputs:
 - Profile list (`profiles/*.txt`)
 - Windows disk target for SD write
 - Local download cache directory
+- Optional deferred content mode (`-SkipContentDownload`) for Pi-side first-boot download
 
 ## Build command
 
@@ -111,6 +113,12 @@ Portable frontend behavior for dynamic mode:
 - Load profile presets from `profiles/*.txt`
 - Select individual items with checkboxes
 - Run preflight SD size estimation before the destructive write step
+- Choose catalog download location: Windows during write or Pi after first boot
+
+Runtime UX behavior:
+
+- `pi-kiwix-status.service` serves a local status page on `http://10.42.0.1` shortly after boot
+- `pi-kiwix-serve.service` serves the library on `http://10.42.0.1:8080`
 
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.

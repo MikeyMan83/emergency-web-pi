@@ -9,9 +9,15 @@ For normal deployment, use the portable app wizard:
 
 1. Start `portable/Launch-PiKiwixPortable.cmd`.
 2. Click `Start End-User Wizard`.
-3. Select catalog items and target SD card.
-4. Confirm the size estimate and write.
-5. Insert the SD card in the Pi and boot.
+3. Select catalog items.
+4. Choose download mode:
+  - Windows during SD creation (offline-ready), or
+  - Pi after first boot (faster write, internet needed on first run).
+5. Select target SD card.
+6. Confirm the size estimate and write.
+7. Insert the SD card in the Pi and boot.
+8. Open `http://10.42.0.1` to watch startup status.
+9. Open `http://10.42.0.1:8080` when ready.
 
 No manual script sequence is required for this path.
 
@@ -50,6 +56,8 @@ This mode flashes the base image, creates a `ZIMDATA` exFAT partition from remai
 downloads profile entries with resume support, and copies them directly to SD.
 In the portable app, use Dynamic SD with the item picker to choose profile entries,
 then review the preflight size estimate before confirming the write.
+
+To defer catalog downloads to the Pi after first boot, add `-SkipContentDownload`.
 
 1. Run installer:
 

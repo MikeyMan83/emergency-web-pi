@@ -11,9 +11,13 @@ End-user path:
 1. Download the app and launch the portable frontend.
 2. Start the end-user wizard.
 3. Select the catalog items you want.
-4. Select your SD card and let the wizard build/write it.
-5. Insert the card into the Pi and boot.
-6. Join the Pi Wi-Fi and open `http://10.42.0.1:8080`.
+4. Choose where catalogs are downloaded:
+   - Windows during SD creation (offline-ready), or
+   - Pi after first boot (faster write, needs internet on first run).
+5. Select your SD card and let the wizard build/write it.
+6. Insert the card into the Pi and boot.
+7. Join the Pi Wi-Fi and open `http://10.42.0.1` for live startup status.
+8. When ready, open `http://10.42.0.1:8080` for the library.
 
 Portable frontend option:
 
@@ -25,6 +29,7 @@ The portable app wraps the same validated script engine used below.
 
 The wizard defaults to dynamic mode with automatic latest-base fetch,
 catalog item selection, and preflight size estimation before write.
+It also provides a configurable download location (Windows now vs Pi after boot).
 
 Advanced script-first paths are still available below for operators.
 
@@ -183,9 +188,13 @@ writes the default medical-survival content URL into `.env`, and enables native
 Runtime services:
 - `pi-kiwix-serve.service`: serves all `.zim` files from `ZIM_DATA_DIR`.
 - `pi-kiwix-sync.timer`: runs periodic sync and library rebuild.
+- `pi-kiwix-status.service`: serves a startup/status page on port `80`.
 
 `pi-kiwix-serve.service` runs a pre-start library rebuild from local ZIM files,
 so copied content from dynamic SD creation is indexed even without internet.
+
+`pi-kiwix-status.service` starts quickly after boot and shows readiness progress,
+so users get immediate feedback and can avoid unplugging early.
 
 Content syncing is handled by a host-level weekly systemd timer (`pi-kiwix-sync.timer`) that runs `scripts/sync.sh`.
 

@@ -262,9 +262,11 @@ sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 
 sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service"
 sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service"
+sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-status.service"
 sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-serve.service"
 sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.service"
 sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.timer" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.timer"
+sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-status.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-status.service"
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
 sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection" >/dev/null <<EOF
@@ -314,12 +316,13 @@ sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /bin/bash -c '
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y kiwix-tools aria2 curl git network-manager dnsmasq-base iw ca-certificates
+apt-get install -y kiwix-tools aria2 curl git network-manager dnsmasq-base iw ca-certificates python3
 '
 
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-serve.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-sync.timer
+sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-status.service
 
 sudo umount "$MOUNT_ROOT/proc"
 sudo umount "$MOUNT_ROOT/sys"

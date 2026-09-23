@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
-: "${GITHUB_URL:?Set GITHUB_URL in .env}"
+: "${GITHUB_URL:=}"
 : "${ZIM_DATA_DIR:=./zim_data}"
 
 mkdir -p "$ZIM_DATA_DIR"
@@ -25,11 +25,32 @@ elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
 fi
 
 TMP_LIST="/tmp/zimlist.txt"
-log "Fetching zimlist from $GITHUB_URL"
 list_available=1
-if ! curl -fsSL "${AUTH[@]}" "$GITHUB_URL" -o "$TMP_LIST"; then
-  list_available=0
-  log "Offline or unreachable - skipping download phase."
+local_list_path="$ZIM_DATA_DIR/zimlist.txt"
+local_mode_marker="$ZIM_DATA_DIR/.use_local_zimlist"
+
+if [[ -f "$local_mode_marker" && -s "$local_list_path" ]]; then
+  cp "$local_list_path" "$TMP_LIST"
+  log "Using local zimlist from $local_list_path"
+else
+  if [[ -n "${GITHUB_URL:-}" ]]; then
+    log "Fetching zimlist from $GITHUB_URL"
+    if ! curl -fsSL "${AUTH[@]}" "$GITHUB_URL" -o "$TMP_LIST"; then
+      if [[ -s "$local_list_path" ]]; then
+        cp "$local_list_path" "$TMP_LIST"
+        log "Remote list unavailable - falling back to local zimlist at $local_list_path"
+      else
+        list_available=0
+        log "Offline or unreachable - skipping download phase."
+      fi
+    fi
+  elif [[ -s "$local_list_path" ]]; then
+    cp "$local_list_path" "$TMP_LIST"
+    log "GITHUB_URL not set - using local zimlist at $local_list_path"
+  else
+    list_available=0
+    log "No list source configured - skipping download phase."
+  fi
 fi
 
 processed=0

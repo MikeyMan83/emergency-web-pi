@@ -41,6 +41,7 @@ set +a
 
 echo "==> Checking dependencies"
 sudo apt-get update -y
+command -v python3 >/dev/null || sudo apt-get install -y python3
 command -v aria2c >/dev/null || sudo apt-get install -y aria2
 command -v kiwix-serve >/dev/null || sudo apt-get install -y kiwix-tools
 command -v kiwix-manage >/dev/null || sudo apt-get install -y kiwix-tools
@@ -58,10 +59,14 @@ sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-serve.serv
 echo "==> Installing sync timer"
 sudo cp scripts/systemd/pi-kiwix-sync.service /etc/systemd/system/
 sudo cp scripts/systemd/pi-kiwix-sync.timer /etc/systemd/system/
+echo "==> Installing boot status page service"
+sudo cp scripts/systemd/pi-kiwix-status.service /etc/systemd/system/
 sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-sync.service
+sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-status.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-kiwix-serve.service
 sudo systemctl enable --now pi-kiwix-sync.timer
+sudo systemctl enable --now pi-kiwix-status.service
 sudo systemctl start pi-kiwix-sync.service
 
 if [[ "${BOOTSTRAP_ENABLE_AP:-0}" == "1" ]]; then
@@ -72,4 +77,5 @@ fi
 IP=$(hostname -I | awk '{print $1}')
 echo
 echo "Done. Kiwix is live at http://$IP:$KIWIX_PORT"
+echo "Boot status page: http://$IP/"
 echo "Content updates weekly - check: systemctl list-timers pi-kiwix-sync.timer"

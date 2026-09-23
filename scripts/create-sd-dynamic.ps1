@@ -21,6 +21,8 @@ param(
 
   [string]$FetchDir = "artifacts/base-release",
 
+  [switch]$SkipContentDownload,
+
   [switch]$AllowFixedDisk
 )
 
@@ -242,7 +244,9 @@ $resolvedProfile = (Resolve-Path $ProfilePath).Path
 $resolvedCacheDir = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $CacheDir))
 
 $urls = Read-ProfileEntries -Path $resolvedProfile
-Require-Aria2
+if (-not $SkipContentDownload) {
+  Require-Aria2
+}
 
 if (-not (Test-Path $resolvedCacheDir)) {
   New-Item -ItemType Directory -Path $resolvedCacheDir | Out-Null
@@ -271,43 +275,53 @@ $zimDrive = New-ZimDataPartition -TargetDiskNumber $DiskNumber
 Write-Host "ZIMDATA mounted at $zimDrive"
 
 $selectedNames = @()
-foreach ($url in $urls) {
-  $name = Resolve-ZimFileName -Url $url
-  $target = Join-Path $resolvedCacheDir $name
+if (-not $SkipContentDownload) {
+  foreach ($url in $urls) {
+    $name = Resolve-ZimFileName -Url $url
+    $target = Join-Path $resolvedCacheDir $name
 
-  if (Test-Path $target -PathType Leaf) {
-    $len = (Get-Item $target).Length
-    if ($len -gt 0) {
-      Write-Host "Using cached: $name"
-      $selectedNames += $name
-      continue
+    if (Test-Path $target -PathType Leaf) {
+      $len = (Get-Item $target).Length
+      if ($len -gt 0) {
+        Write-Host "Using cached: $name"
+        $selectedNames += $name
+        continue
+      }
     }
+
+    Write-Host "Downloading: $name"
+    Invoke-AriaDownload -Url $url -TargetDir $resolvedCacheDir -OutputName $name
+    $selectedNames += $name
   }
 
-  Write-Host "Downloading: $name"
-  Invoke-AriaDownload -Url $url -TargetDir $resolvedCacheDir -OutputName $name
-  $selectedNames += $name
-}
-
-Write-Host "Copying selected ZIM files to SD card"
-foreach ($name in $selectedNames) {
-  $source = Join-Path $resolvedCacheDir $name
-  $dest = Join-Path $zimDrive $name
-  Copy-Item -Path $source -Destination $dest -Force
+  Write-Host "Copying selected ZIM files to SD card"
+  foreach ($name in $selectedNames) {
+    $source = Join-Path $resolvedCacheDir $name
+    $dest = Join-Path $zimDrive $name
+    Copy-Item -Path $source -Destination $dest -Force
+  }
+} else {
+  Write-Host "SkipContentDownload is enabled. ZIM files will be downloaded on the Pi after boot when internet is available."
 }
 
 Copy-Item -Path $resolvedProfile -Destination (Join-Path $zimDrive "zimlist.txt") -Force
+Set-Content -Path (Join-Path $zimDrive ".use_local_zimlist") -Value "1" -Encoding ascii
 
 $stampPath = Join-Path $zimDrive "BUILD_INFO.txt"
 @(
   "Generated: $(Get-Date -Format o)",
   "Profile: $resolvedProfile",
-  "Entries: $($selectedNames.Count)"
+  "Entries: $($urls.Count)",
+  "DownloadMode: $(if ($SkipContentDownload) { 'pi-after-boot' } else { 'windows-preload' })"
 ) | Set-Content -Path $stampPath -Encoding utf8
 
 Write-Host ""
 Write-Host "Dynamic SD build complete"
 Write-Host "Disk:       #$DiskNumber"
 Write-Host "ZIMDATA:    $zimDrive"
-Write-Host "ZIM files:  $($selectedNames.Count)"
+if ($SkipContentDownload) {
+  Write-Host "ZIM files:  0 copied (deferred to Pi after boot)"
+} else {
+  Write-Host "ZIM files:  $($selectedNames.Count)"
+}
 Write-Host "Next: safely eject SD card and boot the Pi."

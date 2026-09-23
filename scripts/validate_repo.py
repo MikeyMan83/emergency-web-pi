@@ -30,9 +30,11 @@ def main() -> int:
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
     rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
+    status_web_path = repo_root / "scripts" / "status-web.py"
     portable_ps1_path = repo_root / "portable" / "PiKiwixPortable.ps1"
     portable_cmd_path = repo_root / "portable" / "Launch-PiKiwixPortable.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
+    status_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-status.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
@@ -63,6 +65,7 @@ def main() -> int:
     require("scripts/create-sd-dynamic.ps1" in readme, "README must mention scripts/create-sd-dynamic.ps1")
     require("scripts/build-appliance-image.ps1" in readme, "README must mention scripts/build-appliance-image.ps1")
     require("portable/Launch-PiKiwixPortable.cmd" in readme, "README must mention portable launcher")
+    require("pi-kiwix-status.service" in readme, "README must mention pi-kiwix-status.service")
     require(
         "Uses torrent metadata when available (with a header-based fallback for non-torrent links)." in readme,
         "README must describe estimate probe method",
@@ -78,8 +81,10 @@ def main() -> int:
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require(create_sd_dynamic_path.exists(), "scripts/create-sd-dynamic.ps1 must exist")
     require(rebuild_library_path.exists(), "scripts/rebuild-library.sh must exist")
+    require(status_web_path.exists(), "scripts/status-web.py must exist")
     require(portable_ps1_path.exists(), "portable/PiKiwixPortable.ps1 must exist")
     require(portable_cmd_path.exists(), "portable/Launch-PiKiwixPortable.cmd must exist")
+    require(status_service_path.exists(), "scripts/systemd/pi-kiwix-status.service must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
 
     # Estimate completeness checks.

@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Kiwix Survival - boot status page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+ExecStart=/usr/bin/python3 __REPO_DIR__/scripts/status-web.py --repo __REPO_DIR__ --host 0.0.0.0 --port 80
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
