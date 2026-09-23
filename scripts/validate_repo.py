@@ -122,6 +122,7 @@ def main() -> int:
         require(isinstance(item.get("name"), str) and item["name"], "catalog entries must have names")
         require(isinstance(item.get("description"), str) and item["description"], "catalog entries must have descriptions")
         require(isinstance(item.get("estimatedBytes"), int) and item["estimatedBytes"] > 0, "catalog entries must have positive estimatedBytes")
+        require(str(item.get("sourceUrl", "")).startswith("https://"), "catalog entries must have approved HTTPS sourceUrl values")
     for profile_path in (repo_root / "profiles").glob("*.txt"):
         for raw_line in profile_path.read_text(encoding="utf-8").splitlines():
             entry = raw_line.strip()
@@ -129,6 +130,7 @@ def main() -> int:
                 continue
             file_name = pathlib.PurePosixPath(entry.removesuffix(".torrent")).name
             require(file_name in content_catalog, f"config/content-catalog.json must describe {file_name} from {profile_path.name}")
+            require(entry == content_catalog[file_name]["sourceUrl"], f"profile source URL for {file_name} must match the catalog")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require("function Resolve-BaseImage" in build_image_ps1_path.read_text(encoding="utf-8"), "direct image builder must resolve the pinned base image")

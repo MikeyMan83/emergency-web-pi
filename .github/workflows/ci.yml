@@ -70,4 +70,9 @@ jobs:
       - name: Smoke test frontend startup
         shell: pwsh
         run: |
-          ./scripts/smoke-portable.ps1 -BundleDir artifacts/ci-smoke/EmergencyWebPi-0.0.0-ci-windows
+          $bundle = "artifacts/ci-smoke/EmergencyWebPi-0.0.0-ci-windows"
+          $required = @("EmergencyWebPi.exe", "Launch-EmergencyWebPi.cmd", "portable/EmergencyWebPi.ps1")
+          foreach ($path in $required) {
+            if (-not (Test-Path (Join-Path $bundle $path))) { throw "Missing release entry-point file: $path" }
+          }
+          ./scripts/smoke-portable.ps1 -BundleDir $bundle

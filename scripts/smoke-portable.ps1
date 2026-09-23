@@ -23,7 +23,7 @@ $process = Start-Process -FilePath "powershell.exe" -ArgumentList @(
   "Bypass",
   "-File",
   $frontendPath
-) -PassThru
+) -WorkingDirectory $bundlePath -PassThru
 
 try {
   $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
@@ -60,7 +60,7 @@ try {
     throw "Portable frontend exited during startup with code $($process.ExitCode)."
   }
 
-  Write-Output "Portable smoke test passed: wizard process is alive and startup checkpoints were logged."
+  Write-Output "Portable frontend smoke test passed: wizard process is alive and startup checkpoints were logged."
 } finally {
   if (-not $process.HasExited) {
     $process.Kill()
