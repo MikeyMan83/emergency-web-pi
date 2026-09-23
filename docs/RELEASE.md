@@ -33,3 +33,12 @@ The workflow at `.github/workflows/release.yml` will:
 1. Verify `docs/VERSION` matches the pushed tag.
 2. Verify `docs/CHANGELOG.md` includes the matching section.
 3. Publish a GitHub Release using that changelog section.
+
+## End-user download artifact (current)
+
+Until a packaged installer is attached as a release asset, end users should download:
+
+1. `Source code (zip)` from the latest GitHub release page.
+2. Extract and run `portable/Launch-PiKiwixPortable.cmd`.
+
+Keep README/HOWTO wording aligned with this behavior.

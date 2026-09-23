@@ -8,16 +8,18 @@ Build and write a complete appliance SD card from Windows.
 
 End-user path:
 
-1. Download the app and launch the portable frontend.
-2. Start the end-user wizard.
-3. Select the catalog items you want.
-4. Choose where catalogs are downloaded:
+1. Download from Releases: https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest
+2. Download Source code (zip) for the latest release, extract it, then open the extracted folder.
+3. Run portable/Launch-PiKiwixPortable.cmd.
+4. Start the end-user wizard.
+5. Select the catalog items you want.
+6. Choose where catalogs are downloaded:
    - Windows during SD creation (offline-ready), or
    - Pi after first boot (faster write, needs internet on first run).
-5. Select your SD card and let the wizard build/write it.
-6. Insert the card into the Pi and boot.
-7. Join the Pi Wi-Fi and open `http://10.42.0.1` for live startup status.
-8. When ready, open `http://10.42.0.1:8080` for the library.
+7. Select your SD card and let the wizard build/write it.
+8. Insert the card into the Pi and boot.
+9. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
+10. When ready, open http://10.42.0.1:8080 for the library.
 
 Portable frontend option:
 

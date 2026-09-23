@@ -7,17 +7,19 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 
 For normal deployment, use the portable app wizard:
 
-1. Start `portable/Launch-PiKiwixPortable.cmd`.
-2. Click `Start End-User Wizard`.
-3. Select catalog items.
-4. Choose download mode:
+1. Go to https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest.
+2. Download Source code (zip), extract it, and open the extracted folder.
+3. Start `portable/Launch-PiKiwixPortable.cmd`.
+4. Click `Start End-User Wizard`.
+5. Select catalog items.
+6. Choose download mode:
   - Windows during SD creation (offline-ready), or
   - Pi after first boot (faster write, internet needed on first run).
-5. Select target SD card.
-6. Confirm the size estimate and write.
-7. Insert the SD card in the Pi and boot.
-8. Open `http://10.42.0.1` to watch startup status.
-9. Open `http://10.42.0.1:8080` when ready.
+7. Select target SD card.
+8. Confirm the size estimate and write.
+9. Insert the SD card in the Pi and boot.
+10. Open `http://10.42.0.1` to watch startup status.
+11. Open `http://10.42.0.1:8080` when ready.
 
 No manual script sequence is required for this path.
 
