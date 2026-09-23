@@ -51,12 +51,10 @@ $startNote = @(
   "Pi Kiwix Portable $Version",
   "",
   "Quick start:",
-  "1. Right-click Launch-PiKiwixPortable.cmd and choose Run as administrator.",
+  "1. Right-click PiKiwixPortable.exe and choose Run as administrator.",
   "2. Click Start End-User Wizard.",
   "3. Select catalogs and target SD card.",
-  "4. Wait for completion, then insert SD card in Pi.",
-  "",
-  "If PiKiwixPortable.exe is present in portable/, the launcher will use it automatically."
+  "4. Wait for completion, then insert SD card in Pi."
 )
 Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Encoding utf8
 
