@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Added root-level launcher `Launch-PiKiwixPortable.cmd` so extracted bundles/source can be started without navigating subfolders.
+- Added `scripts/package-portable.ps1` to build a release-ready Windows portable bundle and checksums.
+
+### Changed
+- `.github/workflows/release.yml` now builds and attaches `PiKiwixPortable-<version>-windows.zip` plus SHA256 checksums to GitHub releases.
+- `portable/Launch-PiKiwixPortable.cmd` now prefers `PiKiwixPortable.exe` when available and falls back to PowerShell script.
+- README/HOWTO/RELEASE docs now provide explicit end-user download artifact guidance and fallback path.
+
 ## [0.1.7] - 2026-09-23
 
 ### Docs

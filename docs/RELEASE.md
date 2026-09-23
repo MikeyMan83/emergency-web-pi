@@ -36,9 +36,14 @@ The workflow at `.github/workflows/release.yml` will:
 
 ## End-user download artifact (current)
 
-Until a packaged installer is attached as a release asset, end users should download:
+Release workflow now attaches a Windows portable bundle asset:
 
-1. `Source code (zip)` from the latest GitHub release page.
-2. Extract and run `portable/Launch-PiKiwixPortable.cmd`.
+1. `PiKiwixPortable-<version>-windows.zip`
+2. `PiKiwixPortable-<version>-windows.sha256.txt`
 
-Keep README/HOWTO wording aligned with this behavior.
+Bundle contents include:
+
+1. Root launcher: `Launch-PiKiwixPortable.cmd`
+2. Frontend: `portable/PiKiwixPortable.exe` when PS-to-EXE packaging succeeds, with script fallback.
+
+If packaging fails in CI for any reason, users can still use `Source code (zip)` and run the root launcher.

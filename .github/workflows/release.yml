@@ -10,38 +10,60 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate tag/version alignment
         id: verify
+        shell: pwsh
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="$(tr -d '[:space:]' < docs/VERSION)"
-          EXPECTED_TAG="v$VERSION"
+          $tag = "${{ github.ref_name }}"
+          $version = (Get-Content docs/VERSION -Raw).Trim()
+          $expectedTag = "v$version"
 
-          if [ "$TAG" != "$EXPECTED_TAG" ]; then
-            echo "Tag $TAG does not match VERSION file ($EXPECTED_TAG)."
-            exit 1
-          fi
+          if ($tag -ne $expectedTag) {
+            throw "Tag $tag does not match VERSION file ($expectedTag)."
+          }
 
-          grep -q "^## \[$VERSION\]" docs/CHANGELOG.md || (echo "Missing changelog section for $VERSION"; exit 1)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          $match = Select-String -Path docs/CHANGELOG.md -Pattern "^## \[$([regex]::Escape($version))\]"
+          if (-not $match) {
+            throw "Missing changelog section for $version"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Extract release notes
         id: notes
+        shell: pwsh
         run: |
-          VERSION="${{ steps.verify.outputs.version }}"
-          awk -v v="$VERSION" '
-            $0 ~ "^## \\[" v "\\]" {in_section=1; next}
-            in_section && $0 ~ /^## \[/ {exit}
-            in_section {print}
-          ' docs/CHANGELOG.md > release_notes.md
+          $version = "${{ steps.verify.outputs.version }}"
+          $lines = Get-Content docs/CHANGELOG.md
+          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]" | Select-Object -First 1).LineNumber
+          if (-not $start) {
+            throw "Could not find changelog section start for $version"
+          }
+
+          $next = ($lines | Select-String -Pattern "^## \[" | Where-Object { $_.LineNumber -gt $start } | Select-Object -First 1)
+          if ($next) {
+            $section = $lines[($start)..($next.LineNumber - 2)]
+          } else {
+            $section = $lines[($start)..($lines.Count - 1)]
+          }
+
+          Set-Content -Path release_notes.md -Value $section -Encoding utf8
+
+      - name: Build portable release bundle
+        shell: pwsh
+        run: |
+          ./scripts/package-portable.ps1 -Version "${{ steps.verify.outputs.version }}"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           body_path: release_notes.md
+          files: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256.txt
