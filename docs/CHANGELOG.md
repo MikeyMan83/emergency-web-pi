@@ -6,8 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-09-23
+
 ### Changed
 - Renamed the Windows portable app branding and release artifacts from PiKiwixPortable to EmergencyWebPi.
+- Simplified the portable Windows UI into a clearer 3-step flow with a safer SD-card picker and advanced settings hidden by default.
+- Genericized remaining user-facing library/status wording while keeping internal runtime service compatibility intact.
 
 ## [0.1.12] - 2026-09-23
 
