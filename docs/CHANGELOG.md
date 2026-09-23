@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-09-23
+
+### Docs
+- Integrated the latest automated SD space estimate refresh after the Emergency Web Pi repo-slug release alignment.
+
 ## [0.1.15] - 2026-09-23
 
 ### Changed
