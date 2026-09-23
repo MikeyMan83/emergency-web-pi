@@ -82,7 +82,8 @@ $escapedInput = $portableScript.Replace("'", "''")
 $escapedOutput = $portableExe.Replace("'", "''")
 $escapedVersion = $Version.Replace("'", "''")
 $compileCommand = "Import-Module ps2exe -Force; Invoke-ps2exe -inputFile '$escapedInput' -outputFile '$escapedOutput' -noConsole -title 'Emergency Web Pi' -version '$escapedVersion'"
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $compileCommand
+$powershellHost = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+& $powershellHost -NoProfile -Command $compileCommand
 if ($LASTEXITCODE -ne 0) {
   throw "ps2exe failed with exit code $LASTEXITCODE."
 }

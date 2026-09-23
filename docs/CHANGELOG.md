@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.28] - 2026-09-23
+
+### Fixed
+- Build the portable EXE with the same PowerShell host that runs packaging, allowing GitHub Actions to access its installed `ps2exe` module.
+
 ## [0.1.27] - 2026-09-23
 
 ### Added
