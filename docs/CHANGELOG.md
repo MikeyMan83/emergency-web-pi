@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-09-23
+
+### Changed
+- Made collection choices explain their purpose, included library count, and estimated storage before users fine-tune individual items.
+
 ## [0.1.23] - 2026-09-23
 
 ### Fixed

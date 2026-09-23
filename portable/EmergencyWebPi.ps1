@@ -203,8 +203,20 @@ function Get-ProfileLabel {
     "emergency-medical-zimlist" { return "Emergency & Medical" }
     "essential-web-zimlist" { return "Essential Web" }
     "practical-repair-zimlist" { return "Practical & Repair" }
-    "medical-survival-zimlist" { return "Everything" }
+    "medical-survival-zimlist" { return "Everything - Complete library" }
     default { return [System.IO.Path]::GetFileNameWithoutExtension($Path) }
+  }
+}
+
+function Get-ProfileDescription {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  switch ([System.IO.Path]::GetFileNameWithoutExtension($Path)) {
+    "emergency-medical-zimlist" { return "First aid, emergency medicine, disaster response, and recovery guidance." }
+    "essential-web-zimlist" { return "English and Dutch Wikipedia for broad everyday reference." }
+    "practical-repair-zimlist" { return "Repair manuals, DIY, mechanics, woodworking, and Raspberry Pi help." }
+    "medical-survival-zimlist" { return "All available emergency, medical, reference, repair, and practical knowledge libraries." }
+    default { return "Offline library collection." }
   }
 }
 
@@ -858,7 +870,7 @@ function Show-EndUserWizard {
 
   $wizard = New-Object System.Windows.Forms.Form
   $wizard.Text = "Emergency Web Pi Wizard"
-  $wizard.Size = New-Object System.Drawing.Size(900, 720)
+  $wizard.Size = New-Object System.Drawing.Size(900, 760)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"
   $wizard.MaximizeBox = $false
@@ -889,7 +901,7 @@ function Show-EndUserWizard {
   $lblProfile.Left = 16
   $lblProfile.Top = $wy
   $lblProfile.Width = 180
-  $lblProfile.Text = "Catalog preset"
+  $lblProfile.Text = "Choose a collection"
   $wizard.Controls.Add($lblProfile)
 
   $cmbWizardProfile = New-Object System.Windows.Forms.ComboBox
@@ -914,11 +926,19 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($cmbWizardProfile)
   $wy += 38
 
+  $lblProfileInfo = New-Object System.Windows.Forms.Label
+  $lblProfileInfo.Left = 210
+  $lblProfileInfo.Top = $wy - 2
+  $lblProfileInfo.Width = 660
+  $lblProfileInfo.Height = 34
+  $wizard.Controls.Add($lblProfileInfo)
+  $wy += 40
+
   $lblItems = New-Object System.Windows.Forms.Label
   $lblItems.Left = 16
   $lblItems.Top = $wy
   $lblItems.Width = 180
-  $lblItems.Text = "Catalog items"
+  $lblItems.Text = "Fine-tune libraries"
   $wizard.Controls.Add($lblItems)
 
   $lstWizardItems = New-Object System.Windows.Forms.CheckedListBox
@@ -1040,9 +1060,13 @@ function Show-EndUserWizard {
     try {
       $profileAbs = To-Absolute -PathValue ([string]$cmbWizardProfile.SelectedItem.Path)
       $entries = Read-ProfileEntriesFromFile -ProfileFile $profileAbs
+      [int64]$profileBytes = 0
       foreach ($entry in $entries) {
-        [void]$lstWizardItems.Items.Add((Get-CatalogItem -Url $entry), $true)
+        $item = Get-CatalogItem -Url $entry
+        $profileBytes += [int64]$item.EstimatedBytes
+        [void]$lstWizardItems.Items.Add($item, $true)
       }
+      $lblProfileInfo.Text = "$(Get-ProfileDescription -Path $cmbWizardProfile.SelectedItem.Path) Includes $($entries.Count) libraries, about $(Format-Bytes -Bytes $profileBytes). Uncheck anything you do not need below."
     } catch {
       [System.Windows.Forms.MessageBox]::Show(
         "Failed to load catalog preset: $($_.Exception.Message)",
