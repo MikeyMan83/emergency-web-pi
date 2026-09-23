@@ -11,9 +11,7 @@ End-user path:
 1. Download from Releases: https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest
 2. Download `PiKiwixPortable-<version>-windows.zip` (release asset).
 3. Extract the zip.
-4. Run `Launch-PiKiwixPortable.cmd` from the extracted root folder.
-   - If `portable/PiKiwixPortable.exe` is present, launcher starts the EXE frontend.
-   - Otherwise it falls back to the PowerShell frontend script.
+4. Run `PiKiwixPortable.exe` from the extracted root folder.
 5. Start the end-user wizard.
 6. Select the catalog items you want.
 7. Choose where catalogs are downloaded:

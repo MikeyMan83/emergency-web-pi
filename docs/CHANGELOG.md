@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-09-23
+
+### Changed
+- Portable release packaging is now EXE-first and fails if `PiKiwixPortable.exe` cannot be produced.
+- Release bundles now include a root-level `PiKiwixPortable.exe` as the primary end-user entry point.
+- README/HOWTO/RELEASE instructions now direct users to launch the root EXE rather than a CMD wrapper.
+
 ## [0.1.9] - 2026-09-23
 
 ### Fixed

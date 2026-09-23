@@ -43,7 +43,8 @@ Release workflow now attaches a Windows portable bundle asset:
 
 Bundle contents include:
 
-1. Root launcher: `Launch-PiKiwixPortable.cmd`
-2. Frontend: `portable/PiKiwixPortable.exe` when PS-to-EXE packaging succeeds, with script fallback.
+1. Root frontend executable: `PiKiwixPortable.exe`
+2. Root launcher: `Launch-PiKiwixPortable.cmd` (fallback/manual path)
+3. Internal frontend executable: `portable/PiKiwixPortable.exe`
 
-If packaging fails in CI for any reason, users can still use `Source code (zip)` and run the root launcher.
+Packaging now fails if EXE generation fails, so release bundles do not silently fall back to script-only startup.

@@ -60,16 +60,19 @@ Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Enc
 
 $portableScript = Join-Path $bundleDir "portable/PiKiwixPortable.ps1"
 $portableExe = Join-Path $bundleDir "portable/PiKiwixPortable.exe"
+$rootExe = Join-Path $bundleDir "PiKiwixPortable.exe"
 
-try {
-  if (-not (Get-Module -ListAvailable -Name ps2exe)) {
-    Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
-  }
-  Import-Module ps2exe -Force
-  Invoke-ps2exe -inputFile $portableScript -outputFile $portableExe -noConsole -title "Pi Kiwix Portable" -version $Version
-} catch {
-  Write-Warning "Could not compile PiKiwixPortable.exe: $($_.Exception.Message)"
+if (-not (Get-Module -ListAvailable -Name ps2exe)) {
+  Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
+Import-Module ps2exe -Force
+Invoke-ps2exe -inputFile $portableScript -outputFile $portableExe -noConsole -title "Pi Kiwix Portable" -version $Version
+
+if (-not (Test-Path $portableExe)) {
+  throw "Failed to produce portable/PiKiwixPortable.exe. Release packaging requires a working EXE frontend."
+}
+
+Copy-Item -Path $portableExe -Destination $rootExe -Force
 
 Compress-Archive -Path (Join-Path $bundleDir "*") -DestinationPath $zipPath -Force
 
@@ -77,10 +80,10 @@ $zipHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
 $lines = @(
   "$zipHash  $(Split-Path -Leaf $zipPath)"
 )
-if (Test-Path $portableExe) {
-  $exeHash = (Get-FileHash -Path $portableExe -Algorithm SHA256).Hash
-  $lines += "$exeHash  portable/PiKiwixPortable.exe"
-}
+$exeHash = (Get-FileHash -Path $portableExe -Algorithm SHA256).Hash
+$lines += "$exeHash  portable/PiKiwixPortable.exe"
+$rootExeHash = (Get-FileHash -Path $rootExe -Algorithm SHA256).Hash
+$lines += "$rootExeHash  PiKiwixPortable.exe"
 Set-Content -Path $checksumsPath -Value $lines -Encoding ascii
 
 Write-Host "Portable release package created"
