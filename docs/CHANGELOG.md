@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.33] - 2026-09-23
+
+### Fixed
+- Launch the end-user wizard as the visible startup dialog instead of making it a modal child of a transparent background form, preventing an accepted EXE from appearing to do nothing.
+
 ## [0.1.32] - 2026-09-23
 
 ### Fixed

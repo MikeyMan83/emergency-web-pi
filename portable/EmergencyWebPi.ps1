@@ -896,7 +896,8 @@ function Show-EndUserWizard {
   param(
     [Parameter(Mandatory = $true)][string[]]$ProfilePaths,
     [Parameter(Mandatory = $true)][string]$DefaultProfile,
-    [Parameter(Mandatory = $true)]$Disks
+    [Parameter(Mandatory = $true)]$Disks,
+    [System.Windows.Forms.IWin32Window]$Owner = $null
   )
 
   $wizard = New-Object System.Windows.Forms.Form
@@ -1224,7 +1225,7 @@ function Show-EndUserWizard {
     $wizard.Close()
   })
 
-  $dialogResult = $wizard.ShowDialog($form)
+  $dialogResult = if ($null -eq $Owner) { $wizard.ShowDialog() } else { $wizard.ShowDialog($Owner) }
   if ($script:developerToolsRequested) {
     return [PSCustomObject]@{ DeveloperTools = $true }
   }
@@ -1322,7 +1323,8 @@ $btnWizard.Add_Click({
     }
 
     $defaultProfile = if ($cmbProfiles.SelectedItem) { [string]$cmbProfiles.SelectedItem } else { $profilePaths[0] }
-    $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks
+    $wizardOwner = if ($script:normalLaunch) { $null } else { $form }
+    $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks -Owner $wizardOwner
     if ($null -eq $selection) {
       Add-Log "Wizard cancelled."
       if ($script:normalLaunch) {
@@ -1336,9 +1338,6 @@ $btnWizard.Add_Click({
       $form.Text = "$appDisplayName - Developer Tools"
       $lblIntro.Text = "Developer Tools: build inputs, image tools, diagnostics, and exact command output."
       Set-AdvancedVisibility -Visible $true
-      $form.Opacity = 1
-      $form.ShowInTaskbar = $true
-      $form.Show()
       return
     }
 
@@ -1730,11 +1729,9 @@ Set-AdvancedVisibility -Visible $false
 Add-Log "Offline library builder ready"
 Add-Log "Repository root: $repoRoot"
 
-$form.Add_Shown({
-  $script:normalLaunch = $true
-  $form.Opacity = 0
-  $form.ShowInTaskbar = $false
-  $form.BeginInvoke([System.Action]{ $btnWizard.PerformClick() }) | Out-Null
-})
+$script:normalLaunch = $true
+$btnWizard.PerformClick()
 
-[void]$form.ShowDialog()
+if (-not $form.IsDisposed -and -not $script:normalLaunch) {
+  [void]$form.ShowDialog()
+}
