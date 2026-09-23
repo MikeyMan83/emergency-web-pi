@@ -71,9 +71,27 @@ jobs:
           Import-Module ps2exe -Force
 
       - name: Build portable bundle
+        id: package
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP "portable-package.log"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke *>&1 | Tee-Object -FilePath $logPath
+          exit $LASTEXITCODE
+
+      - name: Upload portable package log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-package-log
+          path: ${{ runner.temp }}/portable-package.log
+          if-no-files-found: warn
+
+      - name: Require portable bundle build
+        if: steps.package.outcome != 'success'
         shell: powershell
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke
+          throw "Portable bundle build failed. Download the portable-package-log artifact for details."
 
       - name: Smoke test frontend startup
         shell: powershell
