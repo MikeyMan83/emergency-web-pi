@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.50] - 2026-09-23
+
+### Changed
+- Applied a consistent visual hierarchy to the end-user wizard and Developer Tools, including styled primary and secondary actions.
+- Surface Developer Tools prerequisite results directly in the Build tab and keep raw configuration collapsed by default.
+
+### Fixed
+- Keep direct Developer Tools image builds aligned with the normal wizard by automatically downloading the pinned, verified base image when no override is selected.
+
 ## [0.1.49] - 2026-09-23
 
 ### Fixed

@@ -398,6 +398,29 @@ $script:normalLaunch = $false
 
 $font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.Font = $font
+$script:uiSurface = [System.Drawing.Color]::FromArgb(248, 250, 252)
+$script:uiBorder = [System.Drawing.Color]::FromArgb(203, 213, 225)
+$script:uiPrimary = [System.Drawing.Color]::FromArgb(15, 107, 157)
+$script:uiText = [System.Drawing.Color]::FromArgb(31, 41, 55)
+
+function Set-PrimaryButtonStyle {
+  param([Parameter(Mandatory = $true)][System.Windows.Forms.Button]$Button)
+
+  $Button.FlatStyle = "Flat"
+  $Button.FlatAppearance.BorderSize = 0
+  $Button.BackColor = $script:uiPrimary
+  $Button.ForeColor = [System.Drawing.Color]::White
+  $Button.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+}
+
+function Set-SecondaryButtonStyle {
+  param([Parameter(Mandatory = $true)][System.Windows.Forms.Button]$Button)
+
+  $Button.FlatStyle = "Flat"
+  $Button.FlatAppearance.BorderColor = $script:uiBorder
+  $Button.BackColor = [System.Drawing.Color]::White
+  $Button.ForeColor = $script:uiText
+}
 
 $y = 20
 
@@ -759,6 +782,8 @@ function Show-DeveloperTools {
   $developer.StartPosition = "CenterScreen"
   $developer.Font = $font
   $developer.MinimizeBox = $false
+  $developer.BackColor = $script:uiSurface
+  $developer.ForeColor = $script:uiText
 
   $heading = New-Object System.Windows.Forms.Label
   $heading.Text = "Developer Tools"
@@ -780,6 +805,9 @@ function Show-DeveloperTools {
   $tabs.Top = 78
   $tabs.Width = 1000
   $tabs.Height = 560
+  $tabs.Appearance = "Buttons"
+  $tabs.SizeMode = "Fixed"
+  $tabs.ItemSize = New-Object System.Drawing.Size(120, 30)
   $developer.Controls.Add($tabs)
 
   $buildTab = New-Object System.Windows.Forms.TabPage
@@ -811,26 +839,36 @@ function Show-DeveloperTools {
 
   Move-DeveloperControl -Control $btnCheck -Parent $buildTab -Left 24 -Top 120 -Width 150
   $btnCheck.Text = "Check prerequisites"
+  Set-SecondaryButtonStyle -Button $btnCheck
   Move-DeveloperControl -Control $btnBuild -Parent $buildTab -Left 184 -Top 120 -Width 130
   $btnBuild.Text = "Build image"
+  Set-PrimaryButtonStyle -Button $btnBuild
+
+  $script:developerStatus = New-Object System.Windows.Forms.Label
+  $script:developerStatus.Left = 24
+  $script:developerStatus.Top = 158
+  $script:developerStatus.Width = 900
+  $script:developerStatus.Height = 26
+  $script:developerStatus.Text = "Prerequisites have not been checked."
+  $buildTab.Controls.Add($script:developerStatus)
 
   $advancedConfig = New-Object System.Windows.Forms.CheckBox
   $advancedConfig.Text = "Show raw build configuration"
   $advancedConfig.Left = 24
-  $advancedConfig.Top = 174
+  $advancedConfig.Top = 194
   $advancedConfig.AutoSize = $true
   $buildTab.Controls.Add($advancedConfig)
 
   $buildRawControls = @($lblBaseImage, $txtBase, $btnBase, $lblConfig, $txtConfig, $btnConfig, $lblZimDir, $txtZimDir, $btnZimDir)
-  Move-DeveloperControl -Control $lblBaseImage -Parent $buildTab -Left 24 -Top 210 -Width 180
-  Move-DeveloperControl -Control $txtBase -Parent $buildTab -Left 220 -Top 207 -Width 600
-  Move-DeveloperControl -Control $btnBase -Parent $buildTab -Left 832 -Top 207 -Width 110
-  Move-DeveloperControl -Control $lblConfig -Parent $buildTab -Left 24 -Top 250 -Width 180
-  Move-DeveloperControl -Control $txtConfig -Parent $buildTab -Left 220 -Top 247 -Width 600
-  Move-DeveloperControl -Control $btnConfig -Parent $buildTab -Left 832 -Top 247 -Width 110
-  Move-DeveloperControl -Control $lblZimDir -Parent $buildTab -Left 24 -Top 290 -Width 180
-  Move-DeveloperControl -Control $txtZimDir -Parent $buildTab -Left 220 -Top 287 -Width 600
-  Move-DeveloperControl -Control $btnZimDir -Parent $buildTab -Left 832 -Top 287 -Width 110
+  Move-DeveloperControl -Control $lblBaseImage -Parent $buildTab -Left 24 -Top 230 -Width 180
+  Move-DeveloperControl -Control $txtBase -Parent $buildTab -Left 220 -Top 227 -Width 600
+  Move-DeveloperControl -Control $btnBase -Parent $buildTab -Left 832 -Top 227 -Width 110
+  Move-DeveloperControl -Control $lblConfig -Parent $buildTab -Left 24 -Top 270 -Width 180
+  Move-DeveloperControl -Control $txtConfig -Parent $buildTab -Left 220 -Top 267 -Width 600
+  Move-DeveloperControl -Control $btnConfig -Parent $buildTab -Left 832 -Top 267 -Width 110
+  Move-DeveloperControl -Control $lblZimDir -Parent $buildTab -Left 24 -Top 310 -Width 180
+  Move-DeveloperControl -Control $txtZimDir -Parent $buildTab -Left 220 -Top 307 -Width 600
+  Move-DeveloperControl -Control $btnZimDir -Parent $buildTab -Left 832 -Top 307 -Width 110
   foreach ($control in $buildRawControls) { $control.Visible = $false }
   $advancedConfig.Add_CheckedChanged({ foreach ($control in $buildRawControls) { $control.Visible = $advancedConfig.Checked } })
 
@@ -839,6 +877,8 @@ function Show-DeveloperTools {
   Move-DeveloperControl -Control $cmbProfiles -Parent $contentTab -Left 220 -Top 21 -Width 520
   Move-DeveloperControl -Control $btnRefreshProfiles -Parent $contentTab -Left 750 -Top 21 -Width 85
   Move-DeveloperControl -Control $btnLoadProfile -Parent $contentTab -Left 845 -Top 21 -Width 110
+  Set-SecondaryButtonStyle -Button $btnRefreshProfiles
+  Set-SecondaryButtonStyle -Button $btnLoadProfile
   Move-DeveloperControl -Control $lblMainContentInfo -Parent $contentTab -Left 220 -Top 60 -Width 720
   $lblMainContentInfo.AutoSize = $false
   $lblMainContentInfo.Height = 42
@@ -871,12 +911,16 @@ function Show-DeveloperTools {
   $outputTab.Controls.Add($sdLabel)
   Move-DeveloperControl -Control $cmbDisks -Parent $outputTab -Left 24 -Top 58 -Width 700
   Move-DeveloperControl -Control $btnDiskRefreshInline -Parent $outputTab -Left 736 -Top 58 -Width 120
+  Set-SecondaryButtonStyle -Button $btnDiskRefreshInline
   Move-DeveloperControl -Control $btnEstimate -Parent $outputTab -Left 24 -Top 112 -Width 160
   $btnEstimate.Text = "Estimate capacity"
+  Set-SecondaryButtonStyle -Button $btnEstimate
   Move-DeveloperControl -Control $btnDynamic -Parent $outputTab -Left 196 -Top 112 -Width 220
   $btnDynamic.Text = "Build & flash selected SD"
+  Set-PrimaryButtonStyle -Button $btnDynamic
   Move-DeveloperControl -Control $btnWrite -Parent $outputTab -Left 428 -Top 112 -Width 180
   $btnWrite.Text = "Write prepared image"
+  Set-SecondaryButtonStyle -Button $btnWrite
 
   $outputAdvanced = New-Object System.Windows.Forms.CheckBox
   $outputAdvanced.Text = "Show output and manifest paths"
@@ -905,6 +949,9 @@ function Show-DeveloperTools {
   Move-DeveloperControl -Control $btnExit -Parent $diagnosticActions -Left 830 -Top 14 -Width 110
   $btnExit.Text = "Close tools"
   $btnArtifacts.Text = "Open workspace"
+  Set-SecondaryButtonStyle -Button $btnArtifacts
+  Set-SecondaryButtonStyle -Button $btnAbout
+  Set-SecondaryButtonStyle -Button $btnExit
   $btnExit.Add_Click({ $developer.Close() })
   $diagnosticActions.BringToFront()
 
@@ -1101,6 +1148,8 @@ function Show-EndUserWizard {
   $wizard.MaximizeBox = $false
   $wizard.MinimizeBox = $false
   $wizard.Font = $font
+  $wizard.BackColor = $script:uiSurface
+  $wizard.ForeColor = $script:uiText
 
   $wy = 16
 
@@ -1110,6 +1159,7 @@ function Show-EndUserWizard {
   $lblIntro.Width = 850
   $lblIntro.Height = 44
   $lblIntro.Text = "Choose what you want available offline, how to install it, and which SD card to erase."
+  $lblIntro.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
   $wizard.Controls.Add($lblIntro)
   $wy += 50
 
@@ -1119,6 +1169,7 @@ function Show-EndUserWizard {
   $lblBase.Width = 850
   $baseInfo = Get-PinnedBaseImageInfo
   $lblBase.Text = "Base system: $($baseInfo.name) ($($baseInfo.architecture), $($baseInfo.releaseDate)) - automatically downloaded and SHA-256 verified"
+  $lblBase.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
   $wizard.Controls.Add($lblBase)
   $wy += 38
 
@@ -1181,6 +1232,7 @@ function Show-EndUserWizard {
   $btnAll.Left = 210
   $btnAll.Top = $wy
   $btnAll.Width = 100
+  Set-SecondaryButtonStyle -Button $btnAll
   $wizard.Controls.Add($btnAll)
 
   $btnNone = New-Object System.Windows.Forms.Button
@@ -1188,6 +1240,7 @@ function Show-EndUserWizard {
   $btnNone.Left = 320
   $btnNone.Top = $wy
   $btnNone.Width = 100
+  Set-SecondaryButtonStyle -Button $btnNone
   $wizard.Controls.Add($btnNone)
   $wy += 36
 
@@ -1211,6 +1264,7 @@ function Show-EndUserWizard {
   $btnLearnMore.Top = $wy - 4
   $btnLearnMore.Width = 110
   $btnLearnMore.Enabled = $false
+  Set-SecondaryButtonStyle -Button $btnLearnMore
   $wizard.Controls.Add($btnLearnMore)
   $wy += 42
 
@@ -1266,6 +1320,7 @@ function Show-EndUserWizard {
   $btnCancelWizard.Left = 630
   $btnCancelWizard.Top = $wy
   $btnCancelWizard.Width = 100
+  Set-SecondaryButtonStyle -Button $btnCancelWizard
   $wizard.Controls.Add($btnCancelWizard)
 
     $btnDeveloperTools = New-Object System.Windows.Forms.Button
@@ -1273,6 +1328,7 @@ function Show-EndUserWizard {
     $btnDeveloperTools.Left = 740
     $btnDeveloperTools.Top = $wy
     $btnDeveloperTools.Width = 110
+    Set-SecondaryButtonStyle -Button $btnDeveloperTools
     $wizard.Controls.Add($btnDeveloperTools)
 
   $btnStartWizard = New-Object System.Windows.Forms.Button
@@ -1280,6 +1336,7 @@ function Show-EndUserWizard {
   $btnStartWizard.Left = 850
   $btnStartWizard.Top = $wy
   $btnStartWizard.Width = 100
+  Set-PrimaryButtonStyle -Button $btnStartWizard
   $wizard.Controls.Add($btnStartWizard)
 
   $result = $null
@@ -1592,6 +1649,7 @@ $btnCheck.Add_Click({
   Add-Log "Checking prerequisites"
 
   $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  $wslReady = $false
   if ($isAdmin) {
     Add-Log "PowerShell elevation: OK"
   } else {
@@ -1601,6 +1659,7 @@ $btnCheck.Add_Click({
   try {
     $null = & wsl --version 2>$null
     if ($LASTEXITCODE -eq 0) {
+      $wslReady = $true
       Add-Log "WSL detected"
     } else {
       Add-Log "WSL not detected; install with: wsl --install -d Ubuntu"
@@ -1647,6 +1706,14 @@ $btnCheck.Add_Click({
       Add-Log "aria2c not detected; Windows-side dynamic download mode will fail"
     }
   }
+
+  $baseStatus = if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) { "Local base override ready" } else { "Pinned base image will download automatically" }
+  $configStatus = if (Test-Path $configAbs) { "config ready" } else { "config missing" }
+  $summary = "Administrator: $(if ($isAdmin) { 'ready' } else { 'required' }) | WSL: $(if ($wslReady) { 'ready' } else { 'missing' }) | $baseStatus | $configStatus"
+  if ($null -ne $script:developerStatus) {
+    $script:developerStatus.Text = $summary
+  }
+  [System.Windows.Forms.MessageBox]::Show($summary, "Prerequisite check", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 })
 
 $btnBuild.Add_Click({
