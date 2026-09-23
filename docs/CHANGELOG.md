@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.32] - 2026-09-23
+
+### Fixed
+- Make CMD launchers start the bundled PowerShell frontend directly instead of silently stopping when Windows SmartScreen blocks the unsigned EXE.
+
 ## [0.1.31] - 2026-09-23
 
 ### Changed

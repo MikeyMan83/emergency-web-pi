@@ -37,7 +37,7 @@ Debug/support fallback launcher:
 
 Launcher policy:
 - `EmergencyWebPi.exe` is the primary app entry point.
-- `Launch-EmergencyWebPi.cmd` is a fallback helper that tries EXE first, then the same PowerShell frontend only if needed.
+- `Launch-EmergencyWebPi.cmd` starts the same bundled PowerShell frontend directly. Use it if Windows SmartScreen blocks the unsigned EXE.
 - Both launch paths open the same end-user wizard automatically.
 - Select `Developer Tools` in that wizard only for testing, recovery, or direct image-build workflows.
 

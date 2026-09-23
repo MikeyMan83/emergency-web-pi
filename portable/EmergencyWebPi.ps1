@@ -1336,6 +1336,8 @@ $btnWizard.Add_Click({
       $form.Text = "$appDisplayName - Developer Tools"
       $lblIntro.Text = "Developer Tools: build inputs, image tools, diagnostics, and exact command output."
       Set-AdvancedVisibility -Visible $true
+      $form.Opacity = 1
+      $form.ShowInTaskbar = $true
       $form.Show()
       return
     }
@@ -1730,7 +1732,8 @@ Add-Log "Repository root: $repoRoot"
 
 $form.Add_Shown({
   $script:normalLaunch = $true
-  $form.Hide()
+  $form.Opacity = 0
+  $form.ShowInTaskbar = $false
   $form.BeginInvoke([System.Action]{ $btnWizard.PerformClick() }) | Out-Null
 })
 

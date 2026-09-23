@@ -11,14 +11,7 @@ if not exist "%SCRIPT_DIR%EmergencyWebPi.ps1" (
 	exit /b 1
 )
 
-if exist "%SCRIPT_DIR%EmergencyWebPi.exe" (
-	start "" /D "%SCRIPT_DIR%" "%SCRIPT_DIR%EmergencyWebPi.exe"
-	set ERR=%ERRORLEVEL%
-	popd >nul 2>&1
-	exit /b %ERR%
-) else (
-	powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SCRIPT_DIR%EmergencyWebPi.ps1"
-	set ERR=%ERRORLEVEL%
-	popd >nul 2>&1
-	exit /b %ERR%
-)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SCRIPT_DIR%EmergencyWebPi.ps1"
+set ERR=%ERRORLEVEL%
+popd >nul 2>&1
+exit /b %ERR%

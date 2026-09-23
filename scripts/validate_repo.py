@@ -37,6 +37,7 @@ def main() -> int:
     status_web_path = repo_root / "scripts" / "status-web.py"
     portable_ps1_path = repo_root / "portable" / "EmergencyWebPi.ps1"
     portable_cmd_path = repo_root / "portable" / "Launch-EmergencyWebPi.cmd"
+    root_cmd_path = repo_root / "Launch-EmergencyWebPi.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
     status_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-status.service"
     sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-sync.service"
@@ -65,6 +66,8 @@ def main() -> int:
     sync_script = sync_path.read_text(encoding="utf-8")
     hardware_acceptance = hardware_acceptance_path.read_text(encoding="utf-8")
     release_workflow = release_workflow_path.read_text(encoding="utf-8")
+    portable_cmd = portable_cmd_path.read_text(encoding="utf-8")
+    root_cmd = root_cmd_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -131,6 +134,7 @@ def main() -> int:
     require(status_web_path.exists(), "scripts/status-web.py must exist")
     require(portable_ps1_path.exists(), "portable/EmergencyWebPi.ps1 must exist")
     require(portable_cmd_path.exists(), "portable/Launch-EmergencyWebPi.cmd must exist")
+    require(root_cmd_path.exists(), "Launch-EmergencyWebPi.cmd must exist")
     require(status_service_path.exists(), "scripts/systemd/pi-kiwix-status.service must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
     require(sync_path.exists(), "scripts/sync.sh must exist")
@@ -156,6 +160,8 @@ def main() -> int:
     require("--first-boot" in hardware_acceptance and "--prebuilt" in hardware_acceptance, "hardware acceptance must support both content modes")
     require("pi-kiwix-serve.service" in hardware_acceptance, "hardware acceptance must verify the library service")
     require("SetWindowDisplayAffinity" not in portable_ps1_path.read_text(encoding="utf-8"), "portable frontend must not block screenshot capture")
+    require("EmergencyWebPi.ps1" in portable_cmd and "powershell.exe" in portable_cmd, "portable CMD launcher must run the bundled PowerShell frontend")
+    require("call \"%ROOT_DIR%portable\\Launch-EmergencyWebPi.cmd\"" in root_cmd, "root CMD launcher must delegate to the portable CMD launcher")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
     require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")
 

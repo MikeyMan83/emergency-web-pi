@@ -21,7 +21,7 @@ For normal deployment, use the portable app wizard:
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
-The EXE and CMD launcher open the same wizard. CMD falls back to the bundled PowerShell frontend only when the EXE is unavailable.
+The EXE and CMD launcher open the same wizard. CMD starts the bundled PowerShell frontend directly, which is useful when Windows SmartScreen blocks the unsigned EXE.
 
 For testing or recovery, select `Developer Tools` in the wizard to open direct build inputs, prepared-image writing, diagnostics, logs, and artifacts. Normal users do not need this workspace.
 
