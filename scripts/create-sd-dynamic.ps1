@@ -17,7 +17,7 @@ param(
 
   [switch]$FetchLatestBase,
 
-  [string]$ReleaseRepo = "MikeyMan83/pi-kiwix-survival",
+  [string]$ReleaseRepo = "MikeyMan83/emergency-web-pi",
 
   [string]$FetchDir = "artifacts/base-release",
 
@@ -82,7 +82,7 @@ function Invoke-DownloadFile {
     [Parameter(Mandatory = $true)][string]$OutFile
   )
 
-  Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers @{ "User-Agent" = "pi-kiwix-survival-dynamic-builder" }
+  Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers @{ "User-Agent" = "emergency-web-pi-dynamic-builder" }
 }
 
 function Get-LatestReleaseArtifacts {
@@ -92,7 +92,7 @@ function Get-LatestReleaseArtifacts {
   )
 
   $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
-  $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "pi-kiwix-survival-dynamic-builder" }
+  $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "emergency-web-pi-dynamic-builder" }
 
   if (-not $release.assets -or $release.assets.Count -eq 0) {
     throw "Latest release for $Repo has no downloadable assets."

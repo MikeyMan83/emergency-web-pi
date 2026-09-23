@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/MikeyMan83/pi-kiwix-survival.git}"
+REPO_URL="${REPO_URL:-https://github.com/MikeyMan83/emergency-web-pi.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 BOOTSTRAP_USER="${BOOTSTRAP_USER:-${SUDO_USER:-$USER}}"
 DEFAULT_HOME="$(getent passwd "$BOOTSTRAP_USER" | cut -d: -f6 || true)"
 if [ -z "$DEFAULT_HOME" ]; then
   DEFAULT_HOME="$HOME"
 fi
-INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_HOME/pi-kiwix-survival}"
+INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_HOME/emergency-web-pi}"
 
 log() {
   printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"

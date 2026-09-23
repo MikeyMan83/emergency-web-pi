@@ -7,5 +7,5 @@ if [ -z "$BOOTSTRAP_USER" ]; then
   BOOTSTRAP_USER="pi"
 fi
 
-curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh \
+curl -fsSL https://raw.githubusercontent.com/MikeyMan83/emergency-web-pi/main/scripts/bootstrap-pi.sh \
   | env BOOTSTRAP_USER="$BOOTSTRAP_USER" bash

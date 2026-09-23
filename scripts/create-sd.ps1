@@ -149,7 +149,7 @@ function Resolve-ImagePath {
 
   $candidates = @(
     "artifacts/appliance.img",
-    "artifacts/pi-kiwix-survival.img",
+    "artifacts/emergency-web-pi.img",
     "appliance.img"
   )
 

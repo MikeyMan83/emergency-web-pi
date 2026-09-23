@@ -454,7 +454,7 @@ $form.Controls.Add($chkDownloadOnPi)
 $y += 30
 
 $lblReleaseRepo = Add-Label -Text "Release Repo" -Top $y
-$txtReleaseRepo = Add-TextBox -DefaultText "MikeyMan83/pi-kiwix-survival" -Top $y
+$txtReleaseRepo = Add-TextBox -DefaultText "MikeyMan83/emergency-web-pi" -Top $y
 $y += 40
 
 $btnToggleAdvanced = New-Object System.Windows.Forms.Button

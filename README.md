@@ -8,7 +8,7 @@ Build and write a complete appliance SD card from Windows.
 
 End-user path:
 
-1. Download from Releases: https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest
+1. Download from Releases: https://github.com/MikeyMan83/emergency-web-pi/releases/latest
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
 4. Run `EmergencyWebPi.exe` from the extracted root folder.
@@ -134,7 +134,7 @@ if [ -z "$BOOTSTRAP_USER" ]; then
    BOOTSTRAP_USER="pi"
 fi
 
-curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh \
+curl -fsSL https://raw.githubusercontent.com/MikeyMan83/emergency-web-pi/main/scripts/bootstrap-pi.sh \
    | env BOOTSTRAP_USER="$BOOTSTRAP_USER" bash
 ```
 
@@ -180,7 +180,7 @@ Use legacy first-boot setup only if you specifically need direct installation on
 
 `scripts/create-sd.ps1` is the Windows appliance-builder entry point.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
-`artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
+`artifacts/emergency-web-pi.img`, `appliance.img`, or the newest `artifacts/*.img`.
 `scripts/build-appliance-image.ps1` requires `-ZimSourceDir` for offline-ready images;
 use `-AllowEmptyZimData` only for development images that will sync content later.
 `scripts/create-sd-dynamic.ps1` uses a base image + profile list and downloads
@@ -197,7 +197,7 @@ When using the builder path, copy `config/appliance.example.json` to
 ### One-command deploy over SSH
 
 ```bash
-ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyMan83/pi-kiwix-survival/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash"
+ssh <pi-user>@kiwixpi.local "curl -fsSL https://raw.githubusercontent.com/MikeyMan83/emergency-web-pi/main/scripts/bootstrap-pi.sh | sudo env BOOTSTRAP_USER=<pi-user> bash"
 ```
 
 This command installs required host dependencies, clones or updates the repo on Pi,

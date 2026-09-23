@@ -66,7 +66,7 @@ sudo nmcli connection modify pi-kiwix-ap \
 
 echo "==> Configuring captive-portal DNS sinkhole"
 sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
-sudo tee /etc/NetworkManager/dnsmasq-shared.d/pi-kiwix-survival.conf >/dev/null <<EOF
+sudo tee /etc/NetworkManager/dnsmasq-shared.d/emergency-web-pi.conf >/dev/null <<EOF
 address=/#/${AP_HOST}
 EOF
 

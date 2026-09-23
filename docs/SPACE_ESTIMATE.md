@@ -47,5 +47,5 @@ This estimate uses torrent metadata for size and withholds totals if any item ca
 ## Notes
 
 - Keep at least 20% free SD space beyond known content for filesystem health.
-- Repository: https://github.com/MikeyMan83/pi-kiwix-survival
+- Repository: https://github.com/MikeyMan83/emergency-web-pi
 

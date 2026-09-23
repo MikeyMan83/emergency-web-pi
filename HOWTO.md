@@ -7,7 +7,7 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 
 For normal deployment, use the portable app wizard:
 
-1. Go to https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest.
+1. Go to https://github.com/MikeyMan83/emergency-web-pi/releases/latest.
 2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
 4. Start `EmergencyWebPi.exe` from the extracted root folder.

@@ -213,12 +213,12 @@ sudo tee -a "$MOUNT_ROOT/etc/fstab" >/dev/null <<'EOF'
 LABEL=zimdata /var/lib/pi-kiwix-zimdata ext4 defaults,nofail 0 2
 EOF
 
-sudo mkdir -p "$MOUNT_ROOT/opt/pi-kiwix-survival"
+sudo mkdir -p "$MOUNT_ROOT/opt/emergency-web-pi"
 sudo rsync -a --delete \
   --exclude='.git' \
   --exclude='artifacts' \
   --exclude='zim_data' \
-  "$REPO_DIR"/ "$MOUNT_ROOT/opt/pi-kiwix-survival"/
+  "$REPO_DIR"/ "$MOUNT_ROOT/opt/emergency-web-pi"/
 
 ssid=$(jq -r '.network.ap.ssid' "$CONFIG_PATH")
 password=$(jq -r '.network.ap.password' "$CONFIG_PATH")
@@ -248,25 +248,25 @@ else
   ap_host="$ap_address"
 fi
 
-jq --arg p "$password" '.network.ap.password = $p' "$CONFIG_PATH" | sudo tee "$MOUNT_ROOT/opt/pi-kiwix-survival/config/appliance.local.json" >/dev/null
-sudo chown 1000:1000 "$MOUNT_ROOT/opt/pi-kiwix-survival/config/appliance.local.json" || true
+jq --arg p "$password" '.network.ap.password = $p' "$CONFIG_PATH" | sudo tee "$MOUNT_ROOT/opt/emergency-web-pi/config/appliance.local.json" >/dev/null
+sudo chown 1000:1000 "$MOUNT_ROOT/opt/emergency-web-pi/config/appliance.local.json" || true
 
-sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/.env.example" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^AP_SSID=.*|AP_SSID=$ssid|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^AP_PASSPHRASE=.*|AP_PASSPHRASE=$password|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^AP_ADDRESS=.*|AP_ADDRESS=${ap_cidr}|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^AP_COUNTRY_CODE=.*|AP_COUNTRY_CODE=${ap_country}|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^SYNC_INTERVAL_SECONDS=.*|SYNC_INTERVAL_SECONDS=$interval|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i "s|^ZIM_DATA_DIR=.*|ZIM_DATA_DIR=/var/lib/pi-kiwix-zimdata|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
-sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/.env.example" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^AP_SSID=.*|AP_SSID=$ssid|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^AP_PASSPHRASE=.*|AP_PASSPHRASE=$password|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^AP_ADDRESS=.*|AP_ADDRESS=${ap_cidr}|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^AP_COUNTRY_CODE=.*|AP_COUNTRY_CODE=${ap_country}|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^SYNC_INTERVAL_SECONDS=.*|SYNC_INTERVAL_SECONDS=$interval|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i "s|^ZIM_DATA_DIR=.*|ZIM_DATA_DIR=/var/lib/pi-kiwix-zimdata|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/emergency-web-pi/.env"
 
-sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service"
-sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service"
-sudo sed -i "s/__REPO_DIR__/\/opt\/pi-kiwix-survival/g" "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-status.service"
-sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-serve.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-serve.service"
-sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.service"
-sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-sync.timer" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.timer"
-sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/scripts/systemd/pi-kiwix-status.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-status.service"
+sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-serve.service"
+sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.service"
+sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-status.service"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-serve.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-serve.service"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.service"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.timer" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.timer"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-status.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-status.service"
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
 sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection" >/dev/null <<EOF
@@ -296,7 +296,7 @@ EOF
 sudo chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection"
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d"
-sudo tee "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d/pi-kiwix-survival.conf" >/dev/null <<EOF
+sudo tee "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d/emergency-web-pi.conf" >/dev/null <<EOF
 address=/#/$ap_host
 EOF
 

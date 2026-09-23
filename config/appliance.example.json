@@ -7,7 +7,7 @@
   },
   "network": {
     "ap": {
-      "ssid": "PI-KIWIX-SURVIVAL",
+      "ssid": "EMERGENCY-WEB-PI",
       "password": "__GENERATE__",
       "countryCode": "NL",
       "address": "10.42.0.1",
@@ -24,6 +24,6 @@
     "intervalSeconds": 604800
   },
   "system": {
-    "hostname": "pi-kiwix-survival"
+    "hostname": "emergency-web-pi"
   }
 }

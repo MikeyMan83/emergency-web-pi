@@ -39,7 +39,7 @@ jobs:
             --output docs/SPACE_ESTIMATE.md \
             --json-output docs/SPACE_ESTIMATE.json \
             --readme README.md \
-            --repo-url https://github.com/MikeyMan83/pi-kiwix-survival
+            --repo-url https://github.com/MikeyMan83/emergency-web-pi
 
       - name: Publish summary
         run: |
