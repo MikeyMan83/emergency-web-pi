@@ -108,7 +108,7 @@ Three supported modes exist in this repository:
 Published content size: **64.83 GB**
 Published recommended minimum SD size: **77.79 GB**
 Known subtotal (diagnostic): 64.83 GB
-Last estimate refresh: 2026-09-23T08:53:51Z
+Last estimate refresh: 2026-09-23T11:15:28Z
 <!-- SPACE_ESTIMATE:END -->
 
 ## Legacy first-boot quickstart
