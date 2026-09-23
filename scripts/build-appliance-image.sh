@@ -225,6 +225,9 @@ password=$(jq -r '.network.ap.password' "$CONFIG_PATH")
 ap_address=$(jq -r '.network.ap.address' "$CONFIG_PATH")
 ap_port=$(jq -r '.network.ap.port' "$CONFIG_PATH")
 ap_country=$(jq -r '.network.ap.countryCode // "NL"' "$CONFIG_PATH")
+upstream_enabled=$(jq -r '.network.upstream.enabled // false' "$CONFIG_PATH")
+upstream_ssid=$(jq -r '.network.upstream.ssid // ""' "$CONFIG_PATH")
+upstream_password=$(jq -r '.network.upstream.password // ""' "$CONFIG_PATH")
 interval=$(jq -r '.updates.intervalSeconds // 604800' "$CONFIG_PATH")
 hostname_cfg=$(jq -r '.system.hostname' "$CONFIG_PATH")
 profile=$(jq -r '.content.profile' "$CONFIG_PATH")
@@ -276,7 +279,6 @@ sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnec
 [connection]
 id=pi-kiwix-ap
 type=wifi
-interface-name=wlan0
 autoconnect=true
 
 [wifi]
@@ -297,6 +299,35 @@ address1=${ap_cidr}
 method=ignore
 EOF
 sudo chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection"
+
+if [[ "$upstream_enabled" == "true" ]]; then
+  if [[ -z "$upstream_ssid" || ${#upstream_password} -lt 8 || ${#upstream_password} -gt 63 ]]; then
+    echo "network.upstream requires a non-empty SSID and WPA2 password when enabled." >&2
+    exit 1
+  fi
+
+  sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/emergency-web-pi-upstream.nmconnection" >/dev/null <<EOF
+[connection]
+id=emergency-web-pi-upstream
+type=wifi
+autoconnect=true
+autoconnect-priority=20
+
+[wifi]
+ssid=$upstream_ssid
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=$upstream_password
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+EOF
+  sudo chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/emergency-web-pi-upstream.nmconnection"
+fi
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d"
 sudo tee "$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d/emergency-web-pi.conf" >/dev/null <<EOF

@@ -15,7 +15,7 @@ set +a
 
 : "${AP_SSID:?Set AP_SSID in .env}"
 : "${AP_PASSPHRASE:?Set AP_PASSPHRASE in .env}"
-: "${AP_INTERFACE:=wlan0}"
+: "${AP_INTERFACE:=}"
 : "${AP_ADDRESS:=10.42.0.1/24}"
 : "${AP_COUNTRY_CODE:=NL}"
 
@@ -40,6 +40,14 @@ sudo apt-get install -y network-manager dnsmasq-base iw
 
 if ! command -v nmcli >/dev/null 2>&1; then
   echo "nmcli not found after package install. NetworkManager setup cannot continue." >&2
+  exit 1
+fi
+
+if [[ -z "$AP_INTERFACE" ]]; then
+  AP_INTERFACE="$(nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "wifi" { print $1; exit }')"
+fi
+if [[ -z "$AP_INTERFACE" ]]; then
+  echo "No Wi-Fi interface was detected. Set AP_INTERFACE explicitly and retry." >&2
   exit 1
 fi
 

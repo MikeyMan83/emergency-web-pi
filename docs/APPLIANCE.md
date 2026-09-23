@@ -99,6 +99,11 @@ Dynamic mode inputs:
 - Local download cache directory
 - Content mode: `FirstBoot` (default) or `Prebuilt`
 
+When `network.upstream.enabled` is true in the private build config, the image
+also includes a NetworkManager connection for that SSID. This is optional: use
+Ethernet or an injected upstream Wi-Fi connection for first-boot downloads. The
+emergency access point remains configured independently.
+
 ## Build command
 
 From Windows PowerShell:

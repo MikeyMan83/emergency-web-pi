@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.41] - 2026-09-23
+
+### Added
+- Inject an optional upstream NetworkManager Wi-Fi connection from the private appliance config for first-boot content installation.
+
+### Fixed
+- Remove the `wlan0` assumption from baked appliance and standalone access-point setup so NetworkManager can use the available Wi-Fi interface.
+
 ## [0.1.40] - 2026-09-23
 
 ### Fixed
