@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.49] - 2026-09-23
+
+### Fixed
+- Rebuild `library.xml` atomically so a failed ZIM index leaves the previous valid library intact.
+- Use the same base-plus-ZIMDATA partition capacity formula in the UI estimate that the dynamic builder uses.
+
+### Tests
+- Validate stable catalog source URLs and smoke-test the packaged frontend startup path on Windows CI.
+
 ## [0.1.48] - 2026-09-23
 
 ### Fixed

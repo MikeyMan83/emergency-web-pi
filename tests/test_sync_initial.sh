@@ -35,6 +35,9 @@ chmod +x "$FAKE_BIN/aria2c"
 cat > "$FAKE_BIN/kiwix-manage" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${KIWIX_MANAGE_FAIL:-0}" == "1" ]]; then
+  exit 1
+fi
 printf 'indexed\n' > "$1"
 EOF
 chmod +x "$FAKE_BIN/kiwix-manage"
@@ -64,3 +67,13 @@ if ARIA2_FAIL=1 run_initial_sync "$failure_dir"; then
 fi
 test -e "$failure_dir/.content-install-pending"
 test ! -e "$failure_dir/retry.zim"
+
+atomic_dir="$TEMP_DIR/atomic"
+mkdir -p "$atomic_dir"
+printf 'previous-index\n' > "$atomic_dir/library.xml"
+printf 'broken-zim' > "$atomic_dir/broken.zim"
+if PATH="$FAKE_BIN:$PATH" ZIM_DATA_DIR="$atomic_dir" KIWIX_MANAGE_FAIL=1 "$TEST_REPO/scripts/rebuild-library.sh"; then
+  echo "Library rebuild unexpectedly succeeded after an indexing failure." >&2
+  exit 1
+fi
+grep -qx 'previous-index' "$atomic_dir/library.xml"

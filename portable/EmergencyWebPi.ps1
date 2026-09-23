@@ -184,6 +184,20 @@ function Get-PinnedBaseImageInfo {
   }
 }
 
+function Get-ApplianceRequiredBytes {
+  param([Parameter(Mandatory = $true)][Int64]$ContentBytes)
+
+  $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
+  [int64]$oneGiB = 1GB
+  [int64]$minimumZimPartitionBytes = 8GB
+  [int64]$zimPartitionBytes = [Math]::Max(
+    $minimumZimPartitionBytes,
+    [Math]::Ceiling(($ContentBytes + $oneGiB) / $oneGiB) * $oneGiB
+  )
+
+  return $baseBytes + $zimPartitionBytes
+}
+
 function Resolve-ZimFileName {
   param([Parameter(Mandatory = $true)][string]$Url)
 
@@ -336,8 +350,7 @@ function Get-PreflightEstimate {
     $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
   }
 
-  # 5 percent padding for filesystem metadata and safety margin.
-  $requiredBytes = [int64][Math]::Ceiling(($baseBytes + $knownContentBytes) * 1.05)
+  $requiredBytes = Get-ApplianceRequiredBytes -ContentBytes $knownContentBytes
 
   $diskBytes = $null
   $fits = $null
@@ -372,8 +385,7 @@ function Get-WizardRequiredBytes {
     $contentBytes += [int64]$item.EstimatedBytes
   }
 
-  $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
-  return [int64][Math]::Ceiling(($baseBytes + $contentBytes + 1GB) * 1.05)
+  return Get-ApplianceRequiredBytes -ContentBytes $contentBytes
 }
 
 $form = New-Object System.Windows.Forms.Form
