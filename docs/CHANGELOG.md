@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.46] - 2026-09-23
+
+### Changed
+- Replaced the former developer control dump with a tabbed Developer Tools workspace for Build, Content, SD & Output, and Diagnostics.
+- Moved raw paths and configuration fields behind collapsible advanced sections while keeping direct testing and recovery controls available.
+
 ## [0.1.45] - 2026-09-23
 
 ### Fixed

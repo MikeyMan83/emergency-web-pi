@@ -760,6 +760,193 @@ function Add-Log {
   Write-AppLog $Text
 }
 
+function Move-DeveloperControl {
+  param(
+    [Parameter(Mandatory = $true)][System.Windows.Forms.Control]$Control,
+    [Parameter(Mandatory = $true)][System.Windows.Forms.Control]$Parent,
+    [int]$Left,
+    [int]$Top,
+    [int]$Width = 0
+  )
+
+  $Parent.Controls.Add($Control)
+  $Control.Left = $Left
+  $Control.Top = $Top
+  if ($Width -gt 0) {
+    $Control.Width = $Width
+  }
+  $Control.Visible = $true
+}
+
+function Show-DeveloperTools {
+  Write-AppLog "Opening Developer Tools workspace."
+
+  $developer = New-Object System.Windows.Forms.Form
+  $developer.Text = "$appDisplayName - Developer Tools"
+  $developer.ClientSize = New-Object System.Drawing.Size(1040, 700)
+  $developer.StartPosition = "CenterScreen"
+  $developer.Font = $font
+  $developer.MinimizeBox = $false
+
+  $heading = New-Object System.Windows.Forms.Label
+  $heading.Text = "Developer Tools"
+  $heading.Left = 20
+  $heading.Top = 16
+  $heading.AutoSize = $true
+  $heading.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
+  $developer.Controls.Add($heading)
+
+  $subheading = New-Object System.Windows.Forms.Label
+  $subheading.Text = "Advanced appliance builder, diagnostics, and direct recovery workflows."
+  $subheading.Left = 22
+  $subheading.Top = 48
+  $subheading.AutoSize = $true
+  $developer.Controls.Add($subheading)
+
+  $tabs = New-Object System.Windows.Forms.TabControl
+  $tabs.Left = 20
+  $tabs.Top = 78
+  $tabs.Width = 1000
+  $tabs.Height = 560
+  $developer.Controls.Add($tabs)
+
+  $buildTab = New-Object System.Windows.Forms.TabPage
+  $buildTab.Text = "Build"
+  $contentTab = New-Object System.Windows.Forms.TabPage
+  $contentTab.Text = "Content"
+  $outputTab = New-Object System.Windows.Forms.TabPage
+  $outputTab.Text = "SD & Output"
+  $diagnosticsTab = New-Object System.Windows.Forms.TabPage
+  $diagnosticsTab.Text = "Diagnostics"
+  [void]$tabs.TabPages.AddRange(@($buildTab, $contentTab, $outputTab, $diagnosticsTab))
+
+  $systemLabel = New-Object System.Windows.Forms.Label
+  $systemLabel.Text = "Base system"
+  $systemLabel.Left = 24
+  $systemLabel.Top = 24
+  $systemLabel.AutoSize = $true
+  $systemLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+  $buildTab.Controls.Add($systemLabel)
+
+  $baseInfo = Get-PinnedBaseImageInfo
+  $systemDetail = New-Object System.Windows.Forms.Label
+  $systemDetail.Text = "$($baseInfo.name) ($($baseInfo.architecture), $($baseInfo.releaseDate))`r`nAutomatically managed and SHA-256 verified."
+  $systemDetail.Left = 24
+  $systemDetail.Top = 52
+  $systemDetail.Width = 650
+  $systemDetail.Height = 42
+  $buildTab.Controls.Add($systemDetail)
+
+  Move-DeveloperControl -Control $btnCheck -Parent $buildTab -Left 24 -Top 120 -Width 150
+  $btnCheck.Text = "Check prerequisites"
+  Move-DeveloperControl -Control $btnBuild -Parent $buildTab -Left 184 -Top 120 -Width 130
+  $btnBuild.Text = "Build image"
+
+  $advancedConfig = New-Object System.Windows.Forms.CheckBox
+  $advancedConfig.Text = "Show raw build configuration"
+  $advancedConfig.Left = 24
+  $advancedConfig.Top = 174
+  $advancedConfig.AutoSize = $true
+  $buildTab.Controls.Add($advancedConfig)
+
+  $buildRawControls = @($lblBaseImage, $txtBase, $btnBase, $lblConfig, $txtConfig, $btnConfig, $lblZimDir, $txtZimDir, $btnZimDir)
+  Move-DeveloperControl -Control $lblBaseImage -Parent $buildTab -Left 24 -Top 210 -Width 180
+  Move-DeveloperControl -Control $txtBase -Parent $buildTab -Left 220 -Top 207 -Width 600
+  Move-DeveloperControl -Control $btnBase -Parent $buildTab -Left 832 -Top 207 -Width 110
+  Move-DeveloperControl -Control $lblConfig -Parent $buildTab -Left 24 -Top 250 -Width 180
+  Move-DeveloperControl -Control $txtConfig -Parent $buildTab -Left 220 -Top 247 -Width 600
+  Move-DeveloperControl -Control $btnConfig -Parent $buildTab -Left 832 -Top 247 -Width 110
+  Move-DeveloperControl -Control $lblZimDir -Parent $buildTab -Left 24 -Top 290 -Width 180
+  Move-DeveloperControl -Control $txtZimDir -Parent $buildTab -Left 220 -Top 287 -Width 600
+  Move-DeveloperControl -Control $btnZimDir -Parent $buildTab -Left 832 -Top 287 -Width 110
+  foreach ($control in $buildRawControls) { $control.Visible = $false }
+  $advancedConfig.Add_CheckedChanged({ foreach ($control in $buildRawControls) { $control.Visible = $advancedConfig.Checked } })
+
+  Move-DeveloperControl -Control $lblProfilePreset -Parent $contentTab -Left 24 -Top 24 -Width 180
+  $lblProfilePreset.Text = "Profile"
+  Move-DeveloperControl -Control $cmbProfiles -Parent $contentTab -Left 220 -Top 21 -Width 520
+  Move-DeveloperControl -Control $btnRefreshProfiles -Parent $contentTab -Left 750 -Top 21 -Width 85
+  Move-DeveloperControl -Control $btnLoadProfile -Parent $contentTab -Left 845 -Top 21 -Width 110
+  Move-DeveloperControl -Control $lblMainContentInfo -Parent $contentTab -Left 220 -Top 60 -Width 720
+  $lblMainContentInfo.AutoSize = $false
+  $lblMainContentInfo.Height = 42
+  Move-DeveloperControl -Control $lstProfileItems -Parent $contentTab -Left 220 -Top 112 -Width 720
+  $lstProfileItems.Height = 270
+  Move-DeveloperControl -Control $lblProfileItems -Parent $contentTab -Left 24 -Top 112 -Width 180
+  $lblProfileItems.Text = "Libraries"
+
+  $contentAdvanced = New-Object System.Windows.Forms.CheckBox
+  $contentAdvanced.Text = "Show profile and cache paths"
+  $contentAdvanced.Left = 220
+  $contentAdvanced.Top = 402
+  $contentAdvanced.AutoSize = $true
+  $contentTab.Controls.Add($contentAdvanced)
+  $contentRawControls = @($lblProfilePath, $txtProfilePath, $btnProfile, $lblCacheDir, $txtCacheDir)
+  Move-DeveloperControl -Control $lblProfilePath -Parent $contentTab -Left 24 -Top 438 -Width 180
+  Move-DeveloperControl -Control $txtProfilePath -Parent $contentTab -Left 220 -Top 435 -Width 720
+  Move-DeveloperControl -Control $btnProfile -Parent $contentTab -Left 220 -Top 472 -Width 110
+  Move-DeveloperControl -Control $lblCacheDir -Parent $contentTab -Left 24 -Top 510 -Width 180
+  Move-DeveloperControl -Control $txtCacheDir -Parent $contentTab -Left 220 -Top 507 -Width 720
+  foreach ($control in $contentRawControls) { $control.Visible = $false }
+  $contentAdvanced.Add_CheckedChanged({ foreach ($control in $contentRawControls) { $control.Visible = $contentAdvanced.Checked } })
+
+  $sdLabel = New-Object System.Windows.Forms.Label
+  $sdLabel.Text = "Target SD card"
+  $sdLabel.Left = 24
+  $sdLabel.Top = 24
+  $sdLabel.AutoSize = $true
+  $sdLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+  $outputTab.Controls.Add($sdLabel)
+  Move-DeveloperControl -Control $cmbDisks -Parent $outputTab -Left 24 -Top 58 -Width 700
+  Move-DeveloperControl -Control $btnDiskRefreshInline -Parent $outputTab -Left 736 -Top 58 -Width 120
+  Move-DeveloperControl -Control $btnEstimate -Parent $outputTab -Left 24 -Top 112 -Width 160
+  $btnEstimate.Text = "Estimate capacity"
+  Move-DeveloperControl -Control $btnDynamic -Parent $outputTab -Left 196 -Top 112 -Width 220
+  $btnDynamic.Text = "Build & flash selected SD"
+  Move-DeveloperControl -Control $btnWrite -Parent $outputTab -Left 428 -Top 112 -Width 180
+  $btnWrite.Text = "Write prepared image"
+
+  $outputAdvanced = New-Object System.Windows.Forms.CheckBox
+  $outputAdvanced.Text = "Show output and manifest paths"
+  $outputAdvanced.Left = 24
+  $outputAdvanced.Top = 172
+  $outputAdvanced.AutoSize = $true
+  $outputTab.Controls.Add($outputAdvanced)
+  $outputRawControls = @($lblOutputImage, $txtImagePath, $lblManifestPath, $txtManifestPath, $btnManifest)
+  Move-DeveloperControl -Control $lblOutputImage -Parent $outputTab -Left 24 -Top 210 -Width 180
+  Move-DeveloperControl -Control $txtImagePath -Parent $outputTab -Left 220 -Top 207 -Width 720
+  Move-DeveloperControl -Control $lblManifestPath -Parent $outputTab -Left 24 -Top 250 -Width 180
+  Move-DeveloperControl -Control $txtManifestPath -Parent $outputTab -Left 220 -Top 247 -Width 600
+  Move-DeveloperControl -Control $btnManifest -Parent $outputTab -Left 832 -Top 247 -Width 110
+  foreach ($control in $outputRawControls) { $control.Visible = $false }
+  $outputAdvanced.Add_CheckedChanged({ foreach ($control in $outputRawControls) { $control.Visible = $outputAdvanced.Checked } })
+
+  $diagnosticActions = New-Object System.Windows.Forms.Panel
+  $diagnosticActions.Dock = "Bottom"
+  $diagnosticActions.Height = 58
+  $diagnosticsTab.Controls.Add($diagnosticActions)
+  $txtLog.Parent = $diagnosticsTab
+  $txtLog.Dock = "Fill"
+  $txtLog.Visible = $true
+  Move-DeveloperControl -Control $btnArtifacts -Parent $diagnosticActions -Left 16 -Top 14 -Width 150
+  Move-DeveloperControl -Control $btnAbout -Parent $diagnosticActions -Left 176 -Top 14 -Width 150
+  Move-DeveloperControl -Control $btnExit -Parent $diagnosticActions -Left 830 -Top 14 -Width 110
+  $btnExit.Text = "Close tools"
+  $btnArtifacts.Text = "Open workspace"
+  $btnExit.Add_Click({ $developer.Close() })
+  $diagnosticActions.BringToFront()
+
+  $btnToggleAdvanced.Visible = $false
+  $lblDisk.Visible = $false
+  $txtDisk.Visible = $false
+  $chkAutoFetchBase.Visible = $false
+  $chkDownloadOnPi.Visible = $false
+  $lblReleaseRepo.Visible = $false
+  $txtReleaseRepo.Visible = $false
+
+  [void]$developer.ShowDialog()
+}
+
 function Refresh-ProfilePicker {
   $profilesDir = Join-Path $repoRoot "profiles"
   $cmbProfiles.Items.Clear()
@@ -1380,9 +1567,8 @@ function Start-EndUserFlow {
 
     if ($selection.DeveloperTools) {
       $script:normalLaunch = $false
-      $form.Text = "$appDisplayName - Developer Tools"
-      $lblIntro.Text = "Developer Tools: build inputs, image tools, diagnostics, and exact command output."
-      Set-AdvancedVisibility -Visible $true
+      Show-DeveloperTools
+      $form.Close()
       return
     }
 
