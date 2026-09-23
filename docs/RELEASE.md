@@ -38,13 +38,13 @@ The workflow at `.github/workflows/release.yml` will:
 
 Release workflow now attaches a Windows portable bundle asset:
 
-1. `PiKiwixPortable-<version>-windows.zip`
-2. `PiKiwixPortable-<version>-windows.sha256.txt`
+1. `EmergencyWebPi-<version>-windows.zip`
+2. `EmergencyWebPi-<version>-windows.sha256.txt`
 
 Bundle contents include:
 
-1. Root frontend executable: `PiKiwixPortable.exe`
-2. Root launcher: `Launch-PiKiwixPortable.cmd` (fallback/manual path)
-3. Internal frontend executable: `portable/PiKiwixPortable.exe`
+1. Root frontend executable: `EmergencyWebPi.exe`
+2. Root launcher: `Launch-EmergencyWebPi.cmd` (fallback/manual path)
+3. Internal frontend executable: `portable/EmergencyWebPi.exe`
 
 Packaging now fails if EXE generation fails, so release bundles do not silently fall back to script-only startup.

@@ -8,10 +8,10 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 For normal deployment, use the portable app wizard:
 
 1. Go to https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest.
-2. Download `PiKiwixPortable-<version>-windows.zip`.
+2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
-4. Start `PiKiwixPortable.exe` from the extracted root folder.
-5. Click `Start End-User Wizard`.
+4. Start `EmergencyWebPi.exe` from the extracted root folder.
+5. Click `Quick Wizard`.
 6. Select catalog items.
 7. Choose download mode:
   - Windows during SD creation (offline-ready), or
@@ -22,7 +22,7 @@ For normal deployment, use the portable app wizard:
 11. Open `http://10.42.0.1` to watch startup status.
 12. Open `http://10.42.0.1:8080` when ready.
 
-Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-PiKiwixPortable.cmd` from the extracted root.
+Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
 If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 

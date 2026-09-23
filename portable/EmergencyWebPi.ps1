@@ -2,7 +2,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
-$appDisplayName = "Pi Offline Library Builder"
+$appDisplayName = "Emergency Web Pi"
 
 trap {
   [System.Windows.Forms.MessageBox]::Show(
@@ -55,7 +55,7 @@ foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSp
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   $checked = ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join "`n"
   [System.Windows.Forms.MessageBox]::Show(
-    "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run PiKiwixPortable.exe from the extracted folder.`n`nChecked paths:`n$checked",
+    "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run EmergencyWebPi.exe from the extracted folder.`n`nChecked paths:`n$checked",
     $appDisplayName,
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
@@ -787,7 +787,7 @@ function Show-EndUserWizard {
   )
 
   $wizard = New-Object System.Windows.Forms.Form
-  $wizard.Text = "Pi Offline SD Wizard"
+  $wizard.Text = "Emergency Web Pi Wizard"
   $wizard.Size = New-Object System.Drawing.Size(900, 700)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"

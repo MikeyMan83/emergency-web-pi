@@ -1,6 +1,6 @@
-# pi-kiwix-survival
+# Emergency Web Pi
 
-Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
+Offline-first emergency web library appliance for Raspberry Pi 3B+.
 
 ## Windows end-to-end appliance flow
 
@@ -9,9 +9,9 @@ Build and write a complete appliance SD card from Windows.
 End-user path:
 
 1. Download from Releases: https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest
-2. Download `PiKiwixPortable-<version>-windows.zip` (release asset).
+2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
-4. Run `PiKiwixPortable.exe` from the extracted root folder.
+4. Run `EmergencyWebPi.exe` from the extracted root folder.
 5. Start the end-user wizard.
 6. Select the catalog items you want.
 7. The default path preloads catalogs during SD creation so the card is offline-ready.
@@ -21,23 +21,23 @@ End-user path:
 10. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
 11. When ready, open http://10.42.0.1:8080 for the library.
 
-Fallback if no release asset is attached yet: download `Source code (zip)` and run `Launch-PiKiwixPortable.cmd` from the extracted root.
+Fallback if no release asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
 Portable frontend option:
 
 ```powershell
-.\PiKiwixPortable.exe
+.\EmergencyWebPi.exe
 ```
 
 Debug/support fallback launcher:
 
 ```powershell
-.\Launch-PiKiwixPortable.cmd
+.\Launch-EmergencyWebPi.cmd
 ```
 
 Launcher policy:
-- `PiKiwixPortable.exe` is the primary app entry point.
-- `Launch-PiKiwixPortable.cmd` is a fallback helper that tries EXE first, then script fallback only if needed.
+- `EmergencyWebPi.exe` is the primary app entry point.
+- `Launch-EmergencyWebPi.cmd` is a fallback helper that tries EXE first, then script fallback only if needed.
 
 If you see missing-file errors that reference a `...\AppData\Local\Temp\...` path,
 you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
@@ -90,7 +90,7 @@ This project is designed as a Windows-first appliance builder:
 - Run `scripts/create-sd.ps1` on a Windows PC with a blank SD card inserted.
 - Write a complete Raspberry Pi appliance to that SD card.
 - Insert the SD card into the Pi and boot without internet.
-- Connect to the emergency Wi-Fi and browse the preloaded Kiwix library.
+- Connect to the emergency Wi-Fi and browse the preloaded offline library.
 
 No first-boot installation, internet connection, GitHub access, or manual configuration
 should be required for the finished appliance to function.
@@ -240,8 +240,8 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
 - `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (base image + profile download + exFAT data partition).
 - `scripts/rebuild-library.sh`: host-side local `library.xml` rebuild helper.
-- `portable/PiKiwixPortable.ps1`: portable Windows frontend for build + SD write.
-- `portable/Launch-PiKiwixPortable.cmd`: one-click launcher for the portable frontend.
+- `portable/EmergencyWebPi.ps1`: portable Windows frontend for build + SD write.
+- `portable/Launch-EmergencyWebPi.cmd`: one-click launcher for the portable frontend.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for native kiwix service + timer.
 - `scripts/systemd/pi-kiwix-serve.service`: native kiwix runtime service.

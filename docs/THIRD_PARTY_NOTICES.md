@@ -8,7 +8,7 @@ This project includes and depends on third-party open-source software.
 - Upstream project: https://github.com/kiwix/kiwix-tools
 - License: GNU General Public License v3.0 (GPL-3.0)
 
-The Pi Offline Library Builder uses Kiwix tooling to serve and manage offline ZIM libraries.
+Emergency Web Pi uses Kiwix tooling to serve and manage offline ZIM libraries.
 
 When distributing binaries or images built by this project, include the applicable open-source notices and license texts, and provide users a way to obtain corresponding source code as required by the relevant licenses.
 

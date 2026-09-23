@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $releaseRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDir))
-$bundleName = "PiKiwixPortable-$Version-windows"
+$bundleName = "EmergencyWebPi-$Version-windows"
 $bundleDir = Join-Path $releaseRoot $bundleName
 $zipPath = Join-Path $releaseRoot "$bundleName.zip"
 $checksumsPath = Join-Path $releaseRoot "$bundleName.sha256.txt"
@@ -27,7 +27,7 @@ if (Test-Path $checksumsPath) {
 New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
 
 $copyItems = @(
-  "Launch-PiKiwixPortable.cmd",
+  "Launch-EmergencyWebPi.cmd",
   "README.md",
   "HOWTO.md",
   "docs",
@@ -48,28 +48,28 @@ foreach ($item in $copyItems) {
 }
 
 $startNote = @(
-  "Pi Kiwix Portable $Version",
+  "Emergency Web Pi $Version",
   "",
   "Quick start:",
-  "1. Right-click PiKiwixPortable.exe and choose Run as administrator.",
+  "1. Right-click EmergencyWebPi.exe and choose Run as administrator.",
   "2. Click Start End-User Wizard.",
   "3. Select catalogs and target SD card.",
   "4. Wait for completion, then insert SD card in Pi."
 )
 Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Encoding utf8
 
-$portableScript = Join-Path $bundleDir "portable/PiKiwixPortable.ps1"
-$portableExe = Join-Path $bundleDir "portable/PiKiwixPortable.exe"
-$rootExe = Join-Path $bundleDir "PiKiwixPortable.exe"
+$portableScript = Join-Path $bundleDir "portable/EmergencyWebPi.ps1"
+$portableExe = Join-Path $bundleDir "portable/EmergencyWebPi.exe"
+$rootExe = Join-Path $bundleDir "EmergencyWebPi.exe"
 
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
   Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
 Import-Module ps2exe -Force
-Invoke-ps2exe -inputFile $portableScript -outputFile $portableExe -noConsole -title "Pi Kiwix Portable" -version $Version
+Invoke-ps2exe -inputFile $portableScript -outputFile $portableExe -noConsole -title "Emergency Web Pi" -version $Version
 
 if (-not (Test-Path $portableExe)) {
-  throw "Failed to produce portable/PiKiwixPortable.exe. Release packaging requires a working EXE frontend."
+  throw "Failed to produce portable/EmergencyWebPi.exe. Release packaging requires a working EXE frontend."
 }
 
 Copy-Item -Path $portableExe -Destination $rootExe -Force
@@ -81,9 +81,9 @@ $lines = @(
   "$zipHash  $(Split-Path -Leaf $zipPath)"
 )
 $exeHash = (Get-FileHash -Path $portableExe -Algorithm SHA256).Hash
-$lines += "$exeHash  portable/PiKiwixPortable.exe"
+$lines += "$exeHash  portable/EmergencyWebPi.exe"
 $rootExeHash = (Get-FileHash -Path $rootExe -Algorithm SHA256).Hash
-$lines += "$rootExeHash  PiKiwixPortable.exe"
+$lines += "$rootExeHash  EmergencyWebPi.exe"
 Set-Content -Path $checksumsPath -Value $lines -Encoding ascii
 
 Write-Host "Portable release package created"

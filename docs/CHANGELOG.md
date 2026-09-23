@@ -6,11 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+- Renamed the Windows portable app branding and release artifacts from PiKiwixPortable to EmergencyWebPi.
+
 ## [0.1.12] - 2026-09-23
 
 ### Fixed
 - Portable frontend path discovery now also probes the current process executable directory, improving reliability when launched elevated.
-- Root launcher now starts `PiKiwixPortable.exe` directly when present before falling back to nested launch scripts.
+- Root launcher now starts `EmergencyWebPi.exe` directly when present before falling back to nested launch scripts.
 
 ## [0.1.11] - 2026-09-23
 
@@ -26,8 +29,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [0.1.10] - 2026-09-23
 
 ### Changed
-- Portable release packaging is now EXE-first and fails if `PiKiwixPortable.exe` cannot be produced.
-- Release bundles now include a root-level `PiKiwixPortable.exe` as the primary end-user entry point.
+- Portable release packaging is now EXE-first and fails if `EmergencyWebPi.exe` cannot be produced.
+- Release bundles now include a root-level `EmergencyWebPi.exe` as the primary end-user entry point.
 - README/HOWTO/RELEASE instructions now direct users to launch the root EXE rather than a CMD wrapper.
 
 ## [0.1.9] - 2026-09-23
@@ -42,12 +45,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [0.1.8] - 2026-09-23
 
 ### Added
-- Added root-level launcher `Launch-PiKiwixPortable.cmd` so extracted bundles/source can be started without navigating subfolders.
+- Added root-level launcher `Launch-EmergencyWebPi.cmd` so extracted bundles/source can be started without navigating subfolders.
 - Added `scripts/package-portable.ps1` to build a release-ready Windows portable bundle and checksums.
 
 ### Changed
-- `.github/workflows/release.yml` now builds and attaches `PiKiwixPortable-<version>-windows.zip` plus SHA256 checksums to GitHub releases.
-- `portable/Launch-PiKiwixPortable.cmd` now prefers `PiKiwixPortable.exe` when available and falls back to PowerShell script.
+- `.github/workflows/release.yml` now builds and attaches `EmergencyWebPi-<version>-windows.zip` plus SHA256 checksums to GitHub releases.
+- `portable/Launch-EmergencyWebPi.cmd` now prefers `EmergencyWebPi.exe` when available and falls back to PowerShell script.
 - README/HOWTO/RELEASE docs now provide explicit end-user download artifact guidance and fallback path.
 
 ## [0.1.7] - 2026-09-23
@@ -56,7 +59,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Updated README practical recommendation to prioritize the Windows appliance image build-and-write flow, with first-boot automation positioned as development/recovery only.
 
 ### Added
-- Added a portable Windows frontend (`portable/PiKiwixPortable.ps1` + `portable/Launch-PiKiwixPortable.cmd`) that wraps the existing safe build and SD-write scripts.
+- Added a portable Windows frontend (`portable/EmergencyWebPi.ps1` + `portable/Launch-EmergencyWebPi.cmd`) that wraps the existing safe build and SD-write scripts.
 - Added `scripts/create-sd-dynamic.ps1` for dynamic Windows SD creation from a base image + profile list, including exFAT `ZIMDATA` partition creation and content download/copy.
 - Added `scripts/rebuild-library.sh` shared helper for local library reconstruction.
 - Added dynamic profile preset item picking in the portable frontend, allowing item-level selection before SD creation.
