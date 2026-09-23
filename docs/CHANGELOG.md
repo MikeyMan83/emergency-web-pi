@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.42] - 2026-09-23
+
+### Fixed
+- Remove the fixed 90 GB writer rejection and enforce SD capacity from the exact final appliance image instead.
+
 ## [0.1.41] - 2026-09-23
 
 ### Added

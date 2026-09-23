@@ -140,6 +140,8 @@ def main() -> int:
     require(initial_sync_service_path.exists(), "scripts/systemd/pi-kiwix-initial-sync.service must exist")
     require("Manifest.build.configSha256" in create_sd, "create-sd.ps1 must verify the resolved config hash")
     require("network.ap.password is a placeholder" in create_sd, "create-sd.ps1 must reject placeholder AP passwords")
+    require("$minimumBytes = 90GB" not in create_sd, "create-sd.ps1 must not enforce a fixed SD capacity")
+    require("Confirm-ImageFitsDisk -ImagePath $resolvedImagePath -Disk $disk" in create_sd, "create-sd.ps1 must validate the exact image against the selected disk")
     require("build-appliance-image.ps1" in create_sd_dynamic, "dynamic builder must build the appliance image before flashing")
     require("Resolve-BaseImage" in create_sd_dynamic, "dynamic builder must automatically resolve the pinned base image")
     require("Downloaded Raspberry Pi OS image failed SHA-256 verification" in create_sd_dynamic, "dynamic builder must verify the downloaded base image")

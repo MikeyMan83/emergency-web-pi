@@ -352,11 +352,6 @@ Validate-Config -Config $config
 
 $disk = Get-TargetDisk -Number $DiskNumber -AllowFixed:$AllowFixedDisk
 
-$minimumBytes = 90GB
-if ($disk.Size -lt $minimumBytes) {
-  throw "Disk $DiskNumber is too small. Need at least $([math]::Round($minimumBytes / 1GB)) GB for the current appliance target."
-}
-
 Write-Host "Emergency Web Pi Builder"
 Write-Host ""
 Write-Host "Disk:              #$DiskNumber ($([math]::Round($disk.Size / 1GB, 2)) GB)"
@@ -377,6 +372,7 @@ $resolvedManifestPath = Resolve-ManifestPath -ResolvedImagePath $resolvedImagePa
 $manifest = Read-Manifest -Path $resolvedManifestPath
 Validate-Manifest -Manifest $manifest -ResolvedImagePath $resolvedImagePath
 Validate-ConfigFingerprint -Manifest $manifest -ConfigPath $ConfigPath
+Confirm-ImageFitsDisk -ImagePath $resolvedImagePath -Disk $disk
 
 Write-Host "Image:             $resolvedImagePath"
 Write-Host "Manifest:          $resolvedManifestPath"
