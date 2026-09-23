@@ -46,6 +46,7 @@ def main() -> int:
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     initial_sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-initial-sync.service"
     release_workflow_path = repo_root / ".github" / "workflows" / "release.yml"
+    release_status_path = repo_root / "scripts" / "release-status.ps1"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
     env_example = env_example_path.read_text(encoding="utf-8")
@@ -66,6 +67,7 @@ def main() -> int:
     build_image_sh = build_image_sh_path.read_text(encoding="utf-8")
     hardware_acceptance = hardware_acceptance_path.read_text(encoding="utf-8")
     release_workflow = release_workflow_path.read_text(encoding="utf-8")
+    release_status = release_status_path.read_text(encoding="utf-8")
     root_cmd = root_cmd_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
@@ -183,6 +185,8 @@ def main() -> int:
     require("--latest" in release_workflow, "release workflow must explicitly mark the published release as latest")
     require("Verify published release" in release_workflow, "release workflow must verify the published release record")
     require("isLatest" in release_workflow and "expectedAssets" in release_workflow, "release workflow must verify latest status and expected assets")
+    require(release_status_path.exists(), "scripts/release-status.ps1 must exist")
+    require("PUBLISHED:" in release_status and "PENDING:" in release_status, "release status command must distinguish pending and published releases")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

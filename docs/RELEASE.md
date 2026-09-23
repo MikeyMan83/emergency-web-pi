@@ -36,12 +36,15 @@ The workflow at `.github/workflows/release.yml` will:
 4. Create a draft GitHub Release using that changelog section.
 5. Upload the bundle and checksum, then publish the release.
 
-A pushed tag is not a published release until GitHub shows a non-draft release
-with both assets. Verify publication with:
+A pushed tag is not a published release until GitHub confirms a non-draft latest
+release with both expected assets. Run this command before announcing publication:
 
 ```powershell
-gh release view v<version> --repo MikeyMan83/emergency-web-pi --json tagName,isDraft,assets
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/release-status.ps1 -Version <version>
 ```
+
+It exits `0` only for a published, latest, asset-complete release. Exit `2` means
+the tag is pushed but publication is still pending; do not describe it as released.
 
 ## End-user download artifact (current)
 
