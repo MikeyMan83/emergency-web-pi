@@ -8,6 +8,7 @@ OUTPUT_IMAGE_PATH="$REPO_DIR/artifacts/appliance.img"
 MANIFEST_PATH=""
 ZIM_SOURCE_DIR=""
 MIN_ZIM_PARTITION_GB=8
+ALLOW_EMPTY_ZIMDATA=0
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,7 @@ Options:
   --manifest <path>               Output manifest path (default: <output>.manifest.json)
   --zim-source-dir <path>         Directory containing preloaded .zim files
   --min-zim-partition-gb <int>    Minimum dedicated zimdata partition size in GB (default: 8)
+  --allow-empty-zimdata           Allow image build without preloaded .zim files
 EOF
 }
 
@@ -59,6 +61,10 @@ while [[ $# -gt 0 ]]; do
     --min-zim-partition-gb)
       MIN_ZIM_PARTITION_GB="$2"
       shift 2
+      ;;
+    --allow-empty-zimdata)
+      ALLOW_EMPTY_ZIMDATA=1
+      shift
       ;;
     -h|--help)
       usage
@@ -108,6 +114,11 @@ if [[ ! -f "$CONFIG_PATH" ]]; then
 fi
 if [[ -n "$ZIM_SOURCE_DIR" && ! -d "$ZIM_SOURCE_DIR" ]]; then
   echo "ZIM source directory not found: $ZIM_SOURCE_DIR" >&2
+  exit 1
+fi
+if [[ -z "$ZIM_SOURCE_DIR" && "$ALLOW_EMPTY_ZIMDATA" -ne 1 ]]; then
+  echo "ZIM source directory is required for offline-ready appliance builds." >&2
+  echo "Provide --zim-source-dir or pass --allow-empty-zimdata for development-only images." >&2
   exit 1
 fi
 
@@ -213,11 +224,17 @@ ssid=$(jq -r '.network.ap.ssid' "$CONFIG_PATH")
 password=$(jq -r '.network.ap.password' "$CONFIG_PATH")
 ap_address=$(jq -r '.network.ap.address' "$CONFIG_PATH")
 ap_port=$(jq -r '.network.ap.port' "$CONFIG_PATH")
+ap_country=$(jq -r '.network.ap.countryCode // "NL"' "$CONFIG_PATH")
 interval=$(jq -r '.updates.intervalSeconds // 604800' "$CONFIG_PATH")
 hostname_cfg=$(jq -r '.system.hostname' "$CONFIG_PATH")
 profile=$(jq -r '.content.profile' "$CONFIG_PATH")
 snapshot=$(jq -r '.content.snapshot' "$CONFIG_PATH")
 version=$(jq -r '.applianceVersion' "$CONFIG_PATH")
+
+if [[ ! "$ap_country" =~ ^[A-Z]{2}$ ]]; then
+  echo "network.ap.countryCode must be a two-letter uppercase value (example: NL, US, DE)." >&2
+  exit 1
+fi
 
 if [[ "$password" == "__GENERATE__" || "$password" == "ChangeThisEmergencyPassword123" ]]; then
   password=$(tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*+-_' < /dev/urandom | head -c 20)
@@ -238,6 +255,7 @@ sudo cp "$MOUNT_ROOT/opt/pi-kiwix-survival/.env.example" "$MOUNT_ROOT/opt/pi-kiw
 sudo sed -i "s|^AP_SSID=.*|AP_SSID=$ssid|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^AP_PASSPHRASE=.*|AP_PASSPHRASE=$password|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^AP_ADDRESS=.*|AP_ADDRESS=${ap_cidr}|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
+sudo sed -i "s|^AP_COUNTRY_CODE=.*|AP_COUNTRY_CODE=${ap_country}|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^SYNC_INTERVAL_SECONDS=.*|SYNC_INTERVAL_SECONDS=$interval|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i "s|^ZIM_DATA_DIR=.*|ZIM_DATA_DIR=/var/lib/pi-kiwix-zimdata|" "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
 sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/pi-kiwix-survival/.env"
@@ -260,7 +278,7 @@ autoconnect=true
 mode=ap
 ssid=$ssid
 band=bg
-country=NL
+country=$ap_country
 
 [wifi-security]
 key-mgmt=wpa-psk

@@ -78,7 +78,7 @@ From Windows PowerShell:
 Prerequisite: WSL with Ubuntu installed.
 
 ```powershell
-./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
 ```
 
 This produces:
@@ -89,7 +89,7 @@ This produces:
 Then write SD media:
 
 ```powershell
-./scripts/create-sd.ps1 -DiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
 The initial config example is provided at `config/appliance.example.json`.

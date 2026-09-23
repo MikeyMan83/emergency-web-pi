@@ -9,6 +9,7 @@
     "ap": {
       "ssid": "PI-KIWIX-SURVIVAL",
       "password": "__GENERATE__",
+      "countryCode": "NL",
       "address": "10.42.0.1",
       "port": 8080
     },

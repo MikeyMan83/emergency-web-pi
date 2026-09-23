@@ -19,13 +19,13 @@ The portable app wraps the same validated script engine used below.
 3. Build appliance image + manifest in WSL:
 
 ```powershell
-./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\2026-xx-xx-raspios-bookworm-arm64-lite.img.xz
+./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\2026-xx-xx-raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
 ```
 
 4. Write the built image to SD:
 
 ```powershell
-./scripts/create-sd.ps1 -DiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
 This path enforces manifest invariants and image hash verification before write.
@@ -119,7 +119,7 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 
 If your goal is the easiest reliable workflow, use:
 1. Build the appliance image from Windows with `scripts/build-appliance-image.ps1`.
-2. Write that image with `scripts/create-sd.ps1 -Force`.
+2. Write that image with `scripts/create-sd.ps1 -Force` and matching `-ConfirmDiskNumber`.
 3. Boot the SD card in the Pi with no internet.
 4. Connect to the AP and browse to `http://10.42.0.1:8080`.
 
@@ -128,6 +128,8 @@ Use the legacy first-boot path only for development or recovery.
 `scripts/create-sd.ps1` is the Windows appliance-builder entry point.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
+`scripts/build-appliance-image.ps1` requires `-ZimSourceDir` for offline-ready images;
+use `-AllowEmptyZimData` only for development images that will sync content later.
 The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
 - dedicated `zimdata` partition,
 - `runtime.serverMode=native-kiwix-serve`,

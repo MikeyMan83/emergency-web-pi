@@ -10,6 +10,10 @@ param(
 
   [string]$ResolvedConfigPath = "config/appliance.local.json",
 
+  [int]$ConfirmDiskNumber = -1,
+
+  [switch]$AllowFixedDisk,
+
   [switch]$Force
 )
 
@@ -115,14 +119,21 @@ function Resolve-ApPassword {
 }
 
 function Get-TargetDisk {
-  param([int]$Number)
+  param(
+    [int]$Number,
+    [switch]$AllowFixed
+  )
 
   $disk = Get-Disk -Number $Number -ErrorAction Stop
   if ($disk.BusType -eq "USB" -or $disk.BusType -eq "SD") {
     return $disk
   }
 
-  Write-Warning "Disk $Number is bus type '$($disk.BusType)'. Double-check you selected the removable SD target."
+  if (-not $AllowFixed) {
+    throw "Disk $Number is bus type '$($disk.BusType)'. Refusing to write. Re-run with -AllowFixedDisk only if you intentionally target a non-removable disk."
+  }
+
+  Write-Warning "Disk $Number is bus type '$($disk.BusType)' and -AllowFixedDisk was provided. Continuing by explicit override."
   return $disk
 }
 
@@ -365,7 +376,7 @@ $config = Read-Config -Path $ConfigPath
 Validate-Config -Config $config
 Resolve-ApPassword -Config $config -ConfigPath $ConfigPath -ResolvedConfigPath $ResolvedConfigPath
 
-$disk = Get-TargetDisk -Number $DiskNumber
+$disk = Get-TargetDisk -Number $DiskNumber -AllowFixed:$AllowFixedDisk
 
 $minimumBytes = 90GB
 if ($disk.Size -lt $minimumBytes) {
@@ -398,6 +409,10 @@ Write-Host "Manifest:          $resolvedManifestPath"
 if (-not $Force) {
   Write-Warning "Image writing is destructive. Re-run with -Force to write the appliance image to disk #$DiskNumber."
   return
+}
+
+if ($ConfirmDiskNumber -ne $DiskNumber) {
+  throw "Set -ConfirmDiskNumber $DiskNumber to confirm destructive write target for disk #$DiskNumber."
 }
 
 Write-Host ""

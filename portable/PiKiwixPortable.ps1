@@ -120,7 +120,7 @@ $txtConfig = Add-TextBox -DefaultText "config/appliance.example.json" -Top $y
 $btnConfig = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "Optional ZIM Source Dir" -Top $y
+Add-Label -Text "ZIM Source Dir" -Top $y
 $txtZimDir = Add-TextBox -DefaultText "" -Top $y
 $btnZimDir = Add-BrowseButton -Top $y
 $y += 40
@@ -291,13 +291,15 @@ $btnBuild.Add_Click({
   )
 
   $zimAbs = To-Absolute -PathValue $txtZimDir.Text
-  if (-not [string]::IsNullOrWhiteSpace($zimAbs)) {
-    if (-not (Test-Path $zimAbs)) {
-      Add-Log "Build aborted: ZIM source directory not found."
-      return
-    }
-    $args += @("-ZimSourceDir", (Quote-Arg -Value $zimAbs))
+  if ([string]::IsNullOrWhiteSpace($zimAbs)) {
+    Add-Log "Build aborted: ZIM source directory is required for offline-ready images."
+    return
   }
+  if (-not (Test-Path $zimAbs)) {
+    Add-Log "Build aborted: ZIM source directory not found."
+    return
+  }
+  $args += @("-ZimSourceDir", (Quote-Arg -Value $zimAbs))
 
   Add-Log "Building appliance image"
   $result = Invoke-PowerShellScript -ScriptPath $buildScript -Arguments $args
@@ -351,6 +353,7 @@ $btnWrite.Add_Click({
 
   $args = @(
     "-DiskNumber", $diskNum,
+    "-ConfirmDiskNumber", $diskNum,
     "-ConfigPath", (Quote-Arg -Value $configAbs),
     "-ImagePath", (Quote-Arg -Value $imgAbs),
     "-ManifestPath", (Quote-Arg -Value $manifestAbs),

@@ -10,7 +10,9 @@ param(
 
   [string]$ZimSourceDir = "",
 
-  [int]$MinZimPartitionGb = 8
+  [int]$MinZimPartitionGb = 8,
+
+  [switch]$AllowEmptyZimData
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,12 +72,19 @@ if (-not [string]::IsNullOrWhiteSpace($ZimSourceDir)) {
   $resolvedZim = (Resolve-Path $ZimSourceDir).Path
   $wslZim = wsl wslpath -a "$resolvedZim"
   $zimArg = " --zim-source-dir '$wslZim'"
+} elseif (-not $AllowEmptyZimData) {
+  throw "ZimSourceDir is required for offline-ready appliance builds. Provide -ZimSourceDir, or use -AllowEmptyZimData for development-only images."
+}
+
+$emptyArg = ""
+if ($AllowEmptyZimData) {
+  $emptyArg = " --allow-empty-zimdata"
 }
 
 $cmd = @(
   "cd '$wslRepo'",
   "chmod +x scripts/build-appliance-image.sh",
-  "sudo scripts/build-appliance-image.sh --base-image '$wslBase' --config '$wslConfig' --output '$wslOutput' --manifest '$wslManifest' --min-zim-partition-gb '$MinZimPartitionGb'$zimArg"
+  "sudo scripts/build-appliance-image.sh --base-image '$wslBase' --config '$wslConfig' --output '$wslOutput' --manifest '$wslManifest' --min-zim-partition-gb '$MinZimPartitionGb'$zimArg$emptyArg"
 ) -join " && "
 
 Write-Host "Running Linux image builder in WSL..."
@@ -85,4 +94,4 @@ Write-Host ""
 Write-Host "Build complete"
 Write-Host "Image:    $resolvedOutput"
 Write-Host "Manifest: $resolvedManifest"
-Write-Host "Next: run scripts/create-sd.ps1 -DiskNumber <N> -ImagePath '$resolvedOutput' -ManifestPath '$resolvedManifest' -Force"
+Write-Host "Next: run scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath '$resolvedOutput' -ManifestPath '$resolvedManifest' -Force"

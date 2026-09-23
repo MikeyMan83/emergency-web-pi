@@ -70,6 +70,7 @@ def main() -> int:
     require("scripts/create-sd.ps1" in appliance_doc, "docs/APPLIANCE.md must define create-sd.ps1 as the Windows entry point")
     require(isinstance(appliance_config.get("applianceVersion"), str), "config/appliance.example.json must set applianceVersion")
     require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
+    require(appliance_config.get("network", {}).get("ap", {}).get("countryCode") == "NL", "config/appliance.example.json must set network.ap.countryCode to NL by default")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require(portable_ps1_path.exists(), "portable/PiKiwixPortable.ps1 must exist")
