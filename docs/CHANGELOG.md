@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-09-23
+
+### Fixed
+- Restored the complete Everything collection as the default wizard selection instead of the alphabetically first subset.
+- Added validation that the default collection includes every catalog item.
+
 ## [0.1.22] - 2026-09-23
 
 ### Added

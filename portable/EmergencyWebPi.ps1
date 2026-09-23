@@ -723,7 +723,9 @@ function Refresh-ProfilePicker {
   }
 
   if ($cmbProfiles.Items.Count -gt 0) {
-    $cmbProfiles.SelectedIndex = 0
+    $defaultProfile = "profiles\medical-survival-zimlist.txt"
+    $defaultIndex = $cmbProfiles.Items.IndexOf($defaultProfile)
+    $cmbProfiles.SelectedIndex = if ($defaultIndex -ge 0) { $defaultIndex } else { 0 }
   }
 }
 
