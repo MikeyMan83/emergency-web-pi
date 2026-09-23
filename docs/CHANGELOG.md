@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.39] - 2026-09-23
+
+### Tests
+- Added a regression check requiring normal startup to invoke the wizard directly rather than depend on a simulated button click.
+
 ## [0.1.38] - 2026-09-23
 
 ### Fixed
