@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.48] - 2026-09-23
+
+### Fixed
+- Make direct Developer Tools image builds download and verify the pinned Raspberry Pi OS Lite base image when no local override is selected.
+
 ## [0.1.47] - 2026-09-23
 
 ### Fixed

@@ -41,7 +41,7 @@ Use WSL-backed image build before writing the SD card:
 Prerequisite: install WSL with an Ubuntu distribution (`wsl --install`).
 
 ```powershell
-./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
+./scripts/build-appliance-image.ps1 -ZimSourceDir C:\path\to\zim-files
 ```
 
 For development images without preloaded content, add `-AllowEmptyZimData`.

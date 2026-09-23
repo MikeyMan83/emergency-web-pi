@@ -129,6 +129,7 @@ def main() -> int:
             require(file_name in content_catalog, f"config/content-catalog.json must describe {file_name} from {profile_path.name}")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
+    require("function Resolve-BaseImage" in build_image_ps1_path.read_text(encoding="utf-8"), "direct image builder must resolve the pinned base image")
     require(create_sd_dynamic_path.exists(), "scripts/create-sd-dynamic.ps1 must exist")
     require(config_resolver_path.exists(), "scripts/resolve-appliance-config.ps1 must exist")
     require(rebuild_library_path.exists(), "scripts/rebuild-library.sh must exist")

@@ -1,6 +1,9 @@
 param(
-  [Parameter(Mandatory = $true)]
-  [string]$BaseImagePath,
+  [string]$BaseImagePath = "",
+
+  [string]$BaseManifestPath = "config/base-image.json",
+
+  [string]$BaseImageCacheDir = "artifacts/base-image-cache",
 
   [string]$ConfigPath = "config/appliance.example.json",
 
@@ -64,7 +67,60 @@ function Resolve-RepoPath {
   return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
 }
 
-$resolvedBaseImage = (Resolve-Path $BaseImagePath).Path
+function Get-FileSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Resolve-BaseImage {
+  param(
+    [string]$ProvidedImagePath,
+    [Parameter(Mandatory = $true)][string]$ManifestPath,
+    [Parameter(Mandatory = $true)][string]$CacheDir
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($ProvidedImagePath)) {
+    if (-not (Test-Path $ProvidedImagePath)) {
+      throw "Advanced base image override was not found: $ProvidedImagePath"
+    }
+    return (Resolve-Path $ProvidedImagePath).Path
+  }
+
+  if (-not (Test-Path $ManifestPath)) {
+    throw "Pinned base-image manifest was not found: $ManifestPath"
+  }
+  $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+  $expectedHash = $manifest.sha256.ToString().ToLowerInvariant()
+  if ([string]::IsNullOrWhiteSpace($manifest.downloadUrl) -or $expectedHash -notmatch "^[0-9a-f]{64}$") {
+    throw "Pinned base-image manifest must define an official downloadUrl and SHA-256."
+  }
+
+  New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
+  $fileName = [System.IO.Path]::GetFileName(([Uri]$manifest.downloadUrl).AbsolutePath)
+  $imagePath = Join-Path $CacheDir $fileName
+  if (Test-Path $imagePath -and (Get-FileSha256 -Path $imagePath) -eq $expectedHash) {
+    Write-Host "Using verified Raspberry Pi OS image cache: $fileName"
+    return $imagePath
+  }
+
+  Remove-Item -Force $imagePath -ErrorAction SilentlyContinue
+  $temporaryPath = "$imagePath.download"
+  Remove-Item -Force $temporaryPath -ErrorAction SilentlyContinue
+  Write-Host "Downloading verified Raspberry Pi OS Lite image..."
+  Invoke-WebRequest -Uri $manifest.downloadUrl -OutFile $temporaryPath -UseBasicParsing
+  if ((Get-FileSha256 -Path $temporaryPath) -ne $expectedHash) {
+    Remove-Item -Force $temporaryPath -ErrorAction SilentlyContinue
+    throw "Downloaded Raspberry Pi OS image failed SHA-256 verification."
+  }
+  Move-Item -Path $temporaryPath -Destination $imagePath -Force
+  Write-Host "Raspberry Pi OS image verified."
+  return $imagePath
+}
+
+$resolvedBaseManifest = Resolve-RepoPath -PathValue $BaseManifestPath
+$resolvedBaseCache = Resolve-RepoPath -PathValue $BaseImageCacheDir
+$resolvedBaseImage = Resolve-BaseImage -ProvidedImagePath $BaseImagePath -ManifestPath $resolvedBaseManifest -CacheDir $resolvedBaseCache
 $sourceConfig = (Resolve-Path $ConfigPath).Path
 $resolvedConfigOutput = Resolve-RepoPath -PathValue $ResolvedConfigPath
 $configResolver = Join-Path $repoRoot "scripts/resolve-appliance-config.ps1"

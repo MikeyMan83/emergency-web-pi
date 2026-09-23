@@ -108,10 +108,11 @@ emergency access point remains configured independently.
 
 From Windows PowerShell:
 
-Prerequisite: WSL with Ubuntu installed.
+Prerequisite: WSL with Ubuntu installed. When `-BaseImagePath` is omitted, the
+builder downloads and SHA-256 verifies the pinned official Raspberry Pi OS Lite image.
 
 ```powershell
-./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
+./scripts/build-appliance-image.ps1 -ZimSourceDir C:\path\to\zim-files
 ```
 
 This produces:

@@ -74,15 +74,14 @@ In the portable app, dynamic mode includes:
 - item-level checkboxes (choose exactly what to include),
 - preflight size estimation before the destructive write step.
 
-1. Download Raspberry Pi OS Lite (64-bit) image (`.img`, `.img.xz`, or `.zip`).
-2. Ensure WSL with Ubuntu is installed (`wsl --install`).
-3. Build appliance image + manifest in WSL:
+1. Ensure WSL with Ubuntu is installed (`wsl --install`).
+2. Build appliance image + manifest in WSL. The pinned Raspberry Pi OS Lite base image downloads and verifies automatically:
 
 ```powershell
-./scripts/build-appliance-image.ps1 -BaseImagePath C:\path\to\2026-xx-xx-raspios-bookworm-arm64-lite.img.xz -ZimSourceDir C:\path\to\zim-files
+./scripts/build-appliance-image.ps1 -ZimSourceDir C:\path\to\zim-files
 ```
 
-4. Write the built image to SD:
+3. Write the built image to SD:
 
 ```powershell
 ./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ConfigPath artifacts/appliance-config.json -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
