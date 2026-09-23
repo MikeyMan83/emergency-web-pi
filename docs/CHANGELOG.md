@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-09-23
+
+### Fixed
+- Isolated the initial-content regression fixture from checkout-local runtime configuration so it runs consistently in CI.
+
 ## [0.1.19] - 2026-09-23
 
 ### Added

@@ -8,6 +8,12 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 FAKE_BIN="$TEMP_DIR/bin"
 mkdir -p "$FAKE_BIN"
 
+TEST_REPO="$TEMP_DIR/repo"
+mkdir -p "$TEST_REPO/scripts"
+cp "$REPO_ROOT/scripts/sync.sh" "$TEST_REPO/scripts/sync.sh"
+cp "$REPO_ROOT/scripts/rebuild-library.sh" "$TEST_REPO/scripts/rebuild-library.sh"
+chmod +x "$TEST_REPO/scripts/sync.sh" "$TEST_REPO/scripts/rebuild-library.sh"
+
 cat > "$FAKE_BIN/aria2c" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -35,7 +41,7 @@ chmod +x "$FAKE_BIN/kiwix-manage"
 
 run_initial_sync() {
   local data_dir="$1"
-  PATH="$FAKE_BIN:$PATH" ZIM_DATA_DIR="$data_dir" "$REPO_ROOT/scripts/sync.sh" --initial
+  PATH="$FAKE_BIN:$PATH" GITHUB_URL="" ZIM_DATA_DIR="$data_dir" "$TEST_REPO/scripts/sync.sh" --initial
 }
 
 success_dir="$TEMP_DIR/success"
