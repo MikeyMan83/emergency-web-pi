@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.37] - 2026-09-23
+
+### Fixed
+- Keep the end-user wizard visible with a clear SD-card prompt when no writable card is detected instead of silently exiting.
+
 ## [0.1.36] - 2026-09-23
 
 ### Fixed

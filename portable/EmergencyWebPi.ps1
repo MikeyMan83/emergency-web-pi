@@ -1211,7 +1211,7 @@ function Show-EndUserWizard {
     }
 
     if ($cmbWizardDisk.SelectedItem -eq $null) {
-      [System.Windows.Forms.MessageBox]::Show("Select a target disk.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show("No writable SD card is detected. Insert an SD card, then click Refresh SD Cards from Developer Tools or restart the wizard.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
 
@@ -1342,8 +1342,7 @@ $btnWizard.Add_Click({
 
     $disks = Get-SelectableDisks
     if ($disks.Count -eq 0) {
-      Add-Log "Wizard aborted: no writable target disks found."
-      return
+      Add-Log "No writable target disks found; opening wizard so the user can review content or open Developer Tools."
     }
 
     $defaultProfile = if ($cmbProfiles.SelectedItem) { [string]$cmbProfiles.SelectedItem } else { $profilePaths[0] }
