@@ -27,7 +27,13 @@ Fallback if no release asset is attached yet: download `Source code (zip)` and r
 Portable frontend option:
 
 ```powershell
-.\portable\Launch-PiKiwixPortable.cmd
+.\PiKiwixPortable.exe
+```
+
+Debug/support fallback launcher:
+
+```powershell
+.\Launch-PiKiwixPortable.cmd
 ```
 
 The portable app wraps the same validated script engine used below.
