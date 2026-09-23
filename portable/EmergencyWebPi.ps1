@@ -1324,7 +1324,7 @@ $btnToggleAdvanced.Add_Click({
   Set-AdvancedVisibility -Visible (-not $showAdvanced)
 })
 
-$btnWizard.Add_Click({
+function Start-EndUserFlow {
   try {
     if ($cmbProfiles.Items.Count -eq 0) {
       Refresh-ProfilePicker
@@ -1389,8 +1389,20 @@ $btnWizard.Add_Click({
     $btnDynamic.PerformClick()
   } catch {
     Add-Log "Wizard failed: $($_.Exception.Message)"
+    Write-AppLog ("Wizard failed: {0}" -f $_.Exception.ToString())
+    [System.Windows.Forms.MessageBox]::Show(
+      "Emergency Web Pi could not open the setup wizard.`n`n$($_.Exception.Message)`n`nDiagnostic log:`n$logPath",
+      $appDisplayName,
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+    if ($script:normalLaunch) {
+      $form.Close()
+    }
   }
-})
+}
+
+$btnWizard.Add_Click({ Start-EndUserFlow })
 
 $btnLoadProfile.Add_Click({
   Load-SelectedPresetItems
@@ -1754,7 +1766,7 @@ Add-Log "Repository root: $repoRoot"
 
 $script:normalLaunch = $true
 Write-AppLog "Starting end-user wizard as the visible frontend."
-$btnWizard.PerformClick()
+Start-EndUserFlow
 
 if (-not $form.IsDisposed -and -not $script:normalLaunch) {
   [void]$form.ShowDialog()

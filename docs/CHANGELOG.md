@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.38] - 2026-09-23
+
+### Fixed
+- Start the wizard directly instead of simulating a button click during frontend startup.
+- Simplified Windows release bundles to one root EXE and one root CMD launcher, eliminating duplicate entry points.
+
 ## [0.1.37] - 2026-09-23
 
 ### Fixed

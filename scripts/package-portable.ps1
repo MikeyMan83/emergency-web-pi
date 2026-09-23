@@ -47,6 +47,8 @@ foreach ($item in $copyItems) {
   Copy-Item -Path $src -Destination (Join-Path $bundleDir $item) -Recurse -Force
 }
 
+Remove-Item -Path (Join-Path $bundleDir "portable/Launch-EmergencyWebPi.cmd") -Force
+
 $startNote = @(
   "Emergency Web Pi $Version",
   "",
@@ -61,7 +63,6 @@ Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Enc
 
 $portableScript = Join-Path $bundleDir "portable/EmergencyWebPi.ps1"
 $portableLauncherScript = Join-Path $bundleDir "portable/EmergencyWebPi-launcher.ps1"
-$portableExe = Join-Path $bundleDir "portable/EmergencyWebPi.exe"
 $rootExe = Join-Path $bundleDir "EmergencyWebPi.exe"
 
 try {
@@ -79,7 +80,7 @@ if (-not (Get-Module -ListAvailable -Name ps2exe)) {
   Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
 
-$escapedOutput = $portableExe.Replace("'", "''")
+$escapedOutput = $rootExe.Replace("'", "''")
 $escapedVersion = $Version.Replace("'", "''")
 $launcherSource = @'
 $ErrorActionPreference = "Stop"
@@ -118,11 +119,9 @@ if ($LASTEXITCODE -ne 0) {
   throw "ps2exe failed with exit code $LASTEXITCODE."
 }
 
-if (-not (Test-Path $portableExe)) {
-  throw "Failed to produce portable/EmergencyWebPi.exe. Release packaging requires a working EXE frontend."
+if (-not (Test-Path $rootExe)) {
+  throw "Failed to produce EmergencyWebPi.exe. Release packaging requires a working EXE frontend."
 }
-
-Copy-Item -Path $portableExe -Destination $rootExe -Force
 
 Compress-Archive -Path (Join-Path $bundleDir "*") -DestinationPath $zipPath -Force
 
@@ -130,8 +129,6 @@ $zipHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
 $lines = @(
   "$zipHash  $(Split-Path -Leaf $zipPath)"
 )
-$exeHash = (Get-FileHash -Path $portableExe -Algorithm SHA256).Hash
-$lines += "$exeHash  portable/EmergencyWebPi.exe"
 $rootExeHash = (Get-FileHash -Path $rootExe -Algorithm SHA256).Hash
 $lines += "$rootExeHash  EmergencyWebPi.exe"
 Set-Content -Path $checksumsPath -Value $lines -Encoding ascii

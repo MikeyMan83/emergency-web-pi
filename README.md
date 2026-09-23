@@ -250,7 +250,7 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (automatic verified base image + profile + ext4 appliance image build).
 - `scripts/rebuild-library.sh`: host-side local `library.xml` rebuild helper.
 - `portable/EmergencyWebPi.ps1`: portable Windows frontend for build + SD write.
-- `portable/Launch-EmergencyWebPi.cmd`: one-click launcher for the portable frontend.
+- `Launch-EmergencyWebPi.cmd`: one-click launcher for the portable frontend.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).
 - `scripts/install.sh`: one-command installer for native kiwix service + timer.
 - `scripts/systemd/pi-kiwix-serve.service`: native kiwix runtime service.

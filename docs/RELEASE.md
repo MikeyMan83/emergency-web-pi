@@ -45,6 +45,5 @@ Bundle contents include:
 
 1. Root frontend executable: `EmergencyWebPi.exe`
 2. Root launcher: `Launch-EmergencyWebPi.cmd` (fallback/manual path)
-3. Internal frontend executable: `portable/EmergencyWebPi.exe`
 
 Packaging now fails if EXE generation fails, so release bundles do not silently fall back to script-only startup.
