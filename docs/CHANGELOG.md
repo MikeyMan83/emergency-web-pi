@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-23
+
 ### Added
 - Added root-level launcher `Launch-PiKiwixPortable.cmd` so extracted bundles/source can be started without navigating subfolders.
 - Added `scripts/package-portable.ps1` to build a release-ready Windows portable bundle and checksums.
