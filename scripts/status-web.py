@@ -52,13 +52,13 @@ def safe_tail(path: pathlib.Path) -> str:
 
 def build_page(status: dict[str, object], kiwix_port: int) -> str:
     ready = "true" if status["kiwixActive"] else "false"
-    message = "Kiwix is ready" if status["kiwixActive"] else "Preparing content. Keep power connected."
+    message = "Library is ready" if status["kiwixActive"] else "Preparing content. Keep power connected."
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
 <meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-<title>Pi Kiwix Status</title>
+<title>Pi Offline Library Status</title>
 <style>
   body {{ font-family: 'Segoe UI', sans-serif; margin: 0; background: #f7f4ed; color: #1f2a37; }}
   .wrap {{ max-width: 760px; margin: 0 auto; padding: 28px; }}
@@ -76,9 +76,9 @@ def build_page(status: dict[str, object], kiwix_port: int) -> str:
 <body>
   <div class=\"wrap\">
     <div class=\"card\">
-      <h1 class=\"headline\">Pi Kiwix Appliance</h1>
+            <h1 class=\"headline\">Pi Offline Library</h1>
       <div id=\"state\" class=\"state\"><span id=\"spin\" class=\"spinner\"></span>{message}</div>
-      <div class=\"row\">Kiwix service: <strong id=\"kiwix\">{status['kiwixActive']}</strong></div>
+            <div class=\"row\">Library service: <strong id=\"kiwix\">{status['kiwixActive']}</strong></div>
       <div class=\"row\">Sync service active: <strong id=\"sync\">{status['syncActive']}</strong></div>
       <div class=\"row\">Local ZIM files: <strong id=\"zimCount\">{status['zimCount']}</strong></div>
       <div class=\"row\">Last sync log: <strong id=\"last\">{status['lastSyncLine']}</strong></div>
@@ -101,7 +101,7 @@ async function refresh() {{
     const open = document.getElementById('open');
     if (s.kiwixActive) {{
       state.classList.add('ok');
-      state.textContent = 'Kiwix is ready.';
+            state.textContent = 'Library is ready.';
       spin.classList.add('hidden');
       open.classList.remove('hidden');
     }} else {{

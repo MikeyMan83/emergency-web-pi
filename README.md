@@ -14,9 +14,8 @@ End-user path:
 4. Run `PiKiwixPortable.exe` from the extracted root folder.
 5. Start the end-user wizard.
 6. Select the catalog items you want.
-7. Choose where catalogs are downloaded:
-   - Windows during SD creation (offline-ready), or
-   - Pi after first boot (faster write, needs internet on first run).
+7. The default path preloads catalogs during SD creation so the card is offline-ready.
+   Advanced mode still allows deferred first-boot downloads for testing.
 8. Select your SD card and let the wizard build/write it.
 9. Insert the card into the Pi and boot.
 10. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
@@ -44,6 +43,8 @@ If you see missing-file errors that reference a `...\AppData\Local\Temp\...` pat
 you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
 
 The portable app wraps the same validated script engine used below.
+
+Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 The wizard defaults to dynamic mode with automatic latest-base fetch,
 catalog item selection, and preflight size estimation before write.

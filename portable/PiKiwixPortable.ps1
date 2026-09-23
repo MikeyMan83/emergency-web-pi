@@ -2,11 +2,12 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
+$appDisplayName = "Pi Offline Library Builder"
 
 trap {
   [System.Windows.Forms.MessageBox]::Show(
     $_.Exception.Message,
-    "Pi Kiwix Portable",
+    $appDisplayName,
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
   ) | Out-Null
@@ -55,7 +56,7 @@ if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   $checked = ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join "`n"
   [System.Windows.Forms.MessageBox]::Show(
     "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run PiKiwixPortable.exe from the extracted folder.`n`nChecked paths:`n$checked",
-    "Pi Kiwix Portable",
+    $appDisplayName,
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
   ) | Out-Null
@@ -69,7 +70,7 @@ $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
 if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript)) {
   [System.Windows.Forms.MessageBox]::Show(
     "Required scripts are missing. Ensure this portable folder is inside the repository root.",
-    "Pi Kiwix Portable",
+    $appDisplayName,
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
   ) | Out-Null
@@ -307,7 +308,7 @@ function Get-PreflightEstimate {
 }
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Pi Kiwix Portable Builder"
+$form.Text = $appDisplayName
 $form.Size = New-Object System.Drawing.Size(1080, 920)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
@@ -326,6 +327,7 @@ function Add-Label {
   $label.Top = $Top
   $label.Width = 220
   $form.Controls.Add($label)
+  return $label
 }
 
 function Add-TextBox {
@@ -350,36 +352,36 @@ function Add-BrowseButton {
   return $btn
 }
 
-Add-Label -Text "Base Appliance Image" -Top $y
+$lblBaseImage = Add-Label -Text "Base Appliance Image" -Top $y
 $txtBase = Add-TextBox -DefaultText "artifacts/appliance.img" -Top $y
 $btnBase = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "Manifest Path" -Top $y
+$lblManifestPath = Add-Label -Text "Manifest Path" -Top $y
 $txtManifestPath = Add-TextBox -DefaultText "artifacts/appliance.img.manifest.json" -Top $y
 $btnManifest = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "Config JSON" -Top $y
+$lblConfig = Add-Label -Text "Config JSON" -Top $y
 $txtConfig = Add-TextBox -DefaultText "config/appliance.example.json" -Top $y
 $btnConfig = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "ZIM Source Dir" -Top $y
+$lblZimDir = Add-Label -Text "ZIM Source Dir" -Top $y
 $txtZimDir = Add-TextBox -DefaultText "" -Top $y
 $btnZimDir = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "Output Image Path" -Top $y
+$lblOutputImage = Add-Label -Text "Output Image Path" -Top $y
 $txtImagePath = Add-TextBox -DefaultText "artifacts/appliance.img" -Top $y
 $y += 40
 
-Add-Label -Text "Dynamic Profile List (file)" -Top $y
+$lblProfilePath = Add-Label -Text "Dynamic Profile List (file)" -Top $y
 $txtProfilePath = Add-TextBox -DefaultText "profiles/medical-survival-zimlist.txt" -Top $y
 $btnProfile = Add-BrowseButton -Top $y
 $y += 40
 
-Add-Label -Text "Profile Preset" -Top $y
+$lblProfilePreset = Add-Label -Text "Profile Preset" -Top $y
 $cmbProfiles = New-Object System.Windows.Forms.ComboBox
 $cmbProfiles.Left = 240
 $cmbProfiles.Top = $y - 3
@@ -402,7 +404,7 @@ $btnLoadProfile.Width = 170
 $form.Controls.Add($btnLoadProfile)
 $y += 40
 
-Add-Label -Text "Profile Items (checked = include)" -Top $y
+$lblProfileItems = Add-Label -Text "Profile Items (checked = include)" -Top $y
 $y += 22
 
 $lstProfileItems = New-Object System.Windows.Forms.CheckedListBox
@@ -423,11 +425,11 @@ $chkUsePicker.Checked = $true
 $form.Controls.Add($chkUsePicker)
 $y += 30
 
-Add-Label -Text "Dynamic Cache Dir" -Top $y
+$lblCacheDir = Add-Label -Text "Dynamic Cache Dir" -Top $y
 $txtCacheDir = Add-TextBox -DefaultText "artifacts/zim-cache" -Top $y
 $y += 40
 
-Add-Label -Text "Target Disk Number" -Top $y
+$lblDisk = Add-Label -Text "Target Disk Number" -Top $y
 $txtDisk = Add-TextBox -DefaultText "" -Top $y
 $y += 40
 
@@ -451,9 +453,16 @@ $form.Controls.Add($chkDownloadOnPi)
 
 $y += 30
 
-Add-Label -Text "Release Repo" -Top $y
+$lblReleaseRepo = Add-Label -Text "Release Repo" -Top $y
 $txtReleaseRepo = Add-TextBox -DefaultText "MikeyMan83/pi-kiwix-survival" -Top $y
 $y += 40
+
+$btnToggleAdvanced = New-Object System.Windows.Forms.Button
+$btnToggleAdvanced.Text = "Show Advanced Settings"
+$btnToggleAdvanced.Left = 20
+$btnToggleAdvanced.Top = $y - 32
+$btnToggleAdvanced.Width = 220
+$form.Controls.Add($btnToggleAdvanced)
 
 $btnCheck = New-Object System.Windows.Forms.Button
 $btnCheck.Text = "Check Prereqs"
@@ -464,9 +473,9 @@ $form.Controls.Add($btnCheck)
 
 $btnWizard = New-Object System.Windows.Forms.Button
 $btnWizard.Text = "Start End-User Wizard"
-$btnWizard.Left = 20
+$btnWizard.Left = 250
 $btnWizard.Top = $y - 32
-$btnWizard.Width = 220
+$btnWizard.Width = 160
 $form.Controls.Add($btnWizard)
 
 $btnBuild = New-Object System.Windows.Forms.Button
@@ -491,34 +500,128 @@ $btnEstimate.Width = 120
 $form.Controls.Add($btnEstimate)
 
 $btnDynamic = New-Object System.Windows.Forms.Button
-$btnDynamic.Text = "Dynamic SD"
+$btnDynamic.Text = "Step 3: Build && Flash SD Card"
 $btnDynamic.Left = 540
 $btnDynamic.Top = $y
-$btnDynamic.Width = 120
+$btnDynamic.Width = 240
 $form.Controls.Add($btnDynamic)
 
 $btnDisks = New-Object System.Windows.Forms.Button
-$btnDisks.Text = "List Disks"
-$btnDisks.Left = 670
+$btnDisks.Text = "Refresh SD Cards"
+$btnDisks.Left = 790
 $btnDisks.Top = $y
-$btnDisks.Width = 120
+$btnDisks.Width = 130
 $form.Controls.Add($btnDisks)
 
 $btnArtifacts = New-Object System.Windows.Forms.Button
 $btnArtifacts.Text = "Open Artifacts"
-$btnArtifacts.Left = 800
+$btnArtifacts.Left = 930
 $btnArtifacts.Top = $y
-$btnArtifacts.Width = 120
+$btnArtifacts.Width = 110
 $form.Controls.Add($btnArtifacts)
+
+$btnAbout = New-Object System.Windows.Forms.Button
+$btnAbout.Text = "About && Licenses"
+$btnAbout.Left = 150
+$btnAbout.Top = $y
+$btnAbout.Width = 140
+$form.Controls.Add($btnAbout)
 
 $btnExit = New-Object System.Windows.Forms.Button
 $btnExit.Text = "Exit"
-$btnExit.Left = 930
+$btnExit.Left = 20
 $btnExit.Top = $y
-$btnExit.Width = 110
+$btnExit.Width = 120
 $form.Controls.Add($btnExit)
 
 $y += 50
+
+$lblIntro = New-Object System.Windows.Forms.Label
+$lblIntro.Left = 20
+$lblIntro.Top = 12
+$lblIntro.Width = 1020
+$lblIntro.Height = 32
+$lblIntro.Text = "Pick survival content, pick SD card, then build. Advanced internals are hidden by default."
+$form.Controls.Add($lblIntro)
+
+$lblStep1 = New-Object System.Windows.Forms.Label
+$lblStep1.Left = 20
+$lblStep1.Top = $lblProfilePreset.Top
+$lblStep1.Width = 220
+$lblStep1.Text = "Step 1: Select Content"
+$form.Controls.Add($lblStep1)
+
+$lblStep2 = New-Object System.Windows.Forms.Label
+$lblStep2.Left = 20
+$lblStep2.Top = $lblDisk.Top
+$lblStep2.Width = 220
+$lblStep2.Text = "Step 2: Select SD Card"
+$form.Controls.Add($lblStep2)
+
+$cmbDisks = New-Object System.Windows.Forms.ComboBox
+$cmbDisks.Left = 240
+$cmbDisks.Top = $lblDisk.Top - 3
+$cmbDisks.Width = 540
+$cmbDisks.DropDownStyle = "DropDownList"
+$cmbDisks.DisplayMember = "Label"
+$form.Controls.Add($cmbDisks)
+
+$btnDiskRefreshInline = New-Object System.Windows.Forms.Button
+$btnDiskRefreshInline.Text = "Refresh"
+$btnDiskRefreshInline.Left = 790
+$btnDiskRefreshInline.Top = $lblDisk.Top - 4
+$btnDiskRefreshInline.Width = 90
+$form.Controls.Add($btnDiskRefreshInline)
+
+$lblProfilePreset.Text = "Step 1: Select Content Profile"
+$lblProfileItems.Text = "Catalog Items (checked = include)"
+$lblDisk.Visible = $false
+$txtDisk.Visible = $false
+$lblStep2.Text = "Step 2: Select SD Card"
+$btnEstimate.Text = "Estimate Required SD Size"
+$btnDynamic.Text = "Step 3: Build && Flash SD Card"
+$btnWizard.Text = "Quick Wizard"
+$chkUsePicker.Checked = $true
+$chkUsePicker.Visible = $false
+
+# Default to offline-ready cards. Pi-side deferred downloads are advanced-only.
+$chkDownloadOnPi.Checked = $false
+
+$advancedControls = @(
+  $lblBaseImage, $txtBase, $btnBase,
+  $lblManifestPath, $txtManifestPath, $btnManifest,
+  $lblConfig, $txtConfig, $btnConfig,
+  $lblZimDir, $txtZimDir, $btnZimDir,
+  $lblOutputImage, $txtImagePath,
+  $lblProfilePath, $txtProfilePath, $btnProfile,
+  $lblCacheDir, $txtCacheDir,
+  $chkAutoFetchBase,
+  $chkDownloadOnPi,
+  $lblReleaseRepo, $txtReleaseRepo,
+  $btnBuild, $btnWrite, $btnCheck
+)
+
+$showAdvanced = $false
+foreach ($ctrl in $advancedControls) {
+  $ctrl.Visible = $showAdvanced
+}
+
+function Set-AdvancedVisibility {
+  param([bool]$Visible)
+
+  $script:showAdvanced = $Visible
+  foreach ($ctrl in $advancedControls) {
+    $ctrl.Visible = $Visible
+  }
+
+  if ($Visible) {
+    $btnToggleAdvanced.Text = "Hide Advanced Settings"
+    Add-Log "Advanced settings shown."
+  } else {
+    $btnToggleAdvanced.Text = "Show Advanced Settings"
+    Add-Log "Advanced settings hidden."
+  }
+}
 
 $txtLog = New-Object System.Windows.Forms.TextBox
 $txtLog.Multiline = $true
@@ -642,6 +745,40 @@ function Get-SelectableDisks {
   return $all
 }
 
+function Refresh-DiskPicker {
+  $cmbDisks.Items.Clear()
+  try {
+    $disks = Get-SelectableDisks
+    foreach ($disk in $disks) {
+      $label = "Disk {0} - {1} - {2} - {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
+      [void]$cmbDisks.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number })
+    }
+
+    if ($cmbDisks.Items.Count -gt 0) {
+      $cmbDisks.SelectedIndex = 0
+      $txtDisk.Text = [string]$cmbDisks.SelectedItem.Number
+    } else {
+      $txtDisk.Text = ""
+    }
+  } catch {
+    $txtDisk.Text = ""
+    Add-Log "Failed to refresh disk picker: $($_.Exception.Message)"
+  }
+}
+
+function Get-SelectedDiskNumber {
+  if ($cmbDisks.SelectedItem -ne $null) {
+    return [int]$cmbDisks.SelectedItem.Number
+  }
+
+  [int]$diskNum = -1
+  if ([int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
+    return $diskNum
+  }
+
+  return -1
+}
+
 function Show-EndUserWizard {
   param(
     [Parameter(Mandatory = $true)][string[]]$ProfilePaths,
@@ -650,7 +787,7 @@ function Show-EndUserWizard {
   )
 
   $wizard = New-Object System.Windows.Forms.Form
-  $wizard.Text = "Pi Kiwix SD Wizard"
+  $wizard.Text = "Pi Offline SD Wizard"
   $wizard.Size = New-Object System.Drawing.Size(900, 700)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"
@@ -665,7 +802,7 @@ function Show-EndUserWizard {
   $lblIntro.Top = $wy
   $lblIntro.Width = 850
   $lblIntro.Height = 44
-  $lblIntro.Text = "Select content and target SD card. The wizard then writes a ready-to-boot card for the Pi."
+  $lblIntro.Text = "Select content and target SD card. The wizard then writes a ready-to-boot offline library card for the Pi."
   $wizard.Controls.Add($lblIntro)
   $wy += 50
 
@@ -754,13 +891,12 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($chkWizardFetch)
   $wy += 40
 
-  $chkWizardDownloadOnPi = New-Object System.Windows.Forms.CheckBox
-  $chkWizardDownloadOnPi.Left = 210
-  $chkWizardDownloadOnPi.Top = $wy
-  $chkWizardDownloadOnPi.Width = 660
-  $chkWizardDownloadOnPi.Checked = $false
-  $chkWizardDownloadOnPi.Text = "Download catalogs on Pi after first boot (requires internet)"
-  $wizard.Controls.Add($chkWizardDownloadOnPi)
+  $lblOffline = New-Object System.Windows.Forms.Label
+  $lblOffline.Left = 210
+  $lblOffline.Top = $wy + 4
+  $lblOffline.Width = 660
+  $lblOffline.Text = "Offline-ready mode: catalogs are preloaded during SD creation."
+  $wizard.Controls.Add($lblOffline)
   $wy += 40
 
   $btnCancelWizard = New-Object System.Windows.Forms.Button
@@ -849,7 +985,7 @@ function Show-EndUserWizard {
       Entries = $entries
       DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
       AutoFetch = [bool]$chkWizardFetch.Checked
-      DownloadOnPi = [bool]$chkWizardDownloadOnPi.Checked
+      DownloadOnPi = $false
     }
 
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -908,6 +1044,21 @@ $btnRefreshProfiles.Add_Click({
   Add-Log "Profile preset list refreshed."
 })
 
+$cmbDisks.Add_SelectedIndexChanged({
+  if ($cmbDisks.SelectedItem -ne $null) {
+    $txtDisk.Text = [string]$cmbDisks.SelectedItem.Number
+  }
+})
+
+$btnDiskRefreshInline.Add_Click({
+  Refresh-DiskPicker
+  Add-Log "SD card list refreshed."
+})
+
+$btnToggleAdvanced.Add_Click({
+  Set-AdvancedVisibility -Visible (-not $showAdvanced)
+})
+
 $btnWizard.Add_Click({
   try {
     if ($cmbProfiles.Items.Count -eq 0) {
@@ -938,6 +1089,12 @@ $btnWizard.Add_Click({
     }
 
     $txtDisk.Text = [string]$selection.DiskNumber
+    for ($i = 0; $i -lt $cmbDisks.Items.Count; $i++) {
+      if ([int]$cmbDisks.Items[$i].Number -eq [int]$selection.DiskNumber) {
+        $cmbDisks.SelectedIndex = $i
+        break
+      }
+    }
     $chkAutoFetchBase.Checked = $selection.AutoFetch
     $chkDownloadOnPi.Checked = $selection.DownloadOnPi
     $chkUsePicker.Checked = $true
@@ -1070,14 +1227,9 @@ $btnBuild.Add_Click({
 })
 
 $btnWrite.Add_Click({
-  if ([string]::IsNullOrWhiteSpace($txtDisk.Text)) {
-    Add-Log "Write aborted: enter a disk number."
-    return
-  }
-
-  [int]$diskNum = -1
-  if (-not [int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
-    Add-Log "Write aborted: disk number must be an integer."
+  [int]$diskNum = Get-SelectedDiskNumber
+  if ($diskNum -lt 0) {
+    Add-Log "Write aborted: select an SD card in Step 2."
     return
   }
 
@@ -1131,10 +1283,7 @@ $btnWrite.Add_Click({
 $btnEstimate.Add_Click({
   try {
     $entries = Resolve-EntriesForDynamicRun
-    [int]$diskNum = -1
-    if ([string]::IsNullOrWhiteSpace($txtDisk.Text) -or -not [int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
-      $diskNum = -1
-    }
+    [int]$diskNum = Get-SelectedDiskNumber
 
     $estimate = Get-PreflightEstimate -Entries $entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $chkAutoFetchBase.Checked -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $diskNum
     Log-PreflightEstimate -Estimate $estimate
@@ -1144,14 +1293,9 @@ $btnEstimate.Add_Click({
 })
 
 $btnDynamic.Add_Click({
-  if ([string]::IsNullOrWhiteSpace($txtDisk.Text)) {
-    Add-Log "Dynamic build aborted: enter a disk number."
-    return
-  }
-
-  [int]$diskNum = -1
-  if (-not [int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
-    Add-Log "Dynamic build aborted: disk number must be an integer."
+  [int]$diskNum = Get-SelectedDiskNumber
+  if ($diskNum -lt 0) {
+    Add-Log "Dynamic build aborted: select an SD card in Step 2."
     return
   }
 
@@ -1243,13 +1387,8 @@ $btnDynamic.Add_Click({
 })
 
 $btnDisks.Add_Click({
-  Add-Log "Listing disks"
-  try {
-    $output = Get-Disk | Select-Object Number, FriendlyName, Size, BusType, IsBoot, IsSystem | Format-Table -AutoSize | Out-String
-    Add-Log $output.Trim()
-  } catch {
-    Add-Log "Failed to list disks: $($_.Exception.Message)"
-  }
+  Refresh-DiskPicker
+  Add-Log "SD card list refreshed."
 })
 
 $btnArtifacts.Add_Click({
@@ -1260,12 +1399,28 @@ $btnArtifacts.Add_Click({
   Start-Process explorer.exe $artifacts
 })
 
+$btnAbout.Add_Click({
+  $noticePath = Join-Path $repoRoot "docs/THIRD_PARTY_NOTICES.md"
+  if (Test-Path $noticePath) {
+    Start-Process $noticePath
+  } else {
+    [System.Windows.Forms.MessageBox]::Show(
+      "License notice file not found at docs/THIRD_PARTY_NOTICES.md",
+      $appDisplayName,
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Information
+    ) | Out-Null
+  }
+})
+
 $btnExit.Add_Click({ $form.Close() })
 
 Refresh-ProfilePicker
 Load-SelectedPresetItems
+Refresh-DiskPicker
+Set-AdvancedVisibility -Visible $false
 
-Add-Log "Pi Kiwix Portable ready"
+Add-Log "Offline library builder ready"
 Add-Log "Repository root: $repoRoot"
 
 [void]$form.ShowDialog()
