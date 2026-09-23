@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.30] - 2026-09-23
+
+### Fixed
+- Start the normal app flow with only the end-user wizard and a dedicated build-progress dialog instead of displaying the legacy developer screen behind it.
+
 ## [0.1.29] - 2026-09-23
 
 ### Fixed

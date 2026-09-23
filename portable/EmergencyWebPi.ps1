@@ -391,6 +391,7 @@ $form.Size = New-Object System.Drawing.Size(1080, 920)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
+$script:normalLaunch = $false
 
 $font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.Font = $font
@@ -1307,6 +1308,9 @@ $btnWizard.Add_Click({
     $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks
     if ($null -eq $selection) {
       Add-Log "Wizard cancelled."
+      if ($script:normalLaunch) {
+        $form.Close()
+      }
       return
     }
 
@@ -1518,12 +1522,20 @@ $btnDynamic.Add_Click({
   [int]$diskNum = Get-SelectedDiskNumber
   if ($diskNum -lt 0) {
     Add-Log "Dynamic build aborted: select an SD card in Step 2."
+    if ($script:normalLaunch) {
+      [System.Windows.Forms.MessageBox]::Show("Select an SD card and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      $form.Show()
+    }
     return
   }
 
   $configAbs = To-Absolute -PathValue $txtConfig.Text
   if (-not (Test-Path $configAbs)) {
     Add-Log "Dynamic build aborted: config file not found."
+    if ($script:normalLaunch) {
+      [System.Windows.Forms.MessageBox]::Show("The application configuration is missing. Re-extract the complete release ZIP and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+      $form.Show()
+    }
     return
   }
 
@@ -1541,6 +1553,10 @@ $btnDynamic.Add_Click({
     Log-PreflightEstimate -Estimate $estimate
   } catch {
     Add-Log "Dynamic preflight failed: $($_.Exception.Message)"
+    if ($script:normalLaunch) {
+      [System.Windows.Forms.MessageBox]::Show("The SD card could not be prepared: $($_.Exception.Message)", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+      $form.Show()
+    }
     return
   }
 
@@ -1549,6 +1565,9 @@ $btnDynamic.Add_Click({
   if ($estimate.Fits -eq $false) {
     Add-Log "Dynamic build aborted: selected SD card is too small."
     [System.Windows.Forms.MessageBox]::Show("The selected SD card is too small. Choose a card with at least $requiredText.", "SD Card Too Small", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+    if ($script:normalLaunch) {
+      $form.Show()
+    }
     return
   }
 
@@ -1572,6 +1591,9 @@ $btnDynamic.Add_Click({
 
   if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
     Add-Log "Dynamic build cancelled by user."
+    if ($script:normalLaunch) {
+      $form.Close()
+    }
     return
   }
 
@@ -1594,15 +1616,52 @@ $btnDynamic.Add_Click({
   Add-Log "Dynamic mode content installation: $contentMode"
 
   Add-Log "Running dynamic SD build on disk #$diskNum"
-  $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args
+  $progress = $null
+  if ($script:normalLaunch) {
+    $progress = New-Object System.Windows.Forms.Form
+    $progress.Text = $appDisplayName
+    $progress.Size = New-Object System.Drawing.Size(520, 180)
+    $progress.StartPosition = "CenterScreen"
+    $progress.FormBorderStyle = "FixedDialog"
+    $progress.ControlBox = $false
+
+    $message = New-Object System.Windows.Forms.Label
+    $message.Left = 24
+    $message.Top = 28
+    $message.Width = 450
+    $message.Height = 56
+    $message.Text = "Creating your Emergency Web Pi SD card.`r`nKeep this window open. Large downloads can take a while."
+    $progress.Controls.Add($message)
+
+    $progress.Show()
+    $progress.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
+  }
+
+  try {
+    $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args
+  } finally {
+    if ($null -ne $progress) {
+      $progress.Close()
+      $progress.Dispose()
+    }
+  }
   if (-not [string]::IsNullOrWhiteSpace($result.Output)) {
     Add-Log $result.Output
   }
 
   if ($result.ExitCode -eq 0) {
     Add-Log "Dynamic SD build completed successfully."
+    if ($script:normalLaunch) {
+      [System.Windows.Forms.MessageBox]::Show("Your SD card is ready. Insert it into the Raspberry Pi and follow the selected content-installation mode.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+      $form.Close()
+    }
   } else {
     Add-Log "Dynamic SD build failed with exit code $($result.ExitCode)."
+    if ($script:normalLaunch) {
+      [System.Windows.Forms.MessageBox]::Show("Creating the SD card did not finish. Try again after reviewing the error details in Advanced Settings.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+      $form.Show()
+    }
   }
 })
 
@@ -1644,7 +1703,8 @@ Add-Log "Offline library builder ready"
 Add-Log "Repository root: $repoRoot"
 
 $form.Add_Shown({
-  # The normal user journey begins in the wizard; the underlying form remains the advanced fallback.
+  $script:normalLaunch = $true
+  $form.Hide()
   $form.BeginInvoke([System.Action]{ $btnWizard.PerformClick() }) | Out-Null
 })
 
