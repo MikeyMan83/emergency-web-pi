@@ -28,6 +28,8 @@ def main() -> int:
     appliance_config_path = repo_root / "config" / "appliance.example.json"
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
+    create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
+    rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
     portable_ps1_path = repo_root / "portable" / "PiKiwixPortable.ps1"
     portable_cmd_path = repo_root / "portable" / "Launch-PiKiwixPortable.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
@@ -58,6 +60,7 @@ def main() -> int:
     require("pi-kiwix-serve.service" in readme, "README must mention pi-kiwix-serve.service")
     require("Default is `604800` (weekly)." in readme, "README must state weekly default sync interval")
     require("scripts/create-sd.ps1" in readme, "README must mention scripts/create-sd.ps1")
+    require("scripts/create-sd-dynamic.ps1" in readme, "README must mention scripts/create-sd-dynamic.ps1")
     require("scripts/build-appliance-image.ps1" in readme, "README must mention scripts/build-appliance-image.ps1")
     require("portable/Launch-PiKiwixPortable.cmd" in readme, "README must mention portable launcher")
     require(
@@ -73,6 +76,8 @@ def main() -> int:
     require(appliance_config.get("network", {}).get("ap", {}).get("countryCode") == "NL", "config/appliance.example.json must set network.ap.countryCode to NL by default")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
+    require(create_sd_dynamic_path.exists(), "scripts/create-sd-dynamic.ps1 must exist")
+    require(rebuild_library_path.exists(), "scripts/rebuild-library.sh must exist")
     require(portable_ps1_path.exists(), "portable/PiKiwixPortable.ps1 must exist")
     require(portable_cmd_path.exists(), "portable/Launch-PiKiwixPortable.cmd must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")

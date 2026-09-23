@@ -14,6 +14,15 @@ Portable frontend option:
 
 The portable app wraps the same validated script engine used below.
 
+Dynamic mode (recommended for fresh content at build time):
+
+```powershell
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
+```
+
+This mode flashes a base appliance image, creates a Windows-writable `ZIMDATA`
+partition, downloads selected ZIM files with resume support, and copies them to SD.
+
 1. Download Raspberry Pi OS Lite (64-bit) image (`.img`, `.img.xz`, or `.zip`).
 2. Ensure WSL with Ubuntu is installed (`wsl --install`).
 3. Build appliance image + manifest in WSL:
@@ -130,6 +139,8 @@ If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/pi-kiwix-survival.img`, `appliance.img`, or the newest `artifacts/*.img`.
 `scripts/build-appliance-image.ps1` requires `-ZimSourceDir` for offline-ready images;
 use `-AllowEmptyZimData` only for development images that will sync content later.
+`scripts/create-sd-dynamic.ps1` uses a base image + profile list and downloads
+current ZIM files during SD creation.
 The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
 - dedicated `zimdata` partition,
 - `runtime.serverMode=native-kiwix-serve`,
@@ -152,6 +163,9 @@ writes the default medical-survival content URL into `.env`, and enables native
 Runtime services:
 - `pi-kiwix-serve.service`: serves all `.zim` files from `ZIM_DATA_DIR`.
 - `pi-kiwix-sync.timer`: runs periodic sync and library rebuild.
+
+`pi-kiwix-serve.service` runs a pre-start library rebuild from local ZIM files,
+so copied content from dynamic SD creation is indexed even without internet.
 
 Content syncing is handled by a host-level weekly systemd timer (`pi-kiwix-sync.timer`) that runs `scripts/sync.sh`.
 
@@ -176,6 +190,8 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
 - `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
+- `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (base image + profile download + exFAT data partition).
+- `scripts/rebuild-library.sh`: host-side local `library.xml` rebuild helper.
 - `portable/PiKiwixPortable.ps1`: portable Windows frontend for build + SD write.
 - `portable/Launch-PiKiwixPortable.cmd`: one-click launcher for the portable frontend.
 - `scripts/sync.sh`: host-side one-shot sync task (systemd timer target).

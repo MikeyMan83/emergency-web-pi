@@ -11,12 +11,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Added
 - Added a portable Windows frontend (`portable/PiKiwixPortable.ps1` + `portable/Launch-PiKiwixPortable.cmd`) that wraps the existing safe build and SD-write scripts.
+- Added `scripts/create-sd-dynamic.ps1` for dynamic Windows SD creation from a base image + profile list, including exFAT `ZIMDATA` partition creation and content download/copy.
+- Added `scripts/rebuild-library.sh` shared helper for local library reconstruction.
 
 ### Changed
-- `scripts/build-appliance-image.sh` and `scripts/build-appliance-image.ps1` now require ZIM preload input for offline-ready images by default; development-only empty images require explicit override.
-- `scripts/create-sd.ps1` now requires explicit `-ConfirmDiskNumber` for destructive writes and blocks non-removable bus types unless explicitly overridden.
-- Appliance image build path now reads AP country code from config (`network.ap.countryCode`) instead of hardcoding `NL`.
-- CI shell syntax checks now include `scripts/build-appliance-image.sh`, `scripts/install.sh`, `scripts/setup-ap.sh`, and `scripts/enable-readonly.sh`.
+- `scripts/sync.sh` now refreshes `library.xml` from local ZIM files even when offline and reuses shared rebuild logic.
+- `pi-kiwix-serve.service` now runs a pre-start library rebuild so copied content is indexed before serving.
 
 ## [0.1.6] - 2026-09-22
 

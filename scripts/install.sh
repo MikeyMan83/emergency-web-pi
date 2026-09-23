@@ -49,12 +49,7 @@ echo "==> Preparing data directory"
 mkdir -p "$ZIM_DATA_DIR"
 
 echo "==> Bootstrapping library.xml from any existing content"
-LIBRARY_FILE="$ZIM_DATA_DIR/library.xml"
-: > "$LIBRARY_FILE"
-for f in "$ZIM_DATA_DIR"/*.zim; do
-  [ -e "$f" ] || continue
-  kiwix-manage "$LIBRARY_FILE" add "$f" 2>/dev/null || true
-done
+./scripts/rebuild-library.sh
 
 echo "==> Installing kiwix service"
 sudo cp scripts/systemd/pi-kiwix-serve.service /etc/systemd/system/

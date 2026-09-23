@@ -26,6 +26,17 @@ Then write the SD card:
 ./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
+## Dynamic SD creation on Windows
+
+To build a card with the latest profile content at creation time:
+
+```powershell
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
+```
+
+This mode flashes the base image, creates a `ZIMDATA` exFAT partition from remaining space,
+downloads profile entries with resume support, and copies them directly to SD.
+
 1. Run installer:
 
 ```bash

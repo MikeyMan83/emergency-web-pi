@@ -6,8 +6,9 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
+$dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
 
-if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript)) {
+if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript)) {
   [System.Windows.Forms.MessageBox]::Show(
     "Required scripts are missing. Ensure this portable folder is inside the repository root.",
     "Pi Kiwix Portable",
@@ -133,6 +134,15 @@ Add-Label -Text "Manifest Path" -Top $y
 $txtManifestPath = Add-TextBox -DefaultText "artifacts/appliance.img.manifest.json" -Top $y
 $y += 40
 
+Add-Label -Text "Dynamic Profile List" -Top $y
+$txtProfilePath = Add-TextBox -DefaultText "profiles/medical-survival-zimlist.txt" -Top $y
+$btnProfile = Add-BrowseButton -Top $y
+$y += 40
+
+Add-Label -Text "Dynamic Cache Dir" -Top $y
+$txtCacheDir = Add-TextBox -DefaultText "artifacts/zim-cache" -Top $y
+$y += 40
+
 Add-Label -Text "Target Disk Number" -Top $y
 $txtDisk = Add-TextBox -DefaultText "" -Top $y
 $y += 50
@@ -158,18 +168,25 @@ $btnWrite.Top = $y
 $btnWrite.Width = 140
 $form.Controls.Add($btnWrite)
 
+$btnDynamic = New-Object System.Windows.Forms.Button
+$btnDynamic.Text = "Dynamic SD"
+$btnDynamic.Left = 500
+$btnDynamic.Top = $y
+$btnDynamic.Width = 140
+$form.Controls.Add($btnDynamic)
+
 $btnDisks = New-Object System.Windows.Forms.Button
 $btnDisks.Text = "List Disks"
-$btnDisks.Left = 500
+$btnDisks.Left = 660
 $btnDisks.Top = $y
 $btnDisks.Width = 140
 $form.Controls.Add($btnDisks)
 
 $btnArtifacts = New-Object System.Windows.Forms.Button
 $btnArtifacts.Text = "Open Artifacts"
-$btnArtifacts.Left = 660
+$btnArtifacts.Left = 20
 $btnArtifacts.Top = $y
-$btnArtifacts.Width = 140
+$btnArtifacts.Width = 160
 $form.Controls.Add($btnArtifacts)
 
 $btnExit = New-Object System.Windows.Forms.Button
@@ -233,6 +250,14 @@ $btnZimDir.Add_Click({
   }
 })
 
+$btnProfile.Add_Click({
+  $dlg = New-Object System.Windows.Forms.OpenFileDialog
+  $dlg.Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*"
+  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    $txtProfilePath.Text = $dlg.FileName
+  }
+})
+
 $btnCheck.Add_Click({
   Add-Log "Checking prerequisites"
 
@@ -266,6 +291,19 @@ $btnCheck.Add_Click({
     Add-Log "Config path: missing"
   } else {
     Add-Log "Config path: OK"
+  }
+
+  $profileAbs = To-Absolute -PathValue $txtProfilePath.Text
+  if (-not (Test-Path $profileAbs)) {
+    Add-Log "Dynamic profile list: missing"
+  } else {
+    Add-Log "Dynamic profile list: OK"
+  }
+
+  if (Get-Command aria2c -ErrorAction SilentlyContinue) {
+    Add-Log "aria2c detected"
+  } else {
+    Add-Log "aria2c not detected; dynamic download mode will fail"
   }
 })
 
@@ -370,6 +408,75 @@ $btnWrite.Add_Click({
     Add-Log "SD write completed successfully."
   } else {
     Add-Log "SD write failed with exit code $($result.ExitCode)."
+  }
+})
+
+$btnDynamic.Add_Click({
+  if ([string]::IsNullOrWhiteSpace($txtDisk.Text)) {
+    Add-Log "Dynamic build aborted: enter a disk number."
+    return
+  }
+
+  [int]$diskNum = -1
+  if (-not [int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
+    Add-Log "Dynamic build aborted: disk number must be an integer."
+    return
+  }
+
+  $baseAbs = To-Absolute -PathValue $txtBase.Text
+  $manifestAbs = To-Absolute -PathValue $txtManifestPath.Text
+  $configAbs = To-Absolute -PathValue $txtConfig.Text
+  $profileAbs = To-Absolute -PathValue $txtProfilePath.Text
+
+  if (-not (Test-Path $baseAbs)) {
+    Add-Log "Dynamic build aborted: base image not found."
+    return
+  }
+  if (-not (Test-Path $manifestAbs)) {
+    Add-Log "Dynamic build aborted: base manifest not found."
+    return
+  }
+  if (-not (Test-Path $configAbs)) {
+    Add-Log "Dynamic build aborted: config file not found."
+    return
+  }
+  if (-not (Test-Path $profileAbs)) {
+    Add-Log "Dynamic build aborted: profile list not found."
+    return
+  }
+
+  $confirm = [System.Windows.Forms.MessageBox]::Show(
+    "This will erase disk #$diskNum and repopulate content. Continue?",
+    "Confirm Dynamic SD Build",
+    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+    [System.Windows.Forms.MessageBoxIcon]::Warning
+  )
+
+  if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
+    Add-Log "Dynamic build cancelled by user."
+    return
+  }
+
+  $args = @(
+    "-DiskNumber", $diskNum,
+    "-ConfirmDiskNumber", $diskNum,
+    "-BaseImagePath", (Quote-Arg -Value $baseAbs),
+    "-BaseManifestPath", (Quote-Arg -Value $manifestAbs),
+    "-BaseConfigPath", (Quote-Arg -Value $configAbs),
+    "-ProfilePath", (Quote-Arg -Value $profileAbs),
+    "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text)
+  )
+
+  Add-Log "Running dynamic SD build on disk #$diskNum"
+  $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args
+  if (-not [string]::IsNullOrWhiteSpace($result.Output)) {
+    Add-Log $result.Output
+  }
+
+  if ($result.ExitCode -eq 0) {
+    Add-Log "Dynamic SD build completed successfully."
+  } else {
+    Add-Log "Dynamic SD build failed with exit code $($result.ExitCode)."
   }
 })
 

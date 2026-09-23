@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=__REPO_DIR__
 EnvironmentFile=__REPO_DIR__/.env
+ExecStartPre=/bin/bash -lc '__REPO_DIR__/scripts/rebuild-library.sh'
 ExecStart=/bin/bash -lc 'exec kiwix-serve --library --monitorLibrary --port="${KIWIX_PORT:-8080}" "${ZIM_DATA_DIR:-./zim_data}/library.xml"'
 Restart=always
 RestartSec=5

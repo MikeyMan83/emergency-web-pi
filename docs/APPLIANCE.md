@@ -37,6 +37,7 @@ Maintenance path:
 Build time:
 
 - Windows builder entry point: `scripts/create-sd.ps1`
+- Windows dynamic builder entry point: `scripts/create-sd-dynamic.ps1`
 - Windows image build entry point: `scripts/build-appliance-image.ps1`
 - Linux image build engine (invoked through WSL): `scripts/build-appliance-image.sh`
 - Base OS image
@@ -71,6 +72,13 @@ This mode is useful for development and recovery. It is separate from the offlin
 - Appliance image manifest (`.img.manifest.json`) with build/runtime invariants
 - Optional local ZIM folder for preload into dedicated `zimdata` partition
 
+Dynamic mode inputs:
+
+- Base appliance image (`.img`) + manifest
+- Profile list (`profiles/*.txt`)
+- Windows disk target for SD write
+- Local download cache directory
+
 ## Build command
 
 From Windows PowerShell:
@@ -90,6 +98,12 @@ Then write SD media:
 
 ```powershell
 ./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+```
+
+Dynamic write + content population command:
+
+```powershell
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 The initial config example is provided at `config/appliance.example.json`.

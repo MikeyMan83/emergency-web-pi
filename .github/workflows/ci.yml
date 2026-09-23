@@ -35,6 +35,7 @@ jobs:
           bash -n scripts/setup-ap.sh
           bash -n scripts/enable-readonly.sh
           bash -n scripts/build-appliance-image.sh
+          bash -n scripts/rebuild-library.sh
 
       - name: Validate estimator script syntax
         run: |
