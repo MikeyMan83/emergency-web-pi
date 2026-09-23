@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-09-23
+
+### Changed
+- Updated source defaults, bootstrap URLs, release links, install paths, and related repo-slug references from `pi-kiwix-survival` to `emergency-web-pi`.
+
 ## [0.1.14] - 2026-09-23
 
 ### Fixed
