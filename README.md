@@ -36,6 +36,10 @@ Debug/support fallback launcher:
 .\Launch-PiKiwixPortable.cmd
 ```
 
+Launcher policy:
+- `PiKiwixPortable.exe` is the primary app entry point.
+- `Launch-PiKiwixPortable.cmd` is a fallback helper that tries EXE first, then script fallback only if needed.
+
 If you see missing-file errors that reference a `...\AppData\Local\Temp\...` path,
 you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
 
