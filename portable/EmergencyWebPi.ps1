@@ -491,6 +491,7 @@ $lstProfileItems.Top = $y
 $lstProfileItems.Width = 800
 $lstProfileItems.Height = 130
 $lstProfileItems.CheckOnClick = $true
+$lstProfileItems.DisplayMember = "Display"
 $form.Controls.Add($lstProfileItems)
 $y += 140
 
@@ -501,6 +502,13 @@ $chkUsePicker.Top = $y
 $chkUsePicker.Width = 330
 $chkUsePicker.Checked = $true
 $form.Controls.Add($chkUsePicker)
+
+$lblMainContentInfo = New-Object System.Windows.Forms.Label
+$lblMainContentInfo.Left = 240
+$lblMainContentInfo.Top = $chkUsePicker.Top + 2
+$lblMainContentInfo.Width = 800
+$lblMainContentInfo.Height = 22
+$form.Controls.Add($lblMainContentInfo)
 $y += 30
 
 $lblCacheDir = Add-Label -Text "Dynamic Cache Dir" -Top $y
@@ -753,14 +761,36 @@ function Load-SelectedPresetItems {
 
     $lstProfileItems.Items.Clear()
     foreach ($item in $items) {
-      [void]$lstProfileItems.Items.Add($item, $true)
+      [void]$lstProfileItems.Items.Add((Get-CatalogItem -Url $item), $true)
     }
 
     $txtProfilePath.Text = [string]$cmbProfiles.SelectedItem
-    Add-Log "Loaded $($items.Count) profile item(s) from $($cmbProfiles.SelectedItem)."
+    Update-MainContentSummary
+    Add-Log "Loaded $($items.Count) catalog item(s) from $(Get-ProfileLabel -Path $cmbProfiles.SelectedItem)."
   } catch {
     Add-Log "Failed to load preset items: $($_.Exception.Message)"
   }
+}
+
+function Update-MainContentSummary {
+  [int64]$contentBytes = 0
+  $selectedCount = 0
+  $selectedItems = @()
+  foreach ($checkedIndex in $lstProfileItems.CheckedIndices) {
+    $item = $lstProfileItems.Items[$checkedIndex]
+    $contentBytes += [int64]$item.EstimatedBytes
+    $selectedCount += 1
+    $selectedItems += $item
+  }
+
+  if ($selectedCount -eq 0) {
+    $lblMainContentInfo.Text = "Select at least one library to continue."
+    return
+  }
+
+  $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
+  $profileDescription = Get-ProfileDescription -Path $cmbProfiles.SelectedItem
+  $lblMainContentInfo.Text = "$profileDescription Selected: $selectedCount libraries, $(Format-Bytes -Bytes $contentBytes) content. Estimated minimum SD: $(Format-Bytes -Bytes $requiredBytes)."
 }
 
 function Resolve-EntriesForDynamicRun {
@@ -768,7 +798,7 @@ function Resolve-EntriesForDynamicRun {
     $selected = @()
     for ($i = 0; $i -lt $lstProfileItems.Items.Count; $i++) {
       if ($lstProfileItems.GetItemChecked($i)) {
-        $selected += [string]$lstProfileItems.Items[$i]
+        $selected += [string]$lstProfileItems.Items[$i].Url
       }
     }
 
@@ -1235,6 +1265,11 @@ $cmbDisks.Add_SelectedIndexChanged({
   if ($cmbDisks.SelectedItem -ne $null) {
     $txtDisk.Text = [string]$cmbDisks.SelectedItem.Number
   }
+  Update-MainContentSummary
+})
+
+$lstProfileItems.Add_ItemCheck({
+  $form.BeginInvoke([System.Action]{ Update-MainContentSummary }) | Out-Null
 })
 
 $btnDiskRefreshInline.Add_Click({

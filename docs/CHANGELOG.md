@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.25] - 2026-09-23
+
+### Fixed
+- Replaced raw catalog URLs in the main application window with friendly item names and sizes.
+- Added a live content total and estimated minimum SD capacity to the visible catalog list.
+
 ## [0.1.24] - 2026-09-23
 
 ### Changed
