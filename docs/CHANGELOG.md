@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.34] - 2026-09-23
+
+### Added
+- Added persistent per-launch frontend diagnostics under `%LOCALAPPDATA%\EmergencyWebPi` for startup and wizard failures.
+
 ## [0.1.33] - 2026-09-23
 
 ### Fixed

@@ -1,12 +1,27 @@
+$ErrorActionPreference = "Stop"
+$appDisplayName = "Emergency Web Pi"
+$logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$logPath = Join-Path $logDirectory ("startup-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+
+function Write-AppLog {
+  param([Parameter(Mandatory = $true)][string]$Message)
+
+  try {
+    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+    Add-Content -Path $logPath -Value ("[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $Message) -Encoding utf8
+  } catch {
+  }
+}
+
+Write-AppLog "Frontend startup requested."
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$ErrorActionPreference = "Stop"
-$appDisplayName = "Emergency Web Pi"
-
 trap {
+  Write-AppLog ("Unhandled error: {0}" -f $_.Exception.ToString())
   [System.Windows.Forms.MessageBox]::Show(
-    $_.Exception.Message,
+    "$($_.Exception.Message)`n`nDiagnostic log:`n$logPath",
     $appDisplayName,
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
@@ -53,6 +68,7 @@ foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSp
 }
 
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
+  Write-AppLog "Bundled script discovery failed. Checked: $($candidateDirs -join '; ')"
   $checked = ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join "`n"
   [System.Windows.Forms.MessageBox]::Show(
     "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run EmergencyWebPi.exe from the extracted folder.`n`nChecked paths:`n$checked",
@@ -63,11 +79,14 @@ if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   exit 1
 }
 
+Write-AppLog "Repository root resolved: $repoRoot"
+
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
 $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
 
 if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript)) {
+  Write-AppLog "Required build scripts are missing from the resolved repository root."
   [System.Windows.Forms.MessageBox]::Show(
     "Required scripts are missing. Ensure this portable folder is inside the repository root.",
     $appDisplayName,
@@ -726,6 +745,7 @@ function Add-Log {
   param([string]$Text)
   $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
   $txtLog.AppendText("[$stamp] $Text`r`n")
+  Write-AppLog $Text
 }
 
 function Refresh-ProfilePicker {
@@ -901,6 +921,7 @@ function Show-EndUserWizard {
   )
 
   $wizard = New-Object System.Windows.Forms.Form
+  Write-AppLog "Opening end-user wizard."
   $wizard.Text = "Emergency Web Pi Wizard"
   $wizard.Size = New-Object System.Drawing.Size(900, 760)
   $wizard.StartPosition = "CenterParent"
@@ -1176,12 +1197,14 @@ function Show-EndUserWizard {
   })
 
   $btnDeveloperTools.Add_Click({
+    Write-AppLog "Developer Tools requested from wizard."
     $script:developerToolsRequested = $true
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $wizard.Close()
   })
 
   $btnStartWizard.Add_Click({
+    Write-AppLog "Wizard build requested."
     if ($cmbWizardProfile.SelectedItem -eq $null) {
       [System.Windows.Forms.MessageBox]::Show("Select a catalog preset.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
@@ -1226,6 +1249,7 @@ function Show-EndUserWizard {
   })
 
   $dialogResult = if ($null -eq $Owner) { $wizard.ShowDialog() } else { $wizard.ShowDialog($Owner) }
+  Write-AppLog "End-user wizard closed with result: $dialogResult"
   if ($script:developerToolsRequested) {
     return [PSCustomObject]@{ DeveloperTools = $true }
   }
@@ -1730,6 +1754,7 @@ Add-Log "Offline library builder ready"
 Add-Log "Repository root: $repoRoot"
 
 $script:normalLaunch = $true
+Write-AppLog "Starting end-user wizard as the visible frontend."
 $btnWizard.PerformClick()
 
 if (-not $form.IsDisposed -and -not $script:normalLaunch) {

@@ -44,6 +44,8 @@ Launcher policy:
 If you see missing-file errors that reference a `...\AppData\Local\Temp\...` path,
 you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
 
+If the frontend does not appear, inspect the newest log in `%LOCALAPPDATA%\EmergencyWebPi\startup-*.log`.
+
 The portable app wraps the same validated script engine used below.
 
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
