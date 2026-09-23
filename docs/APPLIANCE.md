@@ -74,7 +74,7 @@ This mode is useful for development and recovery. It is separate from the offlin
 
 Dynamic mode inputs:
 
-- Base appliance image (`.img`) + manifest
+- Base appliance image (`.img`) + manifest (or latest release auto-fetch)
 - Profile list (`profiles/*.txt`)
 - Windows disk target for SD write
 - Local download cache directory
@@ -103,8 +103,14 @@ Then write SD media:
 Dynamic write + content population command:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
 ```
+
+Portable frontend behavior for dynamic mode:
+
+- Load profile presets from `profiles/*.txt`
+- Select individual items with checkboxes
+- Run preflight SD size estimation before the destructive write step
 
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.

@@ -5,8 +5,8 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 
 ## First bring-up
 
-This section is for the current live-Pi install path.
-It remains useful for development and recovery.
+This section is for direct setup on an already running Pi.
+Most users should use the Windows appliance flow instead.
 
 ## Build appliance image on Windows
 
@@ -31,11 +31,13 @@ Then write the SD card:
 To build a card with the latest profile content at creation time:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 This mode flashes the base image, creates a `ZIMDATA` exFAT partition from remaining space,
 downloads profile entries with resume support, and copies them directly to SD.
+In the portable app, use Dynamic SD with the item picker to choose profile entries,
+then review the preflight size estimate before confirming the write.
 
 1. Run installer:
 

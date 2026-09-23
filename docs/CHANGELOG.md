@@ -13,10 +13,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Added a portable Windows frontend (`portable/PiKiwixPortable.ps1` + `portable/Launch-PiKiwixPortable.cmd`) that wraps the existing safe build and SD-write scripts.
 - Added `scripts/create-sd-dynamic.ps1` for dynamic Windows SD creation from a base image + profile list, including exFAT `ZIMDATA` partition creation and content download/copy.
 - Added `scripts/rebuild-library.sh` shared helper for local library reconstruction.
+- Added dynamic profile preset item picking in the portable frontend, allowing item-level selection before SD creation.
+- Added preflight dynamic size estimation in the portable frontend before destructive write confirmation.
 
 ### Changed
 - `scripts/sync.sh` now refreshes `library.xml` from local ZIM files even when offline and reuses shared rebuild logic.
 - `pi-kiwix-serve.service` now runs a pre-start library rebuild so copied content is indexed before serving.
+- `scripts/create-sd-dynamic.ps1` can now auto-fetch latest base image + manifest from latest GitHub release assets via `-FetchLatestBase`.
 
 ## [0.1.6] - 2026-09-22
 

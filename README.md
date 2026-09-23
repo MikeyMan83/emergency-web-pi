@@ -17,11 +17,17 @@ The portable app wraps the same validated script engine used below.
 Dynamic mode (recommended for fresh content at build time):
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath artifacts/base-os.img -BaseManifestPath artifacts/base-os.img.manifest.json -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 This mode flashes a base appliance image, creates a Windows-writable `ZIMDATA`
 partition, downloads selected ZIM files with resume support, and copies them to SD.
+Use `-ReleaseRepo <owner/repo>` when you want to fetch base artifacts from a different release source.
+
+In the portable app, dynamic mode includes:
+- profile preset loading,
+- item-level checkboxes (choose exactly what to include),
+- preflight size estimation before the destructive write step.
 
 1. Download Raspberry Pi OS Lite (64-bit) image (`.img`, `.img.xz`, or `.zip`).
 2. Ensure WSL with Ubuntu is installed (`wsl --install`).
@@ -39,9 +45,9 @@ partition, downloads selected ZIM files with resume support, and copies them to 
 
 This path enforces manifest invariants and image hash verification before write.
 
-## Appliance target
+## Appliance goal
 
-The product target for this repository is a Windows-first, one-command appliance builder:
+This project is designed as a Windows-first appliance builder:
 
 - Run `scripts/create-sd.ps1` on a Windows PC with a blank SD card inserted.
 - Write a complete Raspberry Pi appliance to that SD card.
@@ -124,15 +130,15 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 - Release history: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - Current release version: [docs/VERSION](docs/VERSION)
 
-## Practical recommendation
+## Recommended workflow
 
-If your goal is the easiest reliable workflow, use:
+For most users, this is the simplest reliable path:
 1. Build the appliance image from Windows with `scripts/build-appliance-image.ps1`.
 2. Write that image with `scripts/create-sd.ps1 -Force` and matching `-ConfirmDiskNumber`.
 3. Boot the SD card in the Pi with no internet.
 4. Connect to the AP and browse to `http://10.42.0.1:8080`.
 
-Use the legacy first-boot path only for development or recovery.
+Use legacy first-boot setup only if you specifically need direct installation on a running Pi.
 
 `scripts/create-sd.ps1` is the Windows appliance-builder entry point.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
@@ -205,10 +211,10 @@ No toggles are required to switch between connected and disconnected operation.
 - `profiles/medical-survival-zimlist.txt`: recommended baseline list for emergency readiness.
 - `zim_data/`: persistent data folder for downloaded `.zim` files and current `zimlist.txt`.
 
-## One-time setup
+## One-time setup (advanced)
 
-This section describes the current development/recovery path on a live Pi.
-It is not the final offline appliance-builder workflow.
+Use this section only when you want to install directly on an already running Pi.
+For the standard offline appliance experience, follow the Windows end-to-end flow above.
 
 1. Create a GitHub repo with a `zimlist.txt` file.
 2. Add one content URL per line in `zimlist.txt` (torrent or direct `.zim`).
@@ -247,7 +253,7 @@ The included medical-survival profile prioritizes:
 - Repair/recovery content (`ifixit`, selected Stack Exchange archives).
 - Broad reference (`wikipedia_en_all_nopic`, `wikipedia_nl_all_nopic`).
 
-Practical storage expectation:
+Storage expectation:
 - English + Dutch Wikipedia (nopic) dominate size and are typically far above a few GB.
 - If any estimate is single-digit GB for this profile, treat it as incomplete until all item sizes are resolved.
 

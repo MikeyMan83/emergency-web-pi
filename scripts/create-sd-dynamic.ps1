@@ -5,17 +5,21 @@ param(
   [Parameter(Mandatory = $true)]
   [int]$ConfirmDiskNumber,
 
-  [Parameter(Mandatory = $true)]
-  [string]$BaseImagePath,
+  [string]$BaseImagePath = "",
 
-  [Parameter(Mandatory = $true)]
-  [string]$BaseManifestPath,
+  [string]$BaseManifestPath = "",
 
   [string]$BaseConfigPath = "config/appliance.example.json",
 
   [string]$ProfilePath = "profiles/medical-survival-zimlist.txt",
 
   [string]$CacheDir = "artifacts/zim-cache",
+
+  [switch]$FetchLatestBase,
+
+  [string]$ReleaseRepo = "MikeyMan83/pi-kiwix-survival",
+
+  [string]$FetchDir = "artifacts/base-release",
 
   [switch]$AllowFixedDisk
 )
@@ -70,6 +74,99 @@ function Require-Aria2 {
   }
 }
 
+function Invoke-DownloadFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Uri,
+    [Parameter(Mandatory = $true)][string]$OutFile
+  )
+
+  Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers @{ "User-Agent" = "pi-kiwix-survival-dynamic-builder" }
+}
+
+function Get-LatestReleaseArtifacts {
+  param(
+    [Parameter(Mandatory = $true)][string]$Repo,
+    [Parameter(Mandatory = $true)][string]$OutputDir
+  )
+
+  $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
+  $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "pi-kiwix-survival-dynamic-builder" }
+
+  if (-not $release.assets -or $release.assets.Count -eq 0) {
+    throw "Latest release for $Repo has no downloadable assets."
+  }
+
+  $imageAsset = $release.assets |
+    Where-Object { $_.name -imatch "(appliance|base).+\.img$" } |
+    Select-Object -First 1
+
+  if (-not $imageAsset) {
+    $imageAsset = $release.assets |
+      Where-Object { $_.name -imatch "\.img$" } |
+      Select-Object -First 1
+  }
+
+  if (-not $imageAsset) {
+    throw "Latest release for $Repo does not contain a .img artifact."
+  }
+
+  $manifestExactName = "$($imageAsset.name).manifest.json"
+  $manifestAsset = $release.assets |
+    Where-Object { $_.name -eq $manifestExactName } |
+    Select-Object -First 1
+
+  if (-not $manifestAsset) {
+    $imageBaseName = [System.IO.Path]::GetFileNameWithoutExtension($imageAsset.name)
+    $manifestAsset = $release.assets |
+      Where-Object { $_.name -imatch "^$([Regex]::Escape($imageBaseName)).*manifest\.json$" } |
+      Select-Object -First 1
+  }
+
+  if (-not $manifestAsset) {
+    throw "Latest release for $Repo is missing a matching manifest for $($imageAsset.name)."
+  }
+
+  if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir | Out-Null
+  }
+
+  $imagePath = Join-Path $OutputDir $imageAsset.name
+  $manifestPath = Join-Path $OutputDir $manifestAsset.name
+
+  $downloadImage = $true
+  if (Test-Path $imagePath) {
+    $existingImageSize = (Get-Item $imagePath).Length
+    if ($existingImageSize -eq [int64]$imageAsset.size) {
+      $downloadImage = $false
+    }
+  }
+  if ($downloadImage) {
+    Write-Host "Downloading base image asset: $($imageAsset.name)"
+    Invoke-DownloadFile -Uri $imageAsset.browser_download_url -OutFile $imagePath
+  } else {
+    Write-Host "Using cached base image asset: $($imageAsset.name)"
+  }
+
+  $downloadManifest = $true
+  if (Test-Path $manifestPath) {
+    $existingManifestSize = (Get-Item $manifestPath).Length
+    if ($existingManifestSize -eq [int64]$manifestAsset.size) {
+      $downloadManifest = $false
+    }
+  }
+  if ($downloadManifest) {
+    Write-Host "Downloading base manifest asset: $($manifestAsset.name)"
+    Invoke-DownloadFile -Uri $manifestAsset.browser_download_url -OutFile $manifestPath
+  } else {
+    Write-Host "Using cached base manifest asset: $($manifestAsset.name)"
+  }
+
+  return [PSCustomObject]@{
+    ImagePath = $imagePath
+    ManifestPath = $manifestPath
+  }
+}
+
 function Invoke-AriaDownload {
   param(
     [Parameter(Mandatory = $true)][string]$Url,
@@ -117,6 +214,26 @@ Require-Admin
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+
+if ($FetchLatestBase) {
+  $resolvedFetchDir = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $FetchDir))
+  Write-Host "Fetching latest base artifacts from $ReleaseRepo"
+  $fetched = Get-LatestReleaseArtifacts -Repo $ReleaseRepo -OutputDir $resolvedFetchDir
+  if ([string]::IsNullOrWhiteSpace($BaseImagePath)) {
+    $BaseImagePath = $fetched.ImagePath
+  }
+  if ([string]::IsNullOrWhiteSpace($BaseManifestPath)) {
+    $BaseManifestPath = $fetched.ManifestPath
+  }
+}
+
+if ([string]::IsNullOrWhiteSpace($BaseImagePath)) {
+  throw "Base image path is required. Provide -BaseImagePath or use -FetchLatestBase."
+}
+
+if ([string]::IsNullOrWhiteSpace($BaseManifestPath)) {
+  throw "Base manifest path is required. Provide -BaseManifestPath or use -FetchLatestBase."
+}
 
 $resolvedBaseImage = (Resolve-Path $BaseImagePath).Path
 $resolvedBaseManifest = (Resolve-Path $BaseManifestPath).Path
