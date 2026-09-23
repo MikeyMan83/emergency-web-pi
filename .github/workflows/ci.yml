@@ -63,16 +63,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build portable bundle
-        shell: pwsh
+        shell: powershell
         run: |
-          ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke
 
       - name: Smoke test frontend startup
-        shell: pwsh
+        shell: powershell
         run: |
           $bundle = "artifacts/ci-smoke/EmergencyWebPi-0.0.0-ci-windows"
           $required = @("EmergencyWebPi.exe", "Launch-EmergencyWebPi.cmd", "portable/EmergencyWebPi.ps1")
           foreach ($path in $required) {
             if (-not (Test-Path (Join-Path $bundle $path))) { throw "Missing release entry-point file: $path" }
           }
-          ./scripts/smoke-portable.ps1 -BundleDir $bundle
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-portable.ps1 -BundleDir $bundle
