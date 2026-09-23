@@ -26,6 +26,8 @@ def main() -> int:
     readme_path = repo_root / "README.md"
     appliance_doc_path = repo_root / "docs" / "APPLIANCE.md"
     appliance_config_path = repo_root / "config" / "appliance.example.json"
+    base_image_manifest_path = repo_root / "config" / "base-image.json"
+    content_catalog_path = repo_root / "config" / "content-catalog.json"
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
@@ -47,6 +49,8 @@ def main() -> int:
     readme = readme_path.read_text(encoding="utf-8")
     appliance_doc = appliance_doc_path.read_text(encoding="utf-8")
     appliance_config = json.loads(appliance_config_path.read_text(encoding="utf-8"))
+    base_image_manifest = json.loads(base_image_manifest_path.read_text(encoding="utf-8"))
+    content_catalog = json.loads(content_catalog_path.read_text(encoding="utf-8"))
     estimate_md = estimate_md_path.read_text(encoding="utf-8")
     estimate_json = json.loads(estimate_json_path.read_text(encoding="utf-8"))
     create_sd = create_sd_path.read_text(encoding="utf-8")
@@ -89,6 +93,24 @@ def main() -> int:
     require(isinstance(appliance_config.get("applianceVersion"), str), "config/appliance.example.json must set applianceVersion")
     require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
     require(appliance_config.get("network", {}).get("ap", {}).get("countryCode") == "NL", "config/appliance.example.json must set network.ap.countryCode to NL by default")
+    require(base_image_manifest.get("name") == "Raspberry Pi OS Lite", "config/base-image.json must identify Raspberry Pi OS Lite")
+    require(base_image_manifest.get("architecture") == "arm64", "config/base-image.json must pin arm64")
+    require(re.fullmatch(r"[0-9a-f]{64}", base_image_manifest.get("sha256", "")) is not None, "config/base-image.json must pin a SHA-256")
+    require(str(base_image_manifest.get("downloadUrl", "")).startswith("https://downloads.raspberrypi.com/"), "config/base-image.json must use the official Raspberry Pi download endpoint")
+    require(isinstance(base_image_manifest.get("installedSizeBytes"), int) and base_image_manifest["installedSizeBytes"] > 0, "config/base-image.json must define installedSizeBytes")
+    require(len(content_catalog) > 0, "config/content-catalog.json must contain catalog entries")
+    for file_name, item in content_catalog.items():
+        require(file_name.endswith(".zim"), "config/content-catalog.json keys must be ZIM file names")
+        require(isinstance(item.get("name"), str) and item["name"], "catalog entries must have names")
+        require(isinstance(item.get("description"), str) and item["description"], "catalog entries must have descriptions")
+        require(isinstance(item.get("estimatedBytes"), int) and item["estimatedBytes"] > 0, "catalog entries must have positive estimatedBytes")
+    for profile_path in (repo_root / "profiles").glob("*.txt"):
+        for raw_line in profile_path.read_text(encoding="utf-8").splitlines():
+            entry = raw_line.strip()
+            if not entry or entry.startswith("#"):
+                continue
+            file_name = pathlib.PurePosixPath(entry.removesuffix(".torrent")).name
+            require(file_name in content_catalog, f"config/content-catalog.json must describe {file_name} from {profile_path.name}")
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require(create_sd_dynamic_path.exists(), "scripts/create-sd-dynamic.ps1 must exist")
@@ -104,6 +126,8 @@ def main() -> int:
     require("Manifest.build.configSha256" in create_sd, "create-sd.ps1 must verify the resolved config hash")
     require("network.ap.password is a placeholder" in create_sd, "create-sd.ps1 must reject placeholder AP passwords")
     require("build-appliance-image.ps1" in create_sd_dynamic, "dynamic builder must build the appliance image before flashing")
+    require("Resolve-BaseImage" in create_sd_dynamic, "dynamic builder must automatically resolve the pinned base image")
+    require("Downloaded Raspberry Pi OS image failed SHA-256 verification" in create_sd_dynamic, "dynamic builder must verify the downloaded base image")
     require('string]$ContentMode = "FirstBoot"' in create_sd_dynamic, "dynamic builder must default to first-boot content installation")
     require('"Prebuilt"' in create_sd_dynamic, "dynamic builder must support fully prebuilt content")
     require(".content-install-pending" in create_sd_dynamic, "dynamic builder must mark first-boot content installation")

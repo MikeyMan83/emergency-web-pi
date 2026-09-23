@@ -1,0 +1,12 @@
+{
+  "name": "Raspberry Pi OS Lite",
+  "architecture": "arm64",
+  "releaseDate": "2026-09-15",
+  "codename": "trixie",
+  "compatibleModels": ["Raspberry Pi 3B+", "Raspberry Pi 4", "Raspberry Pi 5"],
+  "downloadUrl": "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-09-15/2026-09-15-raspios-trixie-arm64-lite.img.xz",
+  "sha256": "cdf4f3bfac35ae947b46e4e767f935453810549779ac3290e05a6754aee627e5",
+  "downloadSizeBytes": 516000000,
+  "installedSizeBytes": 2920000000,
+  "aboutUrl": "https://www.raspberrypi.com/software/operating-systems/"
+}

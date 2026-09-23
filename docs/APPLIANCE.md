@@ -20,7 +20,7 @@ first-boot mode requires temporary Internet only until selected content is insta
 ## Acceptance test
 
 1. Insert a blank SD card into a Windows machine.
-2. Run the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
+2. Run the portable wizard or `scripts/create-sd-dynamic.ps1`; both automatically download and verify the pinned official Raspberry Pi OS base image.
 3. Remove the finished SD card.
 4. Insert it into a Raspberry Pi 3B+.
 5. Boot with temporary Internet connectivity for first-boot mode, or no Internet for prebuilt mode.
@@ -70,13 +70,13 @@ This mode is useful for development and recovery. It is separate from the offlin
 
 - Target SD card / physical disk
 - Appliance config file
-- Raspberry Pi OS Lite base image (`.img`, `.img.xz`, or `.zip`)
+- Pinned official Raspberry Pi OS Lite manifest and download cache
 - Prepared-image mode also needs an appliance image (`.img`), its manifest, and the matching resolved config.
 - Direct image builds use an optional local ZIM folder for preload into the dedicated `zimdata` partition.
 
 Dynamic mode inputs:
 
-- Raspberry Pi OS Lite base image (`.img`, `.img.xz`, or `.zip`)
+- Pinned official Raspberry Pi OS Lite image, automatically downloaded and SHA-256 verified
 - Profile list (`profiles/*.txt`)
 - Windows disk target for SD write
 - Local download cache directory
@@ -106,7 +106,7 @@ Then write SD media with the resolved config path printed by the builder:
 Dynamic write + content population command:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 Portable frontend behavior for dynamic mode:

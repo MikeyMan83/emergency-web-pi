@@ -140,6 +140,19 @@ function To-Absolute {
   return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
 }
 
+function Get-PinnedBaseImageInfo {
+  $manifestPath = Join-Path $repoRoot "config/base-image.json"
+  try {
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($manifest.name) -or $manifest.installedSizeBytes -le 0) {
+      throw "Pinned base-image manifest is incomplete."
+    }
+    return $manifest
+  } catch {
+    throw "Unable to read pinned Raspberry Pi OS base-image manifest: $($_.Exception.Message)"
+  }
+}
+
 function Resolve-ZimFileName {
   param([Parameter(Mandatory = $true)][string]$Url)
 
@@ -149,6 +162,50 @@ function Resolve-ZimFileName {
   }
 
   return $name
+}
+
+function Get-CatalogItem {
+  param([Parameter(Mandatory = $true)][string]$Url)
+
+  $catalogPath = Join-Path $repoRoot "config/content-catalog.json"
+  try {
+    $catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
+    $fileName = Resolve-ZimFileName -Url $Url
+    $metadata = $catalog.PSObject.Properties[$fileName].Value
+    if ($null -ne $metadata) {
+      $size = [int64]$metadata.estimatedBytes
+      return [PSCustomObject]@{
+        Url = $Url
+        Name = $metadata.name
+        Description = $metadata.description
+        EstimatedBytes = $size
+        LearnMoreUrl = $metadata.learnMoreUrl
+        Display = "{0} - {1}" -f $metadata.name, (Format-Bytes -Bytes $size)
+      }
+    }
+  } catch {
+  }
+
+  return [PSCustomObject]@{
+    Url = $Url
+    Name = Resolve-ZimFileName -Url $Url
+    Description = "Offline library content"
+    EstimatedBytes = [int64]0
+    LearnMoreUrl = "https://kiwix.org/en/catalog/"
+    Display = Resolve-ZimFileName -Url $Url
+  }
+}
+
+function Get-ProfileLabel {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  switch ([System.IO.Path]::GetFileNameWithoutExtension($Path)) {
+    "emergency-medical-zimlist" { return "Emergency & Medical" }
+    "essential-web-zimlist" { return "Essential Web" }
+    "practical-repair-zimlist" { return "Practical & Repair" }
+    "medical-survival-zimlist" { return "Everything" }
+    default { return [System.IO.Path]::GetFileNameWithoutExtension($Path) }
+  }
 }
 
 function Read-ProfileEntriesFromFile {
@@ -272,11 +329,8 @@ function Get-PreflightEstimate {
   $resolvedBase = To-Absolute -PathValue $BaseImagePath
   if (-not [string]::IsNullOrWhiteSpace($resolvedBase) -and (Test-Path $resolvedBase -PathType Leaf)) {
     $baseBytes = (Get-Item $resolvedBase).Length
-  } elseif ($AutoFetch) {
-    $latestBytes = Get-LatestReleaseBaseImageSize -Repo $ReleaseRepo
-    if ($latestBytes) {
-      $baseBytes = $latestBytes
-    }
+  } else {
+    $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
   }
 
   # 5 percent padding for filesystem metadata and safety margin.
@@ -305,6 +359,18 @@ function Get-PreflightEstimate {
     DiskBytes = $diskBytes
     Fits = $fits
   }
+}
+
+function Get-WizardRequiredBytes {
+  param([Parameter(Mandatory = $true)]$Items)
+
+  [int64]$contentBytes = 0
+  foreach ($item in $Items) {
+    $contentBytes += [int64]$item.EstimatedBytes
+  }
+
+  $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
+  return [int64][Math]::Ceiling(($baseBytes + $contentBytes + 1GB) * 1.05)
 }
 
 $form = New-Object System.Windows.Forms.Form
@@ -790,7 +856,7 @@ function Show-EndUserWizard {
 
   $wizard = New-Object System.Windows.Forms.Form
   $wizard.Text = "Emergency Web Pi Wizard"
-  $wizard.Size = New-Object System.Drawing.Size(900, 760)
+  $wizard.Size = New-Object System.Drawing.Size(900, 720)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"
   $wizard.MaximizeBox = $false
@@ -804,30 +870,17 @@ function Show-EndUserWizard {
   $lblIntro.Top = $wy
   $lblIntro.Width = 850
   $lblIntro.Height = 44
-  $lblIntro.Text = "Select a Raspberry Pi OS base image, content, and target SD card."
+  $lblIntro.Text = "Choose what you want available offline, how to install it, and which SD card to erase."
   $wizard.Controls.Add($lblIntro)
   $wy += 50
 
   $lblBase = New-Object System.Windows.Forms.Label
   $lblBase.Left = 16
   $lblBase.Top = $wy
-  $lblBase.Width = 180
-  $lblBase.Text = "Raspberry Pi OS image"
+  $lblBase.Width = 850
+  $baseInfo = Get-PinnedBaseImageInfo
+  $lblBase.Text = "Base system: $($baseInfo.name) ($($baseInfo.architecture), $($baseInfo.releaseDate)) - automatically downloaded and SHA-256 verified"
   $wizard.Controls.Add($lblBase)
-
-  $txtWizardBase = New-Object System.Windows.Forms.TextBox
-  $txtWizardBase.Left = 210
-  $txtWizardBase.Top = $wy - 3
-  $txtWizardBase.Width = 550
-  $txtWizardBase.Text = $txtBase.Text
-  $wizard.Controls.Add($txtWizardBase)
-
-  $btnWizardBase = New-Object System.Windows.Forms.Button
-  $btnWizardBase.Text = "Browse"
-  $btnWizardBase.Left = 770
-  $btnWizardBase.Top = $wy - 4
-  $btnWizardBase.Width = 100
-  $wizard.Controls.Add($btnWizardBase)
   $wy += 38
 
   $lblProfile = New-Object System.Windows.Forms.Label
@@ -842,11 +895,18 @@ function Show-EndUserWizard {
   $cmbWizardProfile.Top = $wy - 3
   $cmbWizardProfile.Width = 660
   $cmbWizardProfile.DropDownStyle = "DropDownList"
+  $cmbWizardProfile.DisplayMember = "Label"
   foreach ($path in $ProfilePaths) {
-    [void]$cmbWizardProfile.Items.Add($path)
+    [void]$cmbWizardProfile.Items.Add([PSCustomObject]@{ Label = Get-ProfileLabel -Path $path; Path = $path })
   }
   if ($cmbWizardProfile.Items.Count -gt 0) {
-    $defaultIndex = [Math]::Max(0, $cmbWizardProfile.Items.IndexOf($DefaultProfile))
+    $defaultIndex = 0
+    for ($index = 0; $index -lt $cmbWizardProfile.Items.Count; $index++) {
+      if ($cmbWizardProfile.Items[$index].Path -eq $DefaultProfile) {
+        $defaultIndex = $index
+        break
+      }
+    }
     $cmbWizardProfile.SelectedIndex = $defaultIndex
   }
   $wizard.Controls.Add($cmbWizardProfile)
@@ -865,6 +925,7 @@ function Show-EndUserWizard {
   $lstWizardItems.Width = 660
   $lstWizardItems.Height = 210
   $lstWizardItems.CheckOnClick = $true
+  $lstWizardItems.DisplayMember = "Display"
   $wizard.Controls.Add($lstWizardItems)
   $wy += 220
 
@@ -883,6 +944,28 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($btnNone)
   $wy += 36
 
+  $lblSelection = New-Object System.Windows.Forms.Label
+  $lblSelection.Left = 430
+  $lblSelection.Top = $wy - 32
+  $lblSelection.Width = 440
+  $wizard.Controls.Add($lblSelection)
+
+  $lblItemInfo = New-Object System.Windows.Forms.Label
+  $lblItemInfo.Left = 210
+  $lblItemInfo.Top = $wy - 2
+  $lblItemInfo.Width = 540
+  $lblItemInfo.Height = 34
+  $wizard.Controls.Add($lblItemInfo)
+
+  $btnLearnMore = New-Object System.Windows.Forms.Button
+  $btnLearnMore.Text = "Learn More"
+  $btnLearnMore.Left = 760
+  $btnLearnMore.Top = $wy - 4
+  $btnLearnMore.Width = 110
+  $btnLearnMore.Enabled = $false
+  $wizard.Controls.Add($btnLearnMore)
+  $wy += 42
+
   $lblDisk = New-Object System.Windows.Forms.Label
   $lblDisk.Left = 16
   $lblDisk.Top = $wy
@@ -897,7 +980,7 @@ function Show-EndUserWizard {
   $cmbWizardDisk.DropDownStyle = "DropDownList"
   foreach ($disk in $Disks) {
     $label = "Disk {0} | {1} | {2} | {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
-    [void]$cmbWizardDisk.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number })
+    [void]$cmbWizardDisk.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number; Size = [int64]$disk.Size })
   }
   if ($cmbWizardDisk.Items.Count -gt 0) {
     $cmbWizardDisk.SelectedIndex = 0
@@ -953,10 +1036,10 @@ function Show-EndUserWizard {
     }
 
     try {
-      $profileAbs = To-Absolute -PathValue ([string]$cmbWizardProfile.SelectedItem)
+      $profileAbs = To-Absolute -PathValue ([string]$cmbWizardProfile.SelectedItem.Path)
       $entries = Read-ProfileEntriesFromFile -ProfileFile $profileAbs
       foreach ($entry in $entries) {
-        [void]$lstWizardItems.Items.Add($entry, $true)
+        [void]$lstWizardItems.Items.Add((Get-CatalogItem -Url $entry), $true)
       }
     } catch {
       [System.Windows.Forms.MessageBox]::Show(
@@ -971,13 +1054,43 @@ function Show-EndUserWizard {
   $cmbWizardProfile.add_SelectedIndexChanged($loadItems)
   & $loadItems
 
-  $btnWizardBase.Add_Click({
-    $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Filter = "Raspberry Pi OS Images (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All Files (*.*)|*.*"
-    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-      $txtWizardBase.Text = $dialog.FileName
+  $updateSelection = {
+    [int64]$selectedBytes = 0
+    $selectedCount = 0
+    $selectedItems = @()
+    foreach ($checkedIndex in $lstWizardItems.CheckedIndices) {
+      $item = $lstWizardItems.Items[$checkedIndex]
+      $selectedBytes += [int64]$item.EstimatedBytes
+      $selectedCount += 1
+      $selectedItems += $item
+    }
+    $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
+    $capacityText = "Required SD: $(Format-Bytes -Bytes $requiredBytes)"
+    if ($cmbWizardDisk.SelectedItem -ne $null) {
+      $diskBytes = [int64]$cmbWizardDisk.SelectedItem.Size
+      $state = if ($diskBytes -ge $requiredBytes) { "enough space" } else { "too small" }
+      $capacityText += " | Selected card: $(Format-Bytes -Bytes $diskBytes) ($state)"
+    }
+    $lblSelection.Text = "Selected: $selectedCount items, $(Format-Bytes -Bytes $selectedBytes) | $capacityText"
+  }
+
+  $lstWizardItems.Add_ItemCheck({
+    $wizard.BeginInvoke([System.Action]$updateSelection) | Out-Null
+  })
+  $lstWizardItems.Add_SelectedIndexChanged({
+    if ($lstWizardItems.SelectedItem -ne $null) {
+      $item = $lstWizardItems.SelectedItem
+      $lblItemInfo.Text = $item.Description
+      $btnLearnMore.Enabled = -not [string]::IsNullOrWhiteSpace($item.LearnMoreUrl)
     }
   })
+  $cmbWizardDisk.Add_SelectedIndexChanged({ & $updateSelection })
+  $btnLearnMore.Add_Click({
+    if ($lstWizardItems.SelectedItem -ne $null) {
+      Start-Process $lstWizardItems.SelectedItem.LearnMoreUrl
+    }
+  })
+  & $updateSelection
 
   $btnAll.Add_Click({
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
@@ -1007,15 +1120,10 @@ function Show-EndUserWizard {
       return
     }
 
-    if ([string]::IsNullOrWhiteSpace($txtWizardBase.Text) -or -not (Test-Path (To-Absolute -PathValue $txtWizardBase.Text))) {
-      [System.Windows.Forms.MessageBox]::Show("Select a local Raspberry Pi OS base image.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-
     $entries = @()
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
       if ($lstWizardItems.GetItemChecked($i)) {
-        $entries += [string]$lstWizardItems.Items[$i]
+        $entries += [string]$lstWizardItems.Items[$i].Url
       }
     }
 
@@ -1024,11 +1132,20 @@ function Show-EndUserWizard {
       return
     }
 
+    $selectedItems = @()
+    foreach ($checkedIndex in $lstWizardItems.CheckedIndices) {
+      $selectedItems += $lstWizardItems.Items[$checkedIndex]
+    }
+    $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
+    if ([int64]$cmbWizardDisk.SelectedItem.Size -lt $requiredBytes) {
+      [System.Windows.Forms.MessageBox]::Show("This SD card is too small. Choose a card with at least $(Format-Bytes -Bytes $requiredBytes).", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+
     $result = [PSCustomObject]@{
-      Profile = [string]$cmbWizardProfile.SelectedItem
+      Profile = [string]$cmbWizardProfile.SelectedItem.Path
       Entries = $entries
       DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
-      BaseImage = $txtWizardBase.Text
       ContentMode = if ($optPrebuilt.Checked) { "Prebuilt" } else { "FirstBoot" }
     }
 
@@ -1139,7 +1256,6 @@ $btnWizard.Add_Click({
         break
       }
     }
-    $txtBase.Text = $selection.BaseImage
     $chkAutoFetchBase.Checked = $false
     $chkDownloadOnPi.Checked = $selection.ContentMode -eq "FirstBoot"
     $chkUsePicker.Checked = $true
@@ -1351,10 +1467,6 @@ $btnDynamic.Add_Click({
   }
 
   $baseAbs = To-Absolute -PathValue $txtBase.Text
-  if (-not (Test-Path $baseAbs)) {
-    Add-Log "Dynamic build aborted: Raspberry Pi OS base image not found."
-    return
-  }
 
   $entries = $null
   $generatedProfile = ""
@@ -1373,13 +1485,26 @@ $btnDynamic.Add_Click({
 
   $requiredText = Format-Bytes -Bytes $estimate.RequiredBytes
   $unknownText = $estimate.UnknownCount
+  if ($estimate.Fits -eq $false) {
+    Add-Log "Dynamic build aborted: selected SD card is too small."
+    [System.Windows.Forms.MessageBox]::Show("The selected SD card is too small. Choose a card with at least $requiredText.", "SD Card Too Small", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+    return
+  }
+
+  try {
+    $disk = Get-Disk -Number $diskNum -ErrorAction Stop
+    $diskLabel = "$($disk.FriendlyName) - $(Format-Bytes -Bytes $disk.Size) - Disk $diskNum"
+  } catch {
+    $diskLabel = "Disk $diskNum"
+  }
+
   $contentMode = if ($chkDownloadOnPi.Checked) { "FirstBoot" } else { "Prebuilt" }
   $contentModeText = if ($contentMode -eq "FirstBoot") { "Selected catalogs download automatically on the Pi's first boot with Internet." } else { "Selected catalogs download now and the Pi is ready offline on first boot." }
-  $confirmText = "This will erase disk #$diskNum and build an appliance.`n`n$contentModeText`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
+  $confirmText = "This will erase the selected SD card:`n$diskLabel`n`nEverything currently on this card will be deleted.`n`n$contentModeText`nRequired capacity: $requiredText`nUnknown-size entries: $unknownText`n`nCreate Emergency Web Pi?"
 
   $confirm = [System.Windows.Forms.MessageBox]::Show(
     $confirmText,
-    "Confirm Dynamic SD Build",
+    "Erase and Create Emergency Web Pi",
     [System.Windows.Forms.MessageBoxButtons]::YesNo,
     [System.Windows.Forms.MessageBoxIcon]::Warning
   )
@@ -1395,9 +1520,15 @@ $btnDynamic.Add_Click({
     "-BaseConfigPath", (Quote-Arg -Value $configAbs),
     "-ProfilePath", (Quote-Arg -Value $generatedProfile),
     "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text),
-    "-BaseImagePath", (Quote-Arg -Value $baseAbs),
     "-ContentMode", $contentMode
   )
+
+  if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
+    $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
+    Add-Log "Using advanced local Raspberry Pi OS image override."
+  } else {
+    Add-Log "Using pinned, verified Raspberry Pi OS Lite image."
+  }
 
   Add-Log "Dynamic mode content installation: $contentMode"
 

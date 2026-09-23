@@ -10,9 +10,8 @@ For normal deployment, use the portable app wizard:
 1. Go to https://github.com/MikeyMan83/emergency-web-pi/releases/latest.
 2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
-4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
-5. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
-6. Select the base image, catalog items, and target SD card.
+4. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
+5. Select catalog items and the target SD card. The app downloads and verifies the pinned official Raspberry Pi OS Lite base image automatically.
 7. Choose a content mode:
   - **Recommended: download on first boot.** The Pi downloads selected catalogs when it first has Internet access.
   - **Fully prebuild.** The Windows PC downloads catalogs before writing, so the Pi is offline-ready on first boot.
@@ -54,7 +53,7 @@ Then write the SD card:
 To build a card with the latest profile content at creation time:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 This mode defaults to first-boot content installation. It builds an appliance image with

@@ -1,0 +1,6 @@
+# Repair, practical skills, and Raspberry Pi knowledge.
+https://lb.download.kiwix.org/zim/ifixit/ifixit_en_all_2025-12.zim
+https://lb.download.kiwix.org/zim/stack_exchange/diy.stackexchange.com_en_all_2026-02.zim
+https://lb.download.kiwix.org/zim/stack_exchange/mechanics.stackexchange.com_en_all_2026-02.zim
+https://lb.download.kiwix.org/zim/stack_exchange/woodworking.stackexchange.com_en_all_2026-02.zim
+https://lb.download.kiwix.org/zim/stack_exchange/raspberrypi.stackexchange.com_en_all_2026-02.zim

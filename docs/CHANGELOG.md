@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-09-23
+
+### Added
+- Added a pinned, SHA-256-verified official Raspberry Pi OS Lite download manifest so the normal wizard no longer requires an operating-system image file.
+- Added named Emergency & Medical, Essential Web, and Practical & Repair content collections with friendly descriptions, size estimates, and source links.
+
+### Changed
+- Made the normal wizard show live selection and SD capacity information, reject undersized cards, and explicitly identify the card that will be erased.
+
 ## [0.1.21] - 2026-09-23
 
 ### Fixed

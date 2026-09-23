@@ -11,9 +11,9 @@ End-user path:
 1. Download from Releases: https://github.com/MikeyMan83/emergency-web-pi/releases/latest
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
-4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
-5. Run `EmergencyWebPi.exe` from the extracted root folder.
-6. Start the end-user wizard, select the base image and catalog items, then select your SD card.
+4. Run `EmergencyWebPi.exe` from the extracted root folder.
+5. Start the end-user wizard, select catalog items, then select your SD card.
+   Emergency Web Pi automatically downloads and SHA-256 verifies its pinned official Raspberry Pi OS Lite base image.
 7. Choose a content mode:
    - **Recommended: download on first boot.** The Pi prepares the appliance quickly, then downloads selected catalogs when it first has Internet access.
    - **Fully prebuild.** The Windows PC downloads selected catalogs before writing, so the Pi needs no Internet on first boot.
@@ -46,7 +46,7 @@ The portable app wraps the same validated script engine used below.
 
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
-The wizard uses a local Raspberry Pi OS base image, catalog item selection,
+The wizard uses a pinned official Raspberry Pi OS Lite base image, catalog item selection,
 and preflight size estimation before write. Both content modes use the same
 ext4 appliance layout and runtime; they differ only in when selected catalogs download.
 
@@ -55,7 +55,7 @@ Advanced script-first paths are still available below for operators.
 Dynamic mode (recommended for fresh content at build time):
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 This mode defaults to `-ContentMode FirstBoot`, which writes the selected profile
@@ -88,7 +88,7 @@ This path enforces manifest invariants and image hash verification before write.
 
 This project is designed as a Windows-first appliance builder:
 
-- Use the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
+- Use the portable wizard or `scripts/create-sd-dynamic.ps1`; both automatically download and verify the pinned Raspberry Pi OS Lite base image.
 - The guided build creates a complete appliance image and writes it to the SD card. Content downloads either on first boot or during the Windows build, based on the selected mode.
 - Insert the SD card into the Pi and boot. Prebuilt mode works without Internet immediately; first-boot mode needs temporary Internet for its selected content.
 - Connect to the emergency Wi-Fi and browse the status page while installation runs, then use the offline library when it is ready.
@@ -174,7 +174,7 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 ## Recommended workflow
 
 For most users, this is the simplest reliable path:
-1. Use the portable wizard, or run `scripts/create-sd-dynamic.ps1` with a local Raspberry Pi OS base image.
+1. Use the portable wizard, or run `scripts/create-sd-dynamic.ps1`.
 2. Select content and let the build finish writing the SD card.
 3. For first-boot mode, boot the Pi with temporary Internet access and wait for installation to complete. Prebuilt mode needs no Internet.
 4. Connect to the AP and browse to `http://10.42.0.1` for progress, then `http://10.42.0.1:8080` for the library.
@@ -186,8 +186,8 @@ If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/emergency-web-pi.img`, `appliance.img`, or the newest `artifacts/*.img`.
 `scripts/build-appliance-image.ps1` requires `-ZimSourceDir` for offline-ready images;
 use `-AllowEmptyZimData` only for development images that will sync content later.
-`scripts/create-sd-dynamic.ps1` uses a Raspberry Pi OS base image + profile list,
-downloads current ZIM files during SD creation, and embeds them in the final ext4 appliance image.
+`scripts/create-sd-dynamic.ps1` downloads and verifies the pinned Raspberry Pi OS base image,
+then uses the selected profile to build the final ext4 appliance image.
 The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
 - dedicated `zimdata` partition,
 - `runtime.serverMode=native-kiwix-serve`,
@@ -243,7 +243,7 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
 - `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
-- `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (Raspberry Pi OS base image + profile download + ext4 appliance image build).
+- `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (automatic verified base image + profile + ext4 appliance image build).
 - `scripts/rebuild-library.sh`: host-side local `library.xml` rebuild helper.
 - `portable/EmergencyWebPi.ps1`: portable Windows frontend for build + SD write.
 - `portable/Launch-EmergencyWebPi.cmd`: one-click launcher for the portable frontend.

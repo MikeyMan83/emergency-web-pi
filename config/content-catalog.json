@@ -1,0 +1,68 @@
+{
+  "wikipedia_nl_all_nopic.zim": {
+    "name": "Wikipedia - Dutch",
+    "description": "Nederlandstalige algemene encyclopedie zonder afbeeldingen.",
+    "estimatedBytes": 5410000000,
+    "learnMoreUrl": "https://kiwix.org/en/catalog/"
+  },
+  "wikipedia_en_all_nopic.zim": {
+    "name": "Wikipedia - English",
+    "description": "General-reference encyclopedia without images.",
+    "estimatedBytes": 49070000000,
+    "learnMoreUrl": "https://kiwix.org/en/catalog/"
+  },
+  "mdwiki_en_all_maxi.zim": {
+    "name": "MDWiki",
+    "description": "Medical encyclopedia for clinicians and non-clinicians.",
+    "estimatedBytes": 2140000000,
+    "learnMoreUrl": "https://kiwix.org/en/catalog/"
+  },
+  "wikem_en_all_maxi.zim": {
+    "name": "WikEM",
+    "description": "Emergency medicine reference.",
+    "estimatedBytes": 357280000,
+    "learnMoreUrl": "https://kiwix.org/en/catalog/"
+  },
+  "trueprepper.com_en_all_2026-05.zim": {
+    "name": "TruePrepper",
+    "description": "Disaster readiness and survival guidance.",
+    "estimatedBytes": 1330000000,
+    "learnMoreUrl": "https://trueprepper.com/"
+  },
+  "zimgit-post-disaster_en_2024-05.zim": {
+    "name": "Post-disaster recovery guide",
+    "description": "Practical guidance for recovery after disasters.",
+    "estimatedBytes": 614800000,
+    "learnMoreUrl": "https://kiwix.org/en/catalog/"
+  },
+  "ifixit_en_all_2025-12.zim": {
+    "name": "iFixit",
+    "description": "Repair manuals and troubleshooting guides.",
+    "estimatedBytes": 3330000000,
+    "learnMoreUrl": "https://www.ifixit.com/"
+  },
+  "diy.stackexchange.com_en_all_2026-02.zim": {
+    "name": "DIY Stack Exchange",
+    "description": "Home improvement and practical knowledge.",
+    "estimatedBytes": 1910000000,
+    "learnMoreUrl": "https://diy.stackexchange.com/"
+  },
+  "mechanics.stackexchange.com_en_all_2026-02.zim": {
+    "name": "Mechanics Stack Exchange",
+    "description": "Vehicle maintenance and repair knowledge.",
+    "estimatedBytes": 323140000,
+    "learnMoreUrl": "https://mechanics.stackexchange.com/"
+  },
+  "woodworking.stackexchange.com_en_all_2026-02.zim": {
+    "name": "Woodworking Stack Exchange",
+    "description": "Woodworking techniques and projects.",
+    "estimatedBytes": 100240000,
+    "learnMoreUrl": "https://woodworking.stackexchange.com/"
+  },
+  "raspberrypi.stackexchange.com_en_all_2026-02.zim": {
+    "name": "Raspberry Pi Stack Exchange",
+    "description": "Raspberry Pi setup and troubleshooting knowledge.",
+    "estimatedBytes": 284830000,
+    "learnMoreUrl": "https://raspberrypi.stackexchange.com/"
+  }
+}
