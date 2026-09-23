@@ -187,7 +187,7 @@ def main() -> int:
     require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")
     require("--latest" in release_workflow, "release workflow must explicitly mark the published release as latest")
     require("Verify published release" in release_workflow, "release workflow must verify the published release record")
-    require("isLatest" in release_workflow and "expectedAssets" in release_workflow, "release workflow must verify latest status and expected assets")
+    require("releases/latest" in release_workflow and "expectedAssets" in release_workflow, "release workflow must verify latest status and expected assets")
     require(release_status_path.exists(), "scripts/release-status.ps1 must exist")
     require("PUBLISHED:" in release_status and "PENDING:" in release_status, "release status command must distinguish pending and published releases")
 
