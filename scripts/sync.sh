@@ -5,6 +5,16 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
+INITIAL_INSTALL=0
+if [[ "${1:-}" == "--initial" ]]; then
+  INITIAL_INSTALL=1
+  shift
+fi
+if [[ "$#" -ne 0 ]]; then
+  echo "Usage: $0 [--initial]" >&2
+  exit 2
+fi
+
 : "${GITHUB_URL:=}"
 : "${ZIM_DATA_DIR:=./zim_data}"
 
@@ -28,6 +38,7 @@ TMP_LIST="/tmp/zimlist.txt"
 list_available=1
 local_list_path="$ZIM_DATA_DIR/zimlist.txt"
 local_mode_marker="$ZIM_DATA_DIR/.use_local_zimlist"
+pending_marker="$ZIM_DATA_DIR/.content-install-pending"
 
 if [[ -f "$local_mode_marker" && -s "$local_list_path" ]]; then
   cp "$local_list_path" "$TMP_LIST"
@@ -54,11 +65,14 @@ else
 fi
 
 processed=0
+expected=0
+failed=0
 
 if [[ "$list_available" -eq 1 ]]; then
   while IFS= read -r line; do
     [[ -z "$line" || "$line" =~ ^# ]] && continue
 
+    expected=$((expected + 1))
     fname="$(basename "${line%%.torrent}")"
     target="$ZIM_DATA_DIR/$fname"
 
@@ -72,11 +86,13 @@ if [[ "$list_available" -eq 1 ]]; then
       -o "$fname" \
       "$line"; then
       log "WARNING: $fname failed to download or resume cleanly"
+      failed=$((failed + 1))
       continue
     fi
 
     if [[ ! -s "$target" ]]; then
       log "WARNING: $fname is missing or zero bytes after download"
+      failed=$((failed + 1))
       continue
     fi
 
@@ -91,4 +107,14 @@ if [[ "$list_available" -eq 1 ]]; then
   log "Done. Sync and registration complete. $processed item(s) validated/downloaded."
 else
   log "Done. Library refresh complete using existing local ZIM files."
+fi
+
+if [[ "$INITIAL_INSTALL" -eq 1 ]]; then
+  if [[ "$list_available" -eq 1 && "$expected" -gt 0 && "$failed" -eq 0 && "$processed" -eq "$expected" ]]; then
+    rm -f "$pending_marker"
+    log "Initial content installation complete."
+  else
+    log "Initial content installation remains pending ($processed/$expected complete); retrying when internet is available."
+    exit 1
+  fi
 fi

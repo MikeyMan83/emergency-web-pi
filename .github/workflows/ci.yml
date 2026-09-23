@@ -41,6 +41,11 @@ jobs:
         run: |
           python -m py_compile scripts/estimate_space.py
 
+      - name: Run first-boot content regression tests
+        run: |
+          bash tests/test_sync_initial.sh
+          python -m unittest tests/test_status_web.py
+
       - name: Validate repository invariants
         run: |
           python scripts/validate_repo.py

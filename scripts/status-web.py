@@ -50,6 +50,20 @@ def safe_tail(path: pathlib.Path) -> str:
         return "Unable to read sync log"
 
 
+def count_profile_entries(path: pathlib.Path) -> int:
+    try:
+        return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#"))
+    except OSError:
+        return 0
+
+
+def content_storage_mounted(path: pathlib.Path) -> bool:
+    try:
+        return path.is_mount()
+    except (AttributeError, NotImplementedError):
+        return False
+
+
 def build_page(status: dict[str, object], kiwix_port: int) -> str:
     ready = "true" if status["ready"] else "false"
     message = "Library is ready" if status["ready"] else "Preparing content. Keep power connected."
@@ -106,7 +120,7 @@ async function refresh() {{
       open.classList.remove('hidden');
     }} else {{
       state.classList.remove('ok');
-            state.textContent = !s.zimDataMounted ? 'Content storage is unavailable.' : 'Preparing content. Keep power connected.';
+        state.textContent = !s.zimDataMounted ? 'Content storage is unavailable.' : (s.contentInstallPending ? 'Downloading library content: ' + s.zimCount + '/' + s.expectedZimCount + ' files (' + s.contentProgressPercent + '%).' : 'Preparing content. Keep power connected.');
       spin.classList.remove('hidden');
       open.classList.add('hidden');
     }}
@@ -130,17 +144,26 @@ class StatusHandler(http.server.BaseHTTPRequestHandler):
         sync_log = self.zim_data_dir / "sync.log"
         zim_count = len(list(self.zim_data_dir.glob("*.zim"))) if self.zim_data_dir.exists() else 0
         library_file = self.zim_data_dir / "library.xml"
-        zim_data_mounted = self.zim_data_dir.is_mount()
+        pending_marker = self.zim_data_dir / ".content-install-pending"
+        expected_zim_count = count_profile_entries(self.zim_data_dir / "zimlist.txt")
+        zim_data_mounted = content_storage_mounted(self.zim_data_dir)
         library_indexed = library_file.exists() and library_file.stat().st_size > 0
         kiwix_active = service_active("pi-kiwix-serve.service")
+        initial_sync_active = service_active("pi-kiwix-initial-sync.service")
+        content_install_pending = pending_marker.exists()
+        content_progress_percent = min(100, int((zim_count * 100) / expected_zim_count)) if expected_zim_count else 0
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptimeSeconds": int(time.time()),
             "kiwixActive": kiwix_active,
-            "syncActive": service_active("pi-kiwix-sync.service"),
+            "syncActive": service_active("pi-kiwix-sync.service") or initial_sync_active,
+            "initialSyncActive": initial_sync_active,
             "zimDataMounted": zim_data_mounted,
             "libraryIndexed": library_indexed,
-            "ready": kiwix_active and zim_data_mounted and zim_count > 0 and library_indexed,
+            "contentInstallPending": content_install_pending,
+            "expectedZimCount": expected_zim_count,
+            "contentProgressPercent": content_progress_percent,
+            "ready": kiwix_active and zim_data_mounted and not content_install_pending and zim_count > 0 and library_indexed,
             "zimCount": zim_count,
             "lastSyncLine": safe_tail(sync_log),
         }

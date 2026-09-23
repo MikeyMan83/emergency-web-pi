@@ -263,9 +263,11 @@ sudo sed -i '/^COMPOSE_SERVICE=/d' "$MOUNT_ROOT/opt/emergency-web-pi/.env"
 
 sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-serve.service"
 sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.service"
+sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-initial-sync.service"
 sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-status.service"
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-serve.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-serve.service"
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.service"
+sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-initial-sync.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-initial-sync.service"
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.timer" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-sync.timer"
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-status.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-status.service"
 
@@ -322,6 +324,7 @@ apt-get install -y kiwix-tools aria2 curl git network-manager dnsmasq-base iw ca
 
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-serve.service
+sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-initial-sync.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-sync.timer
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-status.service
 

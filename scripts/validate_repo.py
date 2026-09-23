@@ -38,7 +38,9 @@ def main() -> int:
     status_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-status.service"
     sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-sync.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
+    sync_path = repo_root / "scripts" / "sync.sh"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
+    initial_sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-initial-sync.service"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
     env_example = env_example_path.read_text(encoding="utf-8")
@@ -52,6 +54,8 @@ def main() -> int:
     status_web = status_web_path.read_text(encoding="utf-8")
     kiwix_service = kiwix_service_path.read_text(encoding="utf-8")
     sync_service = sync_service_path.read_text(encoding="utf-8")
+    initial_sync_service = initial_sync_service_path.read_text(encoding="utf-8")
+    sync_script = sync_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -79,7 +83,8 @@ def main() -> int:
     )
 
     # Appliance builder contract checks.
-    require("No first-boot installation" in appliance_doc, "docs/APPLIANCE.md must define the offline appliance contract")
+    require("Prebuilt mode requires no first-boot Internet" in appliance_doc, "docs/APPLIANCE.md must define the prebuilt offline contract")
+    require("first-boot mode requires temporary Internet" in appliance_doc, "docs/APPLIANCE.md must define the first-boot content contract")
     require("scripts/create-sd.ps1" in appliance_doc, "docs/APPLIANCE.md must define create-sd.ps1 as the Windows entry point")
     require(isinstance(appliance_config.get("applianceVersion"), str), "config/appliance.example.json must set applianceVersion")
     require(appliance_config.get("content", {}).get("profile") == "medical-survival", "config/appliance.example.json must default to medical-survival profile")
@@ -94,13 +99,21 @@ def main() -> int:
     require(portable_cmd_path.exists(), "portable/Launch-EmergencyWebPi.cmd must exist")
     require(status_service_path.exists(), "scripts/systemd/pi-kiwix-status.service must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
+    require(sync_path.exists(), "scripts/sync.sh must exist")
+    require(initial_sync_service_path.exists(), "scripts/systemd/pi-kiwix-initial-sync.service must exist")
     require("Manifest.build.configSha256" in create_sd, "create-sd.ps1 must verify the resolved config hash")
     require("network.ap.password is a placeholder" in create_sd, "create-sd.ps1 must reject placeholder AP passwords")
     require("build-appliance-image.ps1" in create_sd_dynamic, "dynamic builder must build the appliance image before flashing")
+    require('string]$ContentMode = "FirstBoot"' in create_sd_dynamic, "dynamic builder must default to first-boot content installation")
+    require('"Prebuilt"' in create_sd_dynamic, "dynamic builder must support fully prebuilt content")
+    require(".content-install-pending" in create_sd_dynamic, "dynamic builder must mark first-boot content installation")
     require("New-ZimDataPartition" not in create_sd_dynamic, "dynamic builder must not create a separate exFAT content partition")
     require("Format-Volume" not in create_sd_dynamic, "dynamic builder must not format an exFAT content partition")
     require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in kiwix_service, "kiwix service must require the ZIM data mount")
     require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in sync_service, "sync service must require the ZIM data mount")
+    require("ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending" in initial_sync_service, "initial sync service must run only while content installation is pending")
+    require("scripts/sync.sh --initial" in initial_sync_service, "initial sync service must use initial completion semantics")
+    require("Initial content installation complete" in sync_script, "sync script must complete first-boot content installation")
     require('"ready": kiwix_active and zim_data_mounted' in status_web, "status page must require mounted content before ready")
 
     # Estimate completeness checks.

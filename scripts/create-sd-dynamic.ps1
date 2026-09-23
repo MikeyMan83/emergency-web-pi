@@ -13,6 +13,9 @@ param(
 
   [string]$CacheDir = "artifacts/zim-cache",
 
+  [ValidateSet("FirstBoot", "Prebuilt")]
+  [string]$ContentMode = "FirstBoot",
+
   [switch]$AllowFixedDisk
 )
 
@@ -98,40 +101,51 @@ $outputImagePath = Join-Path $repoRoot "artifacts/dynamic-appliance.img"
 $outputManifestPath = "$outputImagePath.manifest.json"
 
 $urls = Read-ProfileEntries -Path $resolvedProfile
-Require-Aria2
+if ($ContentMode -eq "Prebuilt") {
+  Require-Aria2
+}
 
-if (-not (Test-Path $resolvedCacheDir)) {
+if ($ContentMode -eq "Prebuilt" -and -not (Test-Path $resolvedCacheDir)) {
   New-Item -ItemType Directory -Path $resolvedCacheDir | Out-Null
 }
 
 $selectedNames = @()
 foreach ($url in $urls) {
   $name = Resolve-ZimFileName -Url $url
+  $selectedNames += $name
+
+  if ($ContentMode -eq "FirstBoot") {
+    continue
+  }
+
   $target = Join-Path $resolvedCacheDir $name
 
   if (Test-Path $target -PathType Leaf) {
     $len = (Get-Item $target).Length
     if ($len -gt 0) {
       Write-Host "Using cached: $name"
-      $selectedNames += $name
       continue
     }
   }
 
   Write-Host "Downloading: $name"
   Invoke-AriaDownload -Url $url -TargetDir $resolvedCacheDir -OutputName $name
-  $selectedNames += $name
 }
 
 if (Test-Path $stageDir) {
   Remove-Item -Recurse -Force $stageDir
 }
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
-foreach ($name in $selectedNames) {
-  Copy-Item -Path (Join-Path $resolvedCacheDir $name) -Destination (Join-Path $stageDir $name) -Force
+if ($ContentMode -eq "Prebuilt") {
+  foreach ($name in $selectedNames) {
+    Copy-Item -Path (Join-Path $resolvedCacheDir $name) -Destination (Join-Path $stageDir $name) -Force
+  }
 }
 Copy-Item -Path $resolvedProfile -Destination (Join-Path $stageDir "zimlist.txt") -Force
 Set-Content -Path (Join-Path $stageDir ".use_local_zimlist") -Value "1" -Encoding ascii
+if ($ContentMode -eq "FirstBoot") {
+  Set-Content -Path (Join-Path $stageDir ".content-install-pending") -Value "1" -Encoding ascii
+}
 
 $buildArgs = @(
   "-BaseImagePath", $resolvedBaseImage,
@@ -165,5 +179,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "Dynamic SD build complete"
 Write-Host "Disk:       #$DiskNumber"
-Write-Host "ZIM files:  $($selectedNames.Count) embedded in ext4 zimdata"
+if ($ContentMode -eq "Prebuilt") {
+  Write-Host "Content:    $($selectedNames.Count) ZIM files embedded in ext4 zimdata"
+} else {
+  Write-Host "Content:    $($selectedNames.Count) selected ZIM files will download on first boot"
+}
 Write-Host "Next: safely eject SD card and boot the Pi."

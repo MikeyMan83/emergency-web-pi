@@ -1,0 +1,17 @@
+[Unit]
+Description=Emergency Web Pi - initial content installation
+RequiresMountsFor=/var/lib/pi-kiwix-zimdata
+After=local-fs.target network-online.target pi-kiwix-serve.service
+Wants=network-online.target
+ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=__REPO_DIR__/.env
+ExecStart=__REPO_DIR__/scripts/sync.sh --initial
+Restart=on-failure
+RestartSec=5min
+
+[Install]
+WantedBy=multi-user.target

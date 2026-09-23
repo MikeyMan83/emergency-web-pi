@@ -9,11 +9,13 @@ The guided builder writes a complete, self-contained Raspberry Pi appliance to t
 including the OS, Kiwix, the selected ZIM content, configuration, and emergency Wi-Fi setup.
 It may optionally inject private configuration during the build.
 
-Insert the SD card into the Raspberry Pi, power it on without internet,
-and it automatically starts its own emergency Wi-Fi and serves the preloaded Kiwix library.
+Insert the SD card into the Raspberry Pi and it automatically starts its own emergency Wi-Fi.
+In recommended first-boot mode, provide temporary Internet so selected content can download;
+after installation completes, the same appliance works offline. Prebuilt mode serves the
+selected library without Internet on first boot.
 
-No first-boot installation, internet connection, GitHub access, or manual configuration
-is required for the appliance to function.
+No manual runtime configuration is required. Prebuilt mode requires no first-boot Internet;
+first-boot mode requires temporary Internet only until selected content is installed.
 
 ## Acceptance test
 
@@ -21,10 +23,10 @@ is required for the appliance to function.
 2. Run the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
 3. Remove the finished SD card.
 4. Insert it into a Raspberry Pi 3B+.
-5. Boot with no internet connectivity.
+5. Boot with temporary Internet connectivity for first-boot mode, or no Internet for prebuilt mode.
 6. Connect a phone or laptop to the emergency Wi-Fi.
-7. Browse to `http://10.42.0.1` and confirm status page is visible shortly after boot.
-8. Browse to `http://10.42.0.1:8080`.
+7. Browse to `http://10.42.0.1` and confirm the status page reports progress or ready.
+8. Browse to `http://10.42.0.1:8080` when ready.
 9. Confirm Kiwix starts and all expected ZIMs are present.
 
 Maintenance path:
@@ -78,6 +80,7 @@ Dynamic mode inputs:
 - Profile list (`profiles/*.txt`)
 - Windows disk target for SD write
 - Local download cache directory
+- Content mode: `FirstBoot` (default) or `Prebuilt`
 
 ## Build command
 
@@ -111,11 +114,13 @@ Portable frontend behavior for dynamic mode:
 - Load profile presets from `profiles/*.txt`
 - Select individual items with checkboxes
 - Run preflight SD size estimation before the destructive write step
-- Embed selected catalogs during appliance construction before the SD card is written
+- Embed the selected catalog profile during appliance construction before the SD card is written
+- Default to first-boot installation, with fully prebuilt offline cards available as an explicit choice
 
 Runtime UX behavior:
 
 - `pi-kiwix-status.service` serves a local status page on `http://10.42.0.1` shortly after boot
+- `pi-kiwix-initial-sync.service` retries first-boot content installation while the pending marker exists
 - `pi-kiwix-serve.service` serves the library on `http://10.42.0.1:8080`
 
 The initial config example is provided at `config/appliance.example.json`.

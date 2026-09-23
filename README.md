@@ -14,10 +14,12 @@ End-user path:
 4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
 5. Run `EmergencyWebPi.exe` from the extracted root folder.
 6. Start the end-user wizard, select the base image and catalog items, then select your SD card.
-7. Let the wizard build and write the appliance. Selected catalogs and the generated AP password are embedded in the final image.
-8. Insert the card into the Pi and boot.
-9. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
-10. When ready, open http://10.42.0.1:8080 for the library.
+7. Choose a content mode:
+   - **Recommended: download on first boot.** The Pi prepares the appliance quickly, then downloads selected catalogs when it first has Internet access.
+   - **Fully prebuild.** The Windows PC downloads selected catalogs before writing, so the Pi needs no Internet on first boot.
+8. Insert the card into the Pi and boot. For first-boot mode, provide temporary Internet to the Pi, such as Ethernet.
+9. Join the Pi Wi-Fi and open http://10.42.0.1 to watch installation progress.
+10. When installation is complete, open http://10.42.0.1:8080 for the offline library.
 
 Fallback if no release asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
@@ -45,8 +47,8 @@ The portable app wraps the same validated script engine used below.
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 The wizard uses a local Raspberry Pi OS base image, catalog item selection,
-and preflight size estimation before write. It always embeds selected content
-before the SD card is written so the appliance is offline-ready at first boot.
+and preflight size estimation before write. Both content modes use the same
+ext4 appliance layout and runtime; they differ only in when selected catalogs download.
 
 Advanced script-first paths are still available below for operators.
 
@@ -56,8 +58,10 @@ Dynamic mode (recommended for fresh content at build time):
 ./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
-This mode downloads selected ZIM files with resume support, builds one final
-appliance image with an ext4 `zimdata` partition, and writes that image to SD.
+This mode defaults to `-ContentMode FirstBoot`, which writes the selected profile
+to the ext4 `zimdata` partition and downloads catalogs automatically on the Pi.
+Use `-ContentMode Prebuilt` to download selected ZIM files on Windows and create
+a card that is offline-ready at its first boot.
 
 In the portable app, dynamic mode includes:
 - profile preset loading,
@@ -85,12 +89,13 @@ This path enforces manifest invariants and image hash verification before write.
 This project is designed as a Windows-first appliance builder:
 
 - Use the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
-- The guided build downloads selected content, builds a complete appliance image, and writes it to the SD card.
+- The guided build creates a complete appliance image and writes it to the SD card. Content downloads either on first boot or during the Windows build, based on the selected mode.
 - Insert the SD card into the Pi and boot without internet.
 - Connect to the emergency Wi-Fi and browse the preloaded offline library.
 
-No first-boot installation, internet connection, GitHub access, or manual configuration
-should be required for the finished appliance to function.
+Prebuilt mode requires no first-boot installation or Internet connection. First-boot mode
+requires temporary Pi Internet access until selected content is installed; both modes need
+no manual runtime configuration and work offline after content installation completes.
 
 The appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
 
@@ -171,8 +176,8 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 For most users, this is the simplest reliable path:
 1. Use the portable wizard, or run `scripts/create-sd-dynamic.ps1` with a local Raspberry Pi OS base image.
 2. Select content and let the build finish writing the SD card.
-3. Boot the SD card in the Pi with no internet.
-4. Connect to the AP and browse to `http://10.42.0.1` for readiness, then `http://10.42.0.1:8080` for the library.
+3. For first-boot mode, boot the Pi with temporary Internet access and wait for installation to complete. Prebuilt mode needs no Internet.
+4. Connect to the AP and browse to `http://10.42.0.1` for progress, then `http://10.42.0.1:8080` for the library.
 
 Use legacy first-boot setup only if you specifically need direct installation on a running Pi.
 
@@ -205,6 +210,7 @@ writes the default medical-survival content URL into `.env`, and enables native
 
 Runtime services:
 - `pi-kiwix-serve.service`: serves all `.zim` files from `ZIM_DATA_DIR`.
+- `pi-kiwix-initial-sync.service`: retries first-boot content installation until the selected profile is complete.
 - `pi-kiwix-sync.timer`: runs periodic sync and library rebuild.
 - `pi-kiwix-status.service`: serves a startup/status page on port `80`.
 

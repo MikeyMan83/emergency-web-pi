@@ -53,8 +53,9 @@ $startNote = @(
   "Quick start:",
   "1. Right-click EmergencyWebPi.exe and choose Run as administrator.",
   "2. Download Raspberry Pi OS Lite (64-bit) as a local base image, then click Start End-User Wizard.",
-  "3. Select the base image, catalogs, and target SD card.",
-  "4. Wait for completion, then insert SD card in Pi."
+  "3. Select the base image, catalogs, target SD card, and content mode.",
+  "4. Recommended first-boot mode downloads content on the Pi with temporary Internet; prebuilt mode is offline-ready immediately.",
+  "5. Wait for completion, then insert SD card in Pi."
 )
 Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Encoding utf8
 

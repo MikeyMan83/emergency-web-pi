@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-09-23
+
+### Added
+- Added recommended first-boot content installation alongside fully prebuilt offline cards, using the same ext4 appliance layout and runtime.
+- Added resumable initial content installation with Pi status-page progress and retry behavior when temporary Internet is unavailable.
+
+### Tests
+- Added regression coverage for successful and interrupted initial content installation, plus status progress and readiness behavior.
+
 ## [0.1.18] - 2026-09-23
 
 ### Fixed

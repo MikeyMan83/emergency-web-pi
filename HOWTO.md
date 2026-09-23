@@ -13,9 +13,11 @@ For normal deployment, use the portable app wizard:
 4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
 5. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
 6. Select the base image, catalog items, and target SD card.
-7. Confirm the size estimate and build. The wizard embeds the selected content before it writes the card.
-8. Insert the SD card in the Pi and boot.
-9. Open `http://10.42.0.1` to watch startup status.
+7. Choose a content mode:
+  - **Recommended: download on first boot.** The Pi downloads selected catalogs when it first has Internet access.
+  - **Fully prebuild.** The Windows PC downloads catalogs before writing, so the Pi is offline-ready on first boot.
+8. Insert the SD card in the Pi and boot. For first-boot mode, provide temporary Pi Internet access, such as Ethernet.
+9. Open `http://10.42.0.1` to watch installation progress.
 10. Open `http://10.42.0.1:8080` when ready.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
@@ -55,8 +57,9 @@ To build a card with the latest profile content at creation time:
 ./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
-This mode downloads profile entries with resume support, builds an appliance image with
-the selected content in its ext4 `zimdata` partition, then writes that final image to SD.
+This mode defaults to first-boot content installation. It builds an appliance image with
+the selected profile in its ext4 `zimdata` partition, then writes that final image to SD.
+Add `-ContentMode Prebuilt` when the Windows PC should download content before writing.
 In the portable app, use Dynamic SD with the item picker to choose profile entries,
 then review the preflight size estimate before confirming the write.
 
@@ -72,6 +75,7 @@ systemctl status pi-kiwix-sync.service --no-pager
 Expected:
 - `/var/lib/pi-kiwix-zimdata` is mounted.
 - `pi-kiwix-serve.service` is active and reachable on port `8080`.
+- In first-boot mode, `pi-kiwix-initial-sync.service` retries until the selected content is installed.
 - `pi-kiwix-sync.timer` is enabled and scheduled weekly.
 
 ## Run sync now

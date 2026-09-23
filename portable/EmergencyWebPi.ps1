@@ -445,11 +445,11 @@ $form.Controls.Add($chkAutoFetchBase)
 $y += 30
 
 $chkDownloadOnPi = New-Object System.Windows.Forms.CheckBox
-$chkDownloadOnPi.Text = "Offline appliance mode embeds selected catalogs before the SD card is written"
+$chkDownloadOnPi.Text = "Recommended: download selected catalogs on first boot"
 $chkDownloadOnPi.Left = 240
 $chkDownloadOnPi.Top = $y
 $chkDownloadOnPi.Width = 700
-$chkDownloadOnPi.Checked = $false
+$chkDownloadOnPi.Checked = $true
 $chkDownloadOnPi.Enabled = $false
 $form.Controls.Add($chkDownloadOnPi)
 
@@ -586,8 +586,8 @@ $btnWizard.Text = "Quick Wizard"
 $chkUsePicker.Checked = $true
 $chkUsePicker.Visible = $false
 
-# Default to offline-ready cards. Pi-side deferred downloads are advanced-only.
-$chkDownloadOnPi.Checked = $false
+# Default to first-boot content installation; fully prebuilt cards remain available in the wizard.
+$chkDownloadOnPi.Checked = $true
 
 $advancedControls = @(
   $lblBaseImage, $txtBase, $btnBase,
@@ -790,7 +790,7 @@ function Show-EndUserWizard {
 
   $wizard = New-Object System.Windows.Forms.Form
   $wizard.Text = "Emergency Web Pi Wizard"
-  $wizard.Size = New-Object System.Drawing.Size(900, 700)
+  $wizard.Size = New-Object System.Drawing.Size(900, 760)
   $wizard.StartPosition = "CenterParent"
   $wizard.FormBorderStyle = "FixedDialog"
   $wizard.MaximizeBox = $false
@@ -804,9 +804,31 @@ function Show-EndUserWizard {
   $lblIntro.Top = $wy
   $lblIntro.Width = 850
   $lblIntro.Height = 44
-  $lblIntro.Text = "Select content and target SD card. The wizard then writes a ready-to-boot offline library card for the Pi."
+  $lblIntro.Text = "Select a Raspberry Pi OS base image, content, and target SD card."
   $wizard.Controls.Add($lblIntro)
   $wy += 50
+
+  $lblBase = New-Object System.Windows.Forms.Label
+  $lblBase.Left = 16
+  $lblBase.Top = $wy
+  $lblBase.Width = 180
+  $lblBase.Text = "Raspberry Pi OS image"
+  $wizard.Controls.Add($lblBase)
+
+  $txtWizardBase = New-Object System.Windows.Forms.TextBox
+  $txtWizardBase.Left = 210
+  $txtWizardBase.Top = $wy - 3
+  $txtWizardBase.Width = 550
+  $txtWizardBase.Text = $txtBase.Text
+  $wizard.Controls.Add($txtWizardBase)
+
+  $btnWizardBase = New-Object System.Windows.Forms.Button
+  $btnWizardBase.Text = "Browse"
+  $btnWizardBase.Left = 770
+  $btnWizardBase.Top = $wy - 4
+  $btnWizardBase.Width = 100
+  $wizard.Controls.Add($btnWizardBase)
+  $wy += 38
 
   $lblProfile = New-Object System.Windows.Forms.Label
   $lblProfile.Left = 16
@@ -841,10 +863,10 @@ function Show-EndUserWizard {
   $lstWizardItems.Left = 210
   $lstWizardItems.Top = $wy
   $lstWizardItems.Width = 660
-  $lstWizardItems.Height = 280
+  $lstWizardItems.Height = 210
   $lstWizardItems.CheckOnClick = $true
   $wizard.Controls.Add($lstWizardItems)
-  $wy += 290
+  $wy += 220
 
   $btnAll = New-Object System.Windows.Forms.Button
   $btnAll.Text = "Select All"
@@ -884,23 +906,29 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($cmbWizardDisk)
   $wy += 38
 
-  $chkWizardFetch = New-Object System.Windows.Forms.CheckBox
-  $chkWizardFetch.Left = 210
-  $chkWizardFetch.Top = $wy
-  $chkWizardFetch.Width = 660
-  $chkWizardFetch.Checked = $false
-  $chkWizardFetch.Enabled = $false
-  $chkWizardFetch.Text = "A local Raspberry Pi OS base image is required"
-  $wizard.Controls.Add($chkWizardFetch)
-  $wy += 40
+  $lblMode = New-Object System.Windows.Forms.Label
+  $lblMode.Left = 16
+  $lblMode.Top = $wy
+  $lblMode.Width = 180
+  $lblMode.Text = "Content installation"
+  $wizard.Controls.Add($lblMode)
 
-  $lblOffline = New-Object System.Windows.Forms.Label
-  $lblOffline.Left = 210
-  $lblOffline.Top = $wy + 4
-  $lblOffline.Width = 660
-  $lblOffline.Text = "Offline-ready mode: catalogs are preloaded during SD creation."
-  $wizard.Controls.Add($lblOffline)
-  $wy += 40
+  $optFirstBoot = New-Object System.Windows.Forms.RadioButton
+  $optFirstBoot.Left = 210
+  $optFirstBoot.Top = $wy
+  $optFirstBoot.Width = 660
+  $optFirstBoot.Checked = $true
+  $optFirstBoot.Text = "Recommended: download selected content on first boot (Internet required once)"
+  $wizard.Controls.Add($optFirstBoot)
+  $wy += 24
+
+  $optPrebuilt = New-Object System.Windows.Forms.RadioButton
+  $optPrebuilt.Left = 210
+  $optPrebuilt.Top = $wy
+  $optPrebuilt.Width = 660
+  $optPrebuilt.Text = "Fully prebuild: download content now for an offline-ready first boot"
+  $wizard.Controls.Add($optPrebuilt)
+  $wy += 38
 
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
@@ -943,6 +971,14 @@ function Show-EndUserWizard {
   $cmbWizardProfile.add_SelectedIndexChanged($loadItems)
   & $loadItems
 
+  $btnWizardBase.Add_Click({
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Filter = "Raspberry Pi OS Images (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All Files (*.*)|*.*"
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+      $txtWizardBase.Text = $dialog.FileName
+    }
+  })
+
   $btnAll.Add_Click({
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
       $lstWizardItems.SetItemChecked($i, $true)
@@ -971,6 +1007,11 @@ function Show-EndUserWizard {
       return
     }
 
+    if ([string]::IsNullOrWhiteSpace($txtWizardBase.Text) -or -not (Test-Path (To-Absolute -PathValue $txtWizardBase.Text))) {
+      [System.Windows.Forms.MessageBox]::Show("Select a local Raspberry Pi OS base image.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+
     $entries = @()
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
       if ($lstWizardItems.GetItemChecked($i)) {
@@ -987,8 +1028,8 @@ function Show-EndUserWizard {
       Profile = [string]$cmbWizardProfile.SelectedItem
       Entries = $entries
       DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
-      AutoFetch = [bool]$chkWizardFetch.Checked
-      DownloadOnPi = $false
+      BaseImage = $txtWizardBase.Text
+      ContentMode = if ($optPrebuilt.Checked) { "Prebuilt" } else { "FirstBoot" }
     }
 
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -1098,8 +1139,9 @@ $btnWizard.Add_Click({
         break
       }
     }
-    $chkAutoFetchBase.Checked = $selection.AutoFetch
-    $chkDownloadOnPi.Checked = $selection.DownloadOnPi
+    $txtBase.Text = $selection.BaseImage
+    $chkAutoFetchBase.Checked = $false
+    $chkDownloadOnPi.Checked = $selection.ContentMode -eq "FirstBoot"
     $chkUsePicker.Checked = $true
     $cmbProfiles.SelectedItem = $selection.Profile
     $txtProfilePath.Text = $selection.Profile
@@ -1109,7 +1151,7 @@ $btnWizard.Add_Click({
       [void]$lstProfileItems.Items.Add($entry, $true)
     }
 
-    $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $selection.AutoFetch -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
+    $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
     Log-PreflightEstimate -Estimate $estimate
 
     Add-Log "Wizard selection applied. Continuing with dynamic build."
@@ -1331,7 +1373,9 @@ $btnDynamic.Add_Click({
 
   $requiredText = Format-Bytes -Bytes $estimate.RequiredBytes
   $unknownText = $estimate.UnknownCount
-  $confirmText = "This will erase disk #$diskNum and build an offline-ready appliance.`n`nSelected catalogs will be embedded during SD creation.`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
+  $contentMode = if ($chkDownloadOnPi.Checked) { "FirstBoot" } else { "Prebuilt" }
+  $contentModeText = if ($contentMode -eq "FirstBoot") { "Selected catalogs download automatically on the Pi's first boot with Internet." } else { "Selected catalogs download now and the Pi is ready offline on first boot." }
+  $confirmText = "This will erase disk #$diskNum and build an appliance.`n`n$contentModeText`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
 
   $confirm = [System.Windows.Forms.MessageBox]::Show(
     $confirmText,
@@ -1351,10 +1395,11 @@ $btnDynamic.Add_Click({
     "-BaseConfigPath", (Quote-Arg -Value $configAbs),
     "-ProfilePath", (Quote-Arg -Value $generatedProfile),
     "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text),
-    "-BaseImagePath", (Quote-Arg -Value $baseAbs)
+    "-BaseImagePath", (Quote-Arg -Value $baseAbs),
+    "-ContentMode", $contentMode
   )
 
-  Add-Log "Dynamic mode will embed selected catalogs before SD ejection."
+  Add-Log "Dynamic mode content installation: $contentMode"
 
   Add-Log "Running dynamic SD build on disk #$diskNum"
   $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args
