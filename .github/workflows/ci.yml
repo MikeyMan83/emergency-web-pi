@@ -62,6 +62,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install portable compiler
+        shell: powershell
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck
+          Import-Module ps2exe -Force
+
       - name: Build portable bundle
         shell: powershell
         run: |
