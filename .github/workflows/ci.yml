@@ -62,21 +62,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install portable compiler
-        shell: powershell
-        run: |
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck
-          Import-Module ps2exe -Force
-
       - name: Build portable bundle
         id: package
-        shell: powershell
+        shell: pwsh
         continue-on-error: true
         run: |
           $logPath = Join-Path $env:RUNNER_TEMP "portable-package.log"
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke *>&1 | Tee-Object -FilePath $logPath
+          ./scripts/package-portable.ps1 -Version "0.0.0-ci" -OutputDir artifacts/ci-smoke *>&1 | Tee-Object -FilePath $logPath
           exit $LASTEXITCODE
 
       - name: Upload portable package log
@@ -94,11 +86,11 @@ jobs:
           throw "Portable bundle build failed. Download the portable-package-log artifact for details."
 
       - name: Smoke test frontend startup
-        shell: powershell
+        shell: pwsh
         run: |
           $bundle = "artifacts/ci-smoke/EmergencyWebPi-0.0.0-ci-windows"
           $required = @("EmergencyWebPi.exe", "Launch-EmergencyWebPi.cmd", "portable/EmergencyWebPi.ps1")
           foreach ($path in $required) {
             if (-not (Test-Path (Join-Path $bundle $path))) { throw "Missing release entry-point file: $path" }
           }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-portable.ps1 -BundleDir $bundle
+          ./scripts/smoke-portable.ps1 -BundleDir $bundle
