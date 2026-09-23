@@ -918,10 +918,11 @@ function Show-EndUserWizard {
   param(
     [Parameter(Mandatory = $true)][string[]]$ProfilePaths,
     [Parameter(Mandatory = $true)][string]$DefaultProfile,
-    [Parameter(Mandatory = $true)]$Disks,
+    [AllowEmptyCollection()]$Disks = @(),
     [System.Windows.Forms.IWin32Window]$Owner = $null
   )
 
+  $Disks = @($Disks)
   $wizard = New-Object System.Windows.Forms.Form
   Write-AppLog "Opening end-user wizard."
   $wizard.Text = "Emergency Web Pi Wizard"

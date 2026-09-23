@@ -173,6 +173,7 @@ def main() -> int:
     require("$_.Size -gt 0" in portable_frontend, "portable frontend must filter zero-capacity disks")
     require("return @($all)" in portable_frontend, "portable frontend must return an empty disk array when no disk is available")
     require("$disks = @(Get-SelectableDisks)" in portable_frontend, "wizard startup must normalize no-disk enumeration")
+    require("[AllowEmptyCollection()]$Disks = @()" in portable_frontend, "wizard must accept an empty disk collection")
     require("portable\\EmergencyWebPi.ps1" in root_cmd and "powershell.exe" in root_cmd, "root CMD launcher must run the bundled PowerShell frontend")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
     require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")

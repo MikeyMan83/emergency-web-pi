@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.44] - 2026-09-23
+
+### Fixed
+- Allow the wizard `Disks` parameter to be empty so no-SD-card startup cannot fail during PowerShell parameter binding.
+
 ## [0.1.43] - 2026-09-23
 
 ### Fixed
