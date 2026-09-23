@@ -1643,4 +1643,9 @@ Set-AdvancedVisibility -Visible $false
 Add-Log "Offline library builder ready"
 Add-Log "Repository root: $repoRoot"
 
+$form.Add_Shown({
+  # The normal user journey begins in the wizard; the underlying form remains the advanced fallback.
+  $form.BeginInvoke([System.Action]{ $btnWizard.PerformClick() }) | Out-Null
+})
+
 [void]$form.ShowDialog()

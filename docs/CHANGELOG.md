@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.26] - 2026-09-23
+
+### Changed
+- Open the same end-user wizard automatically from the EXE and CMD launch paths, leaving the underlying screen only as an advanced fallback.
+
 ## [0.1.25] - 2026-09-23
 
 ### Fixed

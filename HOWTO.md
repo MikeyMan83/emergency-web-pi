@@ -21,6 +21,8 @@ For normal deployment, use the portable app wizard:
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
+The EXE and CMD launcher open the same wizard. CMD falls back to the bundled PowerShell frontend only when the EXE is unavailable.
+
 If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 
 No manual script sequence is required for this path.
