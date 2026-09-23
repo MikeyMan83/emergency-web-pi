@@ -29,12 +29,14 @@ def main() -> int:
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
+    config_resolver_path = repo_root / "scripts" / "resolve-appliance-config.ps1"
     rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
     status_web_path = repo_root / "scripts" / "status-web.py"
     portable_ps1_path = repo_root / "portable" / "EmergencyWebPi.ps1"
     portable_cmd_path = repo_root / "portable" / "Launch-EmergencyWebPi.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
     status_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-status.service"
+    sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-sync.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
@@ -45,6 +47,11 @@ def main() -> int:
     appliance_config = json.loads(appliance_config_path.read_text(encoding="utf-8"))
     estimate_md = estimate_md_path.read_text(encoding="utf-8")
     estimate_json = json.loads(estimate_json_path.read_text(encoding="utf-8"))
+    create_sd = create_sd_path.read_text(encoding="utf-8")
+    create_sd_dynamic = create_sd_dynamic_path.read_text(encoding="utf-8")
+    status_web = status_web_path.read_text(encoding="utf-8")
+    kiwix_service = kiwix_service_path.read_text(encoding="utf-8")
+    sync_service = sync_service_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -80,12 +87,21 @@ def main() -> int:
     require(build_image_ps1_path.exists(), "scripts/build-appliance-image.ps1 must exist")
     require(build_image_sh_path.exists(), "scripts/build-appliance-image.sh must exist")
     require(create_sd_dynamic_path.exists(), "scripts/create-sd-dynamic.ps1 must exist")
+    require(config_resolver_path.exists(), "scripts/resolve-appliance-config.ps1 must exist")
     require(rebuild_library_path.exists(), "scripts/rebuild-library.sh must exist")
     require(status_web_path.exists(), "scripts/status-web.py must exist")
     require(portable_ps1_path.exists(), "portable/EmergencyWebPi.ps1 must exist")
     require(portable_cmd_path.exists(), "portable/Launch-EmergencyWebPi.cmd must exist")
     require(status_service_path.exists(), "scripts/systemd/pi-kiwix-status.service must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
+    require("Manifest.build.configSha256" in create_sd, "create-sd.ps1 must verify the resolved config hash")
+    require("network.ap.password is a placeholder" in create_sd, "create-sd.ps1 must reject placeholder AP passwords")
+    require("build-appliance-image.ps1" in create_sd_dynamic, "dynamic builder must build the appliance image before flashing")
+    require("New-ZimDataPartition" not in create_sd_dynamic, "dynamic builder must not create a separate exFAT content partition")
+    require("Format-Volume" not in create_sd_dynamic, "dynamic builder must not format an exFAT content partition")
+    require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in kiwix_service, "kiwix service must require the ZIM data mount")
+    require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in sync_service, "sync service must require the ZIM data mount")
+    require('"ready": kiwix_active and zim_data_mounted' in status_web, "status page must require mounted content before ready")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

@@ -4,8 +4,8 @@ This document defines the Windows-first appliance build model for this repositor
 
 ## Product definition
 
-Run one command on a Windows PC with a blank SD card inserted.
-The builder writes a complete, self-contained Raspberry Pi appliance to the SD card,
+Use the portable wizard or the dynamic Windows builder on a Windows PC with a blank SD card inserted.
+The guided builder writes a complete, self-contained Raspberry Pi appliance to the SD card,
 including the OS, Kiwix, the selected ZIM content, configuration, and emergency Wi-Fi setup.
 It may optionally inject private configuration during the build.
 
@@ -18,7 +18,7 @@ is required for the appliance to function.
 ## Acceptance test
 
 1. Insert a blank SD card into a Windows machine.
-2. Run `scripts/create-sd.ps1`.
+2. Run the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
 3. Remove the finished SD card.
 4. Insert it into a Raspberry Pi 3B+.
 5. Boot with no internet connectivity.
@@ -37,8 +37,8 @@ Maintenance path:
 
 Build time:
 
-- Windows builder entry point: `scripts/create-sd.ps1`
-- Windows dynamic builder entry point: `scripts/create-sd-dynamic.ps1`
+- Guided Windows builder entry point: `scripts/create-sd-dynamic.ps1`
+- Prepared-image writer: `scripts/create-sd.ps1`
 - Windows image build entry point: `scripts/build-appliance-image.ps1`
 - Linux image build engine (invoked through WSL): `scripts/build-appliance-image.sh`
 - Base OS image
@@ -69,17 +69,15 @@ This mode is useful for development and recovery. It is separate from the offlin
 - Target SD card / physical disk
 - Appliance config file
 - Raspberry Pi OS Lite base image (`.img`, `.img.xz`, or `.zip`)
-- Appliance image file (`.img`) provided via `-ImagePath` or discovered in `artifacts/`
-- Appliance image manifest (`.img.manifest.json`) with build/runtime invariants
-- Optional local ZIM folder for preload into dedicated `zimdata` partition
+- Prepared-image mode also needs an appliance image (`.img`), its manifest, and the matching resolved config.
+- Direct image builds use an optional local ZIM folder for preload into the dedicated `zimdata` partition.
 
 Dynamic mode inputs:
 
-- Base appliance image (`.img`) + manifest (or latest release auto-fetch)
+- Raspberry Pi OS Lite base image (`.img`, `.img.xz`, or `.zip`)
 - Profile list (`profiles/*.txt`)
 - Windows disk target for SD write
 - Local download cache directory
-- Optional deferred content mode (`-SkipContentDownload`) for Pi-side first-boot download
 
 ## Build command
 
@@ -96,16 +94,16 @@ This produces:
 - `artifacts/appliance.img`
 - `artifacts/appliance.img.manifest.json`
 
-Then write SD media:
+Then write SD media with the resolved config path printed by the builder:
 
 ```powershell
-./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ConfigPath artifacts/appliance-config.json -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
 Dynamic write + content population command:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
 Portable frontend behavior for dynamic mode:
@@ -113,7 +111,7 @@ Portable frontend behavior for dynamic mode:
 - Load profile presets from `profiles/*.txt`
 - Select individual items with checkboxes
 - Run preflight SD size estimation before the destructive write step
-- Choose catalog download location: Windows during write or Pi after first boot
+- Embed selected catalogs during appliance construction before the SD card is written
 
 Runtime UX behavior:
 
@@ -132,3 +130,4 @@ Private local overrides belong in `config/appliance.local.json` and must not be 
 - `runtime.zimDataOnDedicatedPartition=true`
 - reject `runtime.overlayRootEnabled=true` when `runtime.docker.storageDriver=overlay2`
 - `image.sha256` matches the actual image file hash
+- `build.configSha256` matches the resolved config used to build the image

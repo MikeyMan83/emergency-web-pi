@@ -352,8 +352,8 @@ function Add-BrowseButton {
   return $btn
 }
 
-$lblBaseImage = Add-Label -Text "Base Appliance Image" -Top $y
-$txtBase = Add-TextBox -DefaultText "artifacts/appliance.img" -Top $y
+$lblBaseImage = Add-Label -Text "Raspberry Pi OS Base Image" -Top $y
+$txtBase = Add-TextBox -DefaultText "" -Top $y
 $btnBase = Add-BrowseButton -Top $y
 $y += 40
 
@@ -434,21 +434,23 @@ $txtDisk = Add-TextBox -DefaultText "" -Top $y
 $y += 40
 
 $chkAutoFetchBase = New-Object System.Windows.Forms.CheckBox
-$chkAutoFetchBase.Text = "Dynamic mode: auto-fetch latest base image + manifest from latest GitHub release"
+$chkAutoFetchBase.Text = "Offline appliance mode requires a local Raspberry Pi OS base image"
 $chkAutoFetchBase.Left = 240
 $chkAutoFetchBase.Top = $y
 $chkAutoFetchBase.Width = 620
 $chkAutoFetchBase.Checked = $false
+$chkAutoFetchBase.Enabled = $false
 $form.Controls.Add($chkAutoFetchBase)
 
 $y += 30
 
 $chkDownloadOnPi = New-Object System.Windows.Forms.CheckBox
-$chkDownloadOnPi.Text = "Dynamic mode: download catalogs on Pi after first boot (faster write, requires internet later)"
+$chkDownloadOnPi.Text = "Offline appliance mode embeds selected catalogs before the SD card is written"
 $chkDownloadOnPi.Left = 240
 $chkDownloadOnPi.Top = $y
 $chkDownloadOnPi.Width = 700
 $chkDownloadOnPi.Checked = $false
+$chkDownloadOnPi.Enabled = $false
 $form.Controls.Add($chkDownloadOnPi)
 
 $y += 30
@@ -886,8 +888,9 @@ function Show-EndUserWizard {
   $chkWizardFetch.Left = 210
   $chkWizardFetch.Top = $wy
   $chkWizardFetch.Width = 660
-  $chkWizardFetch.Checked = $true
-  $chkWizardFetch.Text = "Auto-fetch latest base image and manifest"
+  $chkWizardFetch.Checked = $false
+  $chkWizardFetch.Enabled = $false
+  $chkWizardFetch.Text = "A local Raspberry Pi OS base image is required"
   $wizard.Controls.Add($chkWizardFetch)
   $wy += 40
 
@@ -1306,17 +1309,9 @@ $btnDynamic.Add_Click({
   }
 
   $baseAbs = To-Absolute -PathValue $txtBase.Text
-  $manifestAbs = To-Absolute -PathValue $txtManifestPath.Text
-
-  if (-not $chkAutoFetchBase.Checked) {
-    if (-not (Test-Path $baseAbs)) {
-      Add-Log "Dynamic build aborted: base image not found."
-      return
-    }
-    if (-not (Test-Path $manifestAbs)) {
-      Add-Log "Dynamic build aborted: base manifest not found."
-      return
-    }
+  if (-not (Test-Path $baseAbs)) {
+    Add-Log "Dynamic build aborted: Raspberry Pi OS base image not found."
+    return
   }
 
   $entries = $null
@@ -1327,7 +1322,7 @@ $btnDynamic.Add_Click({
     $generatedProfile = Write-GeneratedProfileFile -Entries $entries
     Add-Log "Using generated profile: $generatedProfile"
 
-    $estimate = Get-PreflightEstimate -Entries $entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $chkAutoFetchBase.Checked -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $diskNum
+    $estimate = Get-PreflightEstimate -Entries $entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $diskNum
     Log-PreflightEstimate -Estimate $estimate
   } catch {
     Add-Log "Dynamic preflight failed: $($_.Exception.Message)"
@@ -1336,8 +1331,7 @@ $btnDynamic.Add_Click({
 
   $requiredText = Format-Bytes -Bytes $estimate.RequiredBytes
   $unknownText = $estimate.UnknownCount
-  $downloadModeText = if ($chkDownloadOnPi.Checked) { "Pi after boot" } else { "Windows during SD creation" }
-  $confirmText = "This will erase disk #$diskNum and repopulate content.`n`nDownload mode: $downloadModeText`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
+  $confirmText = "This will erase disk #$diskNum and build an offline-ready appliance.`n`nSelected catalogs will be embedded during SD creation.`nEstimated minimum SD size: $requiredText`nUnknown-size entries: $unknownText`n`nContinue?"
 
   $confirm = [System.Windows.Forms.MessageBox]::Show(
     $confirmText,
@@ -1356,22 +1350,11 @@ $btnDynamic.Add_Click({
     "-ConfirmDiskNumber", $diskNum,
     "-BaseConfigPath", (Quote-Arg -Value $configAbs),
     "-ProfilePath", (Quote-Arg -Value $generatedProfile),
-    "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text)
+    "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text),
+    "-BaseImagePath", (Quote-Arg -Value $baseAbs)
   )
 
-  if ($chkAutoFetchBase.Checked) {
-    $args += @("-FetchLatestBase", "-ReleaseRepo", (Quote-Arg -Value $txtReleaseRepo.Text))
-    Add-Log "Dynamic mode will auto-fetch latest base artifacts from $($txtReleaseRepo.Text)."
-  } else {
-    $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs), "-BaseManifestPath", (Quote-Arg -Value $manifestAbs))
-  }
-
-  if ($chkDownloadOnPi.Checked) {
-    $args += "-SkipContentDownload"
-    Add-Log "Dynamic mode will defer catalog downloads to the Pi after first boot."
-  } else {
-    Add-Log "Dynamic mode will preload catalogs on Windows before SD ejection."
-  }
+  Add-Log "Dynamic mode will embed selected catalogs before SD ejection."
 
   Add-Log "Running dynamic SD build on disk #$diskNum"
   $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args

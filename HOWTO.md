@@ -10,17 +10,13 @@ For normal deployment, use the portable app wizard:
 1. Go to https://github.com/MikeyMan83/emergency-web-pi/releases/latest.
 2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
-4. Start `EmergencyWebPi.exe` from the extracted root folder.
-5. Click `Quick Wizard`.
-6. Select catalog items.
-7. Choose download mode:
-  - Windows during SD creation (offline-ready), or
-  - Pi after first boot (faster write, internet needed on first run).
-8. Select target SD card.
-9. Confirm the size estimate and write.
-10. Insert the SD card in the Pi and boot.
-11. Open `http://10.42.0.1` to watch startup status.
-12. Open `http://10.42.0.1:8080` when ready.
+4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
+5. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
+6. Select the base image, catalog items, and target SD card.
+7. Confirm the size estimate and build. The wizard embeds the selected content before it writes the card.
+8. Insert the SD card in the Pi and boot.
+9. Open `http://10.42.0.1` to watch startup status.
+10. Open `http://10.42.0.1:8080` when ready.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
@@ -30,7 +26,7 @@ No manual script sequence is required for this path.
 
 ## Advanced/operator flow
 
-This section is for direct setup on an already running Pi.
+This section is for building images directly or maintaining an already running Pi.
 Most users should use the Windows appliance flow instead.
 
 ## Build appliance image on Windows
@@ -48,7 +44,7 @@ For development images without preloaded content, add `-AllowEmptyZimData`.
 Then write the SD card:
 
 ```powershell
-./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ConfigPath artifacts/appliance-config.json -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
 ## Dynamic SD creation on Windows
@@ -56,27 +52,13 @@ Then write the SD card:
 To build a card with the latest profile content at creation time:
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
-This mode flashes the base image, creates a `ZIMDATA` exFAT partition from remaining space,
-downloads profile entries with resume support, and copies them directly to SD.
+This mode downloads profile entries with resume support, builds an appliance image with
+the selected content in its ext4 `zimdata` partition, then writes that final image to SD.
 In the portable app, use Dynamic SD with the item picker to choose profile entries,
 then review the preflight size estimate before confirming the write.
-
-To defer catalog downloads to the Pi after first boot, add `-SkipContentDownload`.
-
-1. Run installer:
-
-```bash
-./scripts/install.sh
-```
-
-2. Optional: enable standalone AP mode:
-
-```bash
-./scripts/setup-ap.sh
-```
 
 ## Verify health
 
@@ -88,6 +70,7 @@ systemctl status pi-kiwix-sync.service --no-pager
 ```
 
 Expected:
+- `/var/lib/pi-kiwix-zimdata` is mounted.
 - `pi-kiwix-serve.service` is active and reachable on port `8080`.
 - `pi-kiwix-sync.timer` is enabled and scheduled weekly.
 

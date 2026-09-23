@@ -11,15 +11,13 @@ End-user path:
 1. Download from Releases: https://github.com/MikeyMan83/emergency-web-pi/releases/latest
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
-4. Run `EmergencyWebPi.exe` from the extracted root folder.
-5. Start the end-user wizard.
-6. Select the catalog items you want.
-7. The default path preloads catalogs during SD creation so the card is offline-ready.
-   Advanced mode still allows deferred first-boot downloads for testing.
-8. Select your SD card and let the wizard build/write it.
-9. Insert the card into the Pi and boot.
-10. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
-11. When ready, open http://10.42.0.1:8080 for the library.
+4. Download Raspberry Pi OS Lite (64-bit) as a local base image.
+5. Run `EmergencyWebPi.exe` from the extracted root folder.
+6. Start the end-user wizard, select the base image and catalog items, then select your SD card.
+7. Let the wizard build and write the appliance. Selected catalogs and the generated AP password are embedded in the final image.
+8. Insert the card into the Pi and boot.
+9. Join the Pi Wi-Fi and open http://10.42.0.1 for live startup status.
+10. When ready, open http://10.42.0.1:8080 for the library.
 
 Fallback if no release asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
@@ -46,21 +44,20 @@ The portable app wraps the same validated script engine used below.
 
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
-The wizard defaults to dynamic mode with automatic latest-base fetch,
-catalog item selection, and preflight size estimation before write.
-It also provides a configurable download location (Windows now vs Pi after boot).
+The wizard uses a local Raspberry Pi OS base image, catalog item selection,
+and preflight size estimation before write. It always embeds selected content
+before the SD card is written so the appliance is offline-ready at first boot.
 
 Advanced script-first paths are still available below for operators.
 
 Dynamic mode (recommended for fresh content at build time):
 
 ```powershell
-./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -FetchLatestBase -ProfilePath profiles/medical-survival-zimlist.txt
+./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -BaseImagePath C:\path\to\raspios-bookworm-arm64-lite.img.xz -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
-This mode flashes a base appliance image, creates a Windows-writable `ZIMDATA`
-partition, downloads selected ZIM files with resume support, and copies them to SD.
-Use `-ReleaseRepo <owner/repo>` when you want to fetch base artifacts from a different release source.
+This mode downloads selected ZIM files with resume support, builds one final
+appliance image with an ext4 `zimdata` partition, and writes that image to SD.
 
 In the portable app, dynamic mode includes:
 - profile preset loading,
@@ -78,7 +75,7 @@ In the portable app, dynamic mode includes:
 4. Write the built image to SD:
 
 ```powershell
-./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
+./scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ConfigPath artifacts/appliance-config.json -ImagePath artifacts/appliance.img -ManifestPath artifacts/appliance.img.manifest.json -Force
 ```
 
 This path enforces manifest invariants and image hash verification before write.
@@ -87,8 +84,8 @@ This path enforces manifest invariants and image hash verification before write.
 
 This project is designed as a Windows-first appliance builder:
 
-- Run `scripts/create-sd.ps1` on a Windows PC with a blank SD card inserted.
-- Write a complete Raspberry Pi appliance to that SD card.
+- Use the portable wizard or `scripts/create-sd-dynamic.ps1` with a Raspberry Pi OS base image.
+- The guided build downloads selected content, builds a complete appliance image, and writes it to the SD card.
 - Insert the SD card into the Pi and boot without internet.
 - Connect to the emergency Wi-Fi and browse the preloaded offline library.
 
@@ -97,8 +94,9 @@ should be required for the finished appliance to function.
 
 The appliance build contract is defined in [docs/APPLIANCE.md](docs/APPLIANCE.md).
 
-Two supported modes exist in this repository:
-- Appliance-build mode: `scripts/create-sd.ps1` writes a prepared appliance image to SD.
+Three supported modes exist in this repository:
+- Guided appliance-build mode: the portable wizard or `scripts/create-sd-dynamic.ps1` builds and writes an offline-ready appliance.
+- Prepared-image mode: `scripts/create-sd.ps1` writes an image previously built by `scripts/build-appliance-image.ps1`.
 - Legacy first-boot mode: `firstrun.sh` + `bootstrap-pi.sh` + `install.sh` provision on first boot.
 
 <!-- SPACE_ESTIMATE:START -->
@@ -171,28 +169,29 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 ## Recommended workflow
 
 For most users, this is the simplest reliable path:
-1. Build the appliance image from Windows with `scripts/build-appliance-image.ps1`.
-2. Write that image with `scripts/create-sd.ps1 -Force` and matching `-ConfirmDiskNumber`.
+1. Use the portable wizard, or run `scripts/create-sd-dynamic.ps1` with a local Raspberry Pi OS base image.
+2. Select content and let the build finish writing the SD card.
 3. Boot the SD card in the Pi with no internet.
-4. Connect to the AP and browse to `http://10.42.0.1:8080`.
+4. Connect to the AP and browse to `http://10.42.0.1` for readiness, then `http://10.42.0.1:8080` for the library.
 
 Use legacy first-boot setup only if you specifically need direct installation on a running Pi.
 
-`scripts/create-sd.ps1` is the Windows appliance-builder entry point.
+`scripts/create-sd.ps1` is the prepared-image writer.
 If `-ImagePath` is omitted, it auto-uses `artifacts/appliance.img`,
 `artifacts/emergency-web-pi.img`, `appliance.img`, or the newest `artifacts/*.img`.
 `scripts/build-appliance-image.ps1` requires `-ZimSourceDir` for offline-ready images;
 use `-AllowEmptyZimData` only for development images that will sync content later.
-`scripts/create-sd-dynamic.ps1` uses a base image + profile list and downloads
-current ZIM files during SD creation.
+`scripts/create-sd-dynamic.ps1` uses a Raspberry Pi OS base image + profile list,
+downloads current ZIM files during SD creation, and embeds them in the final ext4 appliance image.
 The builder requires an image manifest (`.img.manifest.json`) and rejects images unless they declare:
 - dedicated `zimdata` partition,
 - `runtime.serverMode=native-kiwix-serve`,
 - `runtime.zimDataOnDedicatedPartition=true`,
 - no `overlayRootEnabled=true` with Docker `overlay2`,
 - matching SHA256 for the image file.
-When using the builder path, copy `config/appliance.example.json` to
-`config/appliance.local.json` and keep private credentials only in that local file.
+The image builder resolves the AP password once into an ignored config artifact
+and records its SHA-256 in the image manifest. Always pass that emitted resolved
+config to `create-sd.ps1`; the writer rejects placeholders and config/image mismatches.
 
 ### One-command deploy over SSH
 
@@ -238,7 +237,7 @@ No toggles are required to switch between connected and disconnected operation.
 - `scripts/build-appliance-image.ps1`: Windows wrapper for appliance image build.
 - `scripts/build-appliance-image.sh`: Linux image build engine used through WSL.
 - `scripts/create-sd.ps1`: Windows appliance-builder entry point.
-- `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (base image + profile download + exFAT data partition).
+- `scripts/create-sd-dynamic.ps1`: dynamic Windows SD builder (Raspberry Pi OS base image + profile download + ext4 appliance image build).
 - `scripts/rebuild-library.sh`: host-side local `library.xml` rebuild helper.
 - `portable/EmergencyWebPi.ps1`: portable Windows frontend for build + SD write.
 - `portable/Launch-EmergencyWebPi.cmd`: one-click launcher for the portable frontend.

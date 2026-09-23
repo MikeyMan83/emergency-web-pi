@@ -4,6 +4,8 @@ param(
 
   [string]$ConfigPath = "config/appliance.example.json",
 
+  [string]$ResolvedConfigPath = "artifacts/appliance-config.json",
+
   [string]$OutputImagePath = "artifacts/appliance.img",
 
   [string]$ManifestPath = "",
@@ -52,13 +54,26 @@ Require-WSLDistro
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
+function Resolve-RepoPath {
+  param([Parameter(Mandatory = $true)][string]$PathValue)
+
+  if ([System.IO.Path]::IsPathRooted($PathValue)) {
+    return [System.IO.Path]::GetFullPath($PathValue)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
+}
+
 $resolvedBaseImage = (Resolve-Path $BaseImagePath).Path
-$resolvedConfig = (Resolve-Path $ConfigPath).Path
-$resolvedOutput = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputImagePath))
+$sourceConfig = (Resolve-Path $ConfigPath).Path
+$resolvedConfigOutput = Resolve-RepoPath -PathValue $ResolvedConfigPath
+$configResolver = Join-Path $repoRoot "scripts/resolve-appliance-config.ps1"
+$resolvedConfig = (& $configResolver -ConfigPath $sourceConfig -OutputPath $resolvedConfigOutput | Select-Object -Last 1).Trim()
+$resolvedOutput = Resolve-RepoPath -PathValue $OutputImagePath
 $resolvedManifest = if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
   "$resolvedOutput.manifest.json"
 } else {
-  [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ManifestPath))
+  Resolve-RepoPath -PathValue $ManifestPath
 }
 
 $wslRepo = wsl wslpath -a "$repoRoot"
@@ -94,4 +109,5 @@ Write-Host ""
 Write-Host "Build complete"
 Write-Host "Image:    $resolvedOutput"
 Write-Host "Manifest: $resolvedManifest"
-Write-Host "Next: run scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ImagePath '$resolvedOutput' -ManifestPath '$resolvedManifest' -Force"
+Write-Host "Config:   $resolvedConfig"
+Write-Host "Next: run scripts/create-sd.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ConfigPath '$resolvedConfig' -ImagePath '$resolvedOutput' -ManifestPath '$resolvedManifest' -Force"

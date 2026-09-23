@@ -2,13 +2,11 @@ param(
   [Parameter(Mandatory = $true)]
   [int]$DiskNumber,
 
-  [string]$ConfigPath = "config/appliance.example.json",
+  [string]$ConfigPath = "artifacts/appliance-config.json",
 
   [string]$ImagePath = "",
 
   [string]$ManifestPath = "",
-
-  [string]$ResolvedConfigPath = "config/appliance.local.json",
 
   [int]$ConfirmDiskNumber = -1,
 
@@ -68,53 +66,16 @@ function Validate-Config {
   Require-Value $Config.network.ap.port "Config must set network.ap.port."
   Require-Value $Config.system.hostname "Config must set system.hostname."
 
-  if ($Config.network.ap.password.Length -lt 8) {
-    throw "network.ap.password must be at least 8 characters."
+  if ($Config.network.ap.password -eq "__GENERATE__" -or $Config.network.ap.password -eq "ChangeThisEmergencyPassword123") {
+    throw "network.ap.password is a placeholder. Build the image with scripts/build-appliance-image.ps1 so one resolved config is embedded and written."
+  }
+
+  if ($Config.network.ap.password.Length -lt 8 -or $Config.network.ap.password.Length -gt 63) {
+    throw "network.ap.password must be 8-63 characters for WPA2."
   }
 
   if ($Config.updates.intervalSeconds -lt 0) {
     throw "updates.intervalSeconds must be 0 or greater."
-  }
-}
-
-function New-ApPassword {
-  $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*+-_'
-  $bytes = New-Object byte[] 20
-  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $sb = New-Object System.Text.StringBuilder
-  foreach ($b in $bytes) {
-    [void]$sb.Append($chars[$b % $chars.Length])
-  }
-  return $sb.ToString()
-}
-
-function Resolve-ApPassword {
-  param(
-    [Parameter(Mandatory = $true)]$Config,
-    [Parameter(Mandatory = $true)][string]$ConfigPath,
-    [Parameter(Mandatory = $true)][string]$ResolvedConfigPath
-  )
-
-  $needsGenerated = $Config.network.ap.password -eq "__GENERATE__" -or
-                    $Config.network.ap.password -eq "ChangeThisEmergencyPassword123"
-
-  if (-not $needsGenerated) {
-    return
-  }
-
-  $generated = New-ApPassword
-  $Config.network.ap.password = $generated
-
-  $resolvedDir = Split-Path -Parent $ResolvedConfigPath
-  if (-not [string]::IsNullOrWhiteSpace($resolvedDir) -and -not (Test-Path $resolvedDir)) {
-    New-Item -ItemType Directory -Path $resolvedDir | Out-Null
-  }
-
-  ($Config | ConvertTo-Json -Depth 10) + "`n" | Set-Content -Path $ResolvedConfigPath -Encoding utf8
-
-  Write-Host "Generated AP password and wrote resolved config: $ResolvedConfigPath"
-  if ($ConfigPath -eq "config/appliance.example.json") {
-    Write-Host "Using generated credentials from resolved config for this run."
   }
 }
 
@@ -224,6 +185,7 @@ function Validate-Manifest {
   Require-Value $Manifest.runtime.serverMode "Manifest must set runtime.serverMode."
   Require-Value $Manifest.runtime.overlayRootEnabled "Manifest must set runtime.overlayRootEnabled."
   Require-Value $Manifest.runtime.zimDataOnDedicatedPartition "Manifest must set runtime.zimDataOnDedicatedPartition."
+  Require-Value $Manifest.build.configSha256 "Manifest must set build.configSha256. Rebuild the appliance image with the current builder."
 
   $partitionNames = @($Manifest.storage.partitions | ForEach-Object { $_.name.ToString().ToLowerInvariant() })
   if ($partitionNames -notcontains "boot") {
@@ -258,6 +220,19 @@ function Validate-Manifest {
   $expected = $Manifest.image.sha256.ToString().ToLowerInvariant()
   if ($actual -ne $expected) {
     throw "Image SHA256 does not match manifest. expected=$expected actual=$actual"
+  }
+}
+
+function Validate-ConfigFingerprint {
+  param(
+    [Parameter(Mandatory = $true)]$Manifest,
+    [Parameter(Mandatory = $true)][string]$ConfigPath
+  )
+
+  $actual = Get-FileSha256 -Path $ConfigPath
+  $expected = $Manifest.build.configSha256.ToString().ToLowerInvariant()
+  if ($actual -ne $expected) {
+    throw "Config SHA256 does not match manifest. Use the resolved config emitted by the image builder."
   }
 }
 
@@ -374,7 +349,6 @@ Set-Location $repoRoot
 
 $config = Read-Config -Path $ConfigPath
 Validate-Config -Config $config
-Resolve-ApPassword -Config $config -ConfigPath $ConfigPath -ResolvedConfigPath $ResolvedConfigPath
 
 $disk = Get-TargetDisk -Number $DiskNumber -AllowFixed:$AllowFixedDisk
 
@@ -402,6 +376,7 @@ $resolvedImagePath = Resolve-ImagePath -ProvidedImagePath $ImagePath
 $resolvedManifestPath = Resolve-ManifestPath -ResolvedImagePath $resolvedImagePath -ProvidedManifestPath $ManifestPath
 $manifest = Read-Manifest -Path $resolvedManifestPath
 Validate-Manifest -Manifest $manifest -ResolvedImagePath $resolvedImagePath
+Validate-ConfigFingerprint -Manifest $manifest -ConfigPath $ConfigPath
 
 Write-Host "Image:             $resolvedImagePath"
 Write-Host "Manifest:          $resolvedManifestPath"

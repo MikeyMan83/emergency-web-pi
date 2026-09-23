@@ -237,7 +237,8 @@ if [[ ! "$ap_country" =~ ^[A-Z]{2}$ ]]; then
 fi
 
 if [[ "$password" == "__GENERATE__" || "$password" == "ChangeThisEmergencyPassword123" ]]; then
-  password=$(tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*+-_' < /dev/urandom | head -c 20)
+  echo "network.ap.password is a placeholder. Run scripts/build-appliance-image.ps1 so the resolved config is generated before image construction." >&2
+  exit 1
 fi
 
 if [[ "$ap_address" == */* ]]; then
@@ -337,13 +338,17 @@ LOOP_DEV=""
 
 image_size_bytes=$(stat -c '%s' "$OUTPUT_IMAGE_PATH")
 image_sha256=$(sha256sum "$OUTPUT_IMAGE_PATH" | awk '{print $1}')
+config_sha256=$(sha256sum "$CONFIG_PATH" | awk '{print $1}')
 built_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 cat > "$MANIFEST_PATH" <<EOF
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "applianceVersion": "$version",
   "builtAtUtc": "$built_at",
+  "build": {
+    "configSha256": "$config_sha256"
+  },
   "content": {
     "profile": "$profile",
     "snapshot": "$snapshot"

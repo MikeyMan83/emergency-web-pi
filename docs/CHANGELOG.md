@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-09-23
+
+### Fixed
+- Resolved the emergency AP password before image construction and bound SD writes to the matching resolved-config hash.
+- Reworked dynamic SD creation to build one ext4 appliance image with selected content instead of adding an unused exFAT partition after flashing.
+- Require the dedicated ZIM data mount before serving or syncing content, and prevent the status page from reporting ready until the content mount and library index are available.
+
+### Docs
+- Aligned the portable quick start, operations guide, and appliance contract with the local-base offline build workflow.
+
 ## [0.1.17] - 2026-09-23
 
 ### Changed

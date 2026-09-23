@@ -1,6 +1,7 @@
 [Unit]
 Description=Emergency Web Pi - offline library service
-After=network-online.target
+RequiresMountsFor=/var/lib/pi-kiwix-zimdata
+After=local-fs.target network-online.target
 Wants=network-online.target
 
 [Service]

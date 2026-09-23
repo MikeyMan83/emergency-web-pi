@@ -51,14 +51,14 @@ def safe_tail(path: pathlib.Path) -> str:
 
 
 def build_page(status: dict[str, object], kiwix_port: int) -> str:
-    ready = "true" if status["kiwixActive"] else "false"
-    message = "Library is ready" if status["kiwixActive"] else "Preparing content. Keep power connected."
+    ready = "true" if status["ready"] else "false"
+    message = "Library is ready" if status["ready"] else "Preparing content. Keep power connected."
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
 <meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-<title>Pi Offline Library Status</title>
+<title>Emergency Web Pi Status</title>
 <style>
   body {{ font-family: 'Segoe UI', sans-serif; margin: 0; background: #f7f4ed; color: #1f2a37; }}
   .wrap {{ max-width: 760px; margin: 0 auto; padding: 28px; }}
@@ -76,7 +76,7 @@ def build_page(status: dict[str, object], kiwix_port: int) -> str:
 <body>
   <div class=\"wrap\">
     <div class=\"card\">
-            <h1 class=\"headline\">Pi Offline Library</h1>
+            <h1 class=\"headline\">Emergency Web Pi</h1>
       <div id=\"state\" class=\"state\"><span id=\"spin\" class=\"spinner\"></span>{message}</div>
             <div class=\"row\">Library service: <strong id=\"kiwix\">{status['kiwixActive']}</strong></div>
       <div class=\"row\">Sync service active: <strong id=\"sync\">{status['syncActive']}</strong></div>
@@ -99,14 +99,14 @@ async function refresh() {{
     const state = document.getElementById('state');
     const spin = document.getElementById('spin');
     const open = document.getElementById('open');
-    if (s.kiwixActive) {{
+        if (s.ready) {{
       state.classList.add('ok');
             state.textContent = 'Library is ready.';
       spin.classList.add('hidden');
       open.classList.remove('hidden');
     }} else {{
       state.classList.remove('ok');
-      state.textContent = 'Preparing content. Keep power connected.';
+            state.textContent = !s.zimDataMounted ? 'Content storage is unavailable.' : 'Preparing content. Keep power connected.';
       spin.classList.remove('hidden');
       open.classList.add('hidden');
     }}
@@ -129,11 +129,18 @@ class StatusHandler(http.server.BaseHTTPRequestHandler):
     def _status(self) -> dict[str, object]:
         sync_log = self.zim_data_dir / "sync.log"
         zim_count = len(list(self.zim_data_dir.glob("*.zim"))) if self.zim_data_dir.exists() else 0
+        library_file = self.zim_data_dir / "library.xml"
+        zim_data_mounted = self.zim_data_dir.is_mount()
+        library_indexed = library_file.exists() and library_file.stat().st_size > 0
+        kiwix_active = service_active("pi-kiwix-serve.service")
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptimeSeconds": int(time.time()),
-            "kiwixActive": service_active("pi-kiwix-serve.service"),
+            "kiwixActive": kiwix_active,
             "syncActive": service_active("pi-kiwix-sync.service"),
+            "zimDataMounted": zim_data_mounted,
+            "libraryIndexed": library_indexed,
+            "ready": kiwix_active and zim_data_mounted and zim_count > 0 and library_indexed,
             "zimCount": zim_count,
             "lastSyncLine": safe_tail(sync_log),
         }
