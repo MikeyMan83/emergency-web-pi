@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.47] - 2026-09-23
+
+### Fixed
+- Calculate capacity from bundled verified catalog sizes instead of blocking the UI with per-library network probes.
+
 ## [0.1.46] - 2026-09-23
 
 ### Changed

@@ -284,48 +284,6 @@ function Format-Bytes {
   return "{0:N2} TB" -f ($Bytes / 1TB)
 }
 
-function Get-RemoteContentLength {
-  param([Parameter(Mandatory = $true)][string]$Url)
-
-  try {
-    $response = Invoke-WebRequest -Uri $Url -Method Head -MaximumRedirection 5 -UseBasicParsing -ErrorAction Stop
-    $lengthHeader = $response.Headers["Content-Length"]
-    if ($lengthHeader) {
-      return [int64]$lengthHeader
-    }
-  } catch {
-    return $null
-  }
-
-  return $null
-}
-
-function Get-LatestReleaseBaseImageSize {
-  param([Parameter(Mandatory = $true)][string]$Repo)
-
-  try {
-    $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
-    $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "pi-kiwix-portable" }
-    $imageAsset = $release.assets |
-      Where-Object { $_.name -imatch "(appliance|base).+\.img$" } |
-      Select-Object -First 1
-
-    if (-not $imageAsset) {
-      $imageAsset = $release.assets |
-        Where-Object { $_.name -imatch "\.img$" } |
-        Select-Object -First 1
-    }
-
-    if ($imageAsset -and $imageAsset.size) {
-      return [int64]$imageAsset.size
-    }
-  } catch {
-    return $null
-  }
-
-  return $null
-}
-
 function Get-PreflightEstimate {
   param(
     [Parameter(Mandatory = $true)][string[]]$Entries,
@@ -340,6 +298,8 @@ function Get-PreflightEstimate {
   $unknownCount = 0
   $downloadBytes = [int64]0
   $cachedCount = 0
+  $catalogPath = Join-Path $repoRoot "config/content-catalog.json"
+  $catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
 
   $resolvedCache = To-Absolute -PathValue $CacheDir
   if (-not (Test-Path $resolvedCache)) {
@@ -348,24 +308,24 @@ function Get-PreflightEstimate {
 
   foreach ($url in $Entries) {
     $name = Resolve-ZimFileName -Url $url
+    $catalogItem = $catalog.PSObject.Properties[$name].Value
+    if ($null -eq $catalogItem -or $catalogItem.estimatedBytes -le 0) {
+      throw "Content catalog is missing a verified size for: $name"
+    }
+    [int64]$estimatedSize = $catalogItem.estimatedBytes
     $cachePath = Join-Path $resolvedCache $name
 
     if (Test-Path $cachePath -PathType Leaf) {
       $size = (Get-Item $cachePath).Length
       if ($size -gt 0) {
-        $knownContentBytes += [int64]$size
+        $knownContentBytes += $estimatedSize
         $cachedCount += 1
         continue
       }
     }
 
-    $remoteSize = Get-RemoteContentLength -Url $url
-    if ($null -ne $remoteSize -and $remoteSize -gt 0) {
-      $knownContentBytes += [int64]$remoteSize
-      $downloadBytes += [int64]$remoteSize
-    } else {
-      $unknownCount += 1
-    }
+    $knownContentBytes += $estimatedSize
+    $downloadBytes += $estimatedSize
   }
 
   $baseBytes = [int64]0
@@ -468,7 +428,7 @@ $btnBase = Add-BrowseButton -Top $y
 $y += 40
 
 $lblManifestPath = Add-Label -Text "Manifest Path" -Top $y
-$txtManifestPath = Add-TextBox -DefaultText "artifacts/appliance.img.manifest.json" -Top $y
+$txtManifestPath = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "appliance.img.manifest.json") -Top $y
 $btnManifest = Add-BrowseButton -Top $y
 $y += 40
 
@@ -1681,22 +1641,25 @@ $btnBuild.Add_Click({
   $baseAbs = To-Absolute -PathValue $txtBase.Text
   $configAbs = To-Absolute -PathValue $txtConfig.Text
 
-  if ([string]::IsNullOrWhiteSpace($baseAbs) -or -not (Test-Path $baseAbs)) {
-    Add-Log "Build aborted: base image not found."
-    return
-  }
-
   if (-not (Test-Path $configAbs)) {
     Add-Log "Build aborted: config file not found."
     return
   }
 
   $args = @(
-    "-BaseImagePath", (Quote-Arg -Value $baseAbs),
     "-ConfigPath", (Quote-Arg -Value $configAbs),
+    "-ResolvedConfigPath", (Quote-Arg -Value (Join-Path $workspaceDirectory "appliance-config.json")),
+    "-BaseImageCacheDir", (Quote-Arg -Value (Join-Path $workspaceDirectory "base-image-cache")),
     "-OutputImagePath", (Quote-Arg -Value $txtImagePath.Text),
     "-ManifestPath", (Quote-Arg -Value $txtManifestPath.Text)
   )
+
+  if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
+    $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
+    Add-Log "Using advanced local Raspberry Pi OS image override."
+  } else {
+    Add-Log "Using pinned, verified Raspberry Pi OS Lite image."
+  }
 
   $zimAbs = To-Absolute -PathValue $txtZimDir.Text
   if ([string]::IsNullOrWhiteSpace($zimAbs)) {

@@ -178,6 +178,8 @@ def main() -> int:
     require("return @($all)" in portable_frontend, "portable frontend must return an empty disk array when no disk is available")
     require("$disks = @(Get-SelectableDisks)" in portable_frontend, "wizard startup must normalize no-disk enumeration")
     require("[AllowEmptyCollection()]$Disks = @()" in portable_frontend, "wizard must accept an empty disk collection")
+    require("function Get-RemoteContentLength" not in portable_frontend, "preflight estimation must not make blocking per-library network requests")
+    require("Content catalog is missing a verified size" in portable_frontend, "preflight estimation must use the bundled catalog")
     require("portable\\EmergencyWebPi.ps1" in root_cmd and "powershell.exe" in root_cmd, "root CMD launcher must run the bundled PowerShell frontend")
     require("-STA" in root_cmd, "root CMD launcher must start the WinForms frontend in STA mode")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
