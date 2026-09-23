@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.29] - 2026-09-23
+
+### Fixed
+- Create release records as drafts and publish them only after the Windows ZIP and checksum upload successfully, preventing incomplete releases from appearing as latest.
+
 ## [0.1.28] - 2026-09-23
 
 ### Fixed

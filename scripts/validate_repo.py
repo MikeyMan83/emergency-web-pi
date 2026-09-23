@@ -45,6 +45,7 @@ def main() -> int:
     hardware_acceptance_path = repo_root / "scripts" / "hardware-acceptance.sh"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     initial_sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-initial-sync.service"
+    release_workflow_path = repo_root / ".github" / "workflows" / "release.yml"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
 
     env_example = env_example_path.read_text(encoding="utf-8")
@@ -63,6 +64,7 @@ def main() -> int:
     initial_sync_service = initial_sync_service_path.read_text(encoding="utf-8")
     sync_script = sync_path.read_text(encoding="utf-8")
     hardware_acceptance = hardware_acceptance_path.read_text(encoding="utf-8")
+    release_workflow = release_workflow_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -154,6 +156,8 @@ def main() -> int:
     require("--first-boot" in hardware_acceptance and "--prebuilt" in hardware_acceptance, "hardware acceptance must support both content modes")
     require("pi-kiwix-serve.service" in hardware_acceptance, "hardware acceptance must verify the library service")
     require("SetWindowDisplayAffinity" not in portable_ps1_path.read_text(encoding="utf-8"), "portable frontend must not block screenshot capture")
+    require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
+    require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

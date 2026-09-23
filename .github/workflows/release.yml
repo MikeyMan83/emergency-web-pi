@@ -59,11 +59,16 @@ jobs:
         run: |
           ./scripts/package-portable.ps1 -Version "${{ steps.verify.outputs.version }}"
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ github.ref_name }}
-          body_path: release_notes.md
+      - name: Create draft GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            --repo "${{ github.repository }}" `
+            --title "${{ github.ref_name }}" `
+            --notes-file release_notes.md `
+            --draft
 
       - name: Upload release assets
         shell: pwsh
@@ -80,3 +85,10 @@ jobs:
           }
 
           gh release upload "${{ github.ref_name }}" $assets.FullName --clobber --repo "${{ github.repository }}"
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false
