@@ -7,7 +7,7 @@ This project publishes GitHub releases from git tags (`vMAJOR.MINOR.PATCH`).
 Run:
 
 ```powershell
-./scripts/new-release.ps1 -Version 0.1.2
+./scripts/new-release.ps1 -Version <version>
 ```
 
 Then edit `docs/CHANGELOG.md` and write the final release notes for this version.
@@ -16,13 +16,13 @@ Then edit `docs/CHANGELOG.md` and write the final release notes for this version
 
 ```bash
 git add docs/VERSION docs/CHANGELOG.md
-git commit -m "release: v0.1.2"
+git commit -m "release: v<version>"
 ```
 
 ## 3. Tag and push
 
 ```bash
-git tag v0.1.2
+git tag -a v<version> -m "Release v<version>"
 git push
 git push --tags
 ```
@@ -32,7 +32,16 @@ git push --tags
 The workflow at `.github/workflows/release.yml` will:
 1. Verify `docs/VERSION` matches the pushed tag.
 2. Verify `docs/CHANGELOG.md` includes the matching section.
-3. Publish a GitHub Release using that changelog section.
+3. Build the Windows bundle and checksum.
+4. Create a draft GitHub Release using that changelog section.
+5. Upload the bundle and checksum, then publish the release.
+
+A pushed tag is not a published release until GitHub shows a non-draft release
+with both assets. Verify publication with:
+
+```powershell
+gh release view v<version> --repo MikeyMan83/emergency-web-pi --json tagName,isDraft,assets
+```
 
 ## End-user download artifact (current)
 

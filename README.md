@@ -173,6 +173,7 @@ with `scripts/prepare-sd-autoboot.ps1` so bootstrap runs it automatically after 
 - Setup and architecture: [README.md](README.md)
 - Day-2 operations: [HOWTO.md](HOWTO.md)
 - Release runbook: [docs/RELEASE.md](docs/RELEASE.md)
+- V2 Tauri migration plan: [docs/V2_TAURI_PLAN.md](docs/V2_TAURI_PLAN.md)
 - Realtime SD size estimate: [docs/SPACE_ESTIMATE.md](docs/SPACE_ESTIMATE.md)
 - Release history: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - Current release version: [docs/VERSION](docs/VERSION)
