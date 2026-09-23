@@ -1068,10 +1068,17 @@ function Show-EndUserWizard {
 
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
-  $btnCancelWizard.Left = 670
+  $btnCancelWizard.Left = 550
   $btnCancelWizard.Top = $wy
   $btnCancelWizard.Width = 100
   $wizard.Controls.Add($btnCancelWizard)
+
+    $btnDeveloperTools = New-Object System.Windows.Forms.Button
+    $btnDeveloperTools.Text = "Developer Tools"
+    $btnDeveloperTools.Left = 660
+    $btnDeveloperTools.Top = $wy
+    $btnDeveloperTools.Width = 110
+    $wizard.Controls.Add($btnDeveloperTools)
 
   $btnStartWizard = New-Object System.Windows.Forms.Button
   $btnStartWizard.Text = "Estimate + Build"
@@ -1081,6 +1088,7 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($btnStartWizard)
 
   $result = $null
+  $script:developerToolsRequested = $false
 
   $loadItems = {
     $lstWizardItems.Items.Clear()
@@ -1166,6 +1174,12 @@ function Show-EndUserWizard {
     $wizard.Close()
   })
 
+  $btnDeveloperTools.Add_Click({
+    $script:developerToolsRequested = $true
+    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $wizard.Close()
+  })
+
   $btnStartWizard.Add_Click({
     if ($cmbWizardProfile.SelectedItem -eq $null) {
       [System.Windows.Forms.MessageBox]::Show("Select a catalog preset.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
@@ -1211,6 +1225,9 @@ function Show-EndUserWizard {
   })
 
   $dialogResult = $wizard.ShowDialog($form)
+  if ($script:developerToolsRequested) {
+    return [PSCustomObject]@{ DeveloperTools = $true }
+  }
   if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK) {
     return $null
   }
@@ -1311,6 +1328,15 @@ $btnWizard.Add_Click({
       if ($script:normalLaunch) {
         $form.Close()
       }
+      return
+    }
+
+    if ($selection.DeveloperTools) {
+      $script:normalLaunch = $false
+      $form.Text = "$appDisplayName - Developer Tools"
+      $lblIntro.Text = "Developer Tools: build inputs, image tools, diagnostics, and exact command output."
+      Set-AdvancedVisibility -Visible $true
+      $form.Show()
       return
     }
 
@@ -1524,7 +1550,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic build aborted: select an SD card in Step 2."
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("Select an SD card and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      $form.Show()
+      $form.Close()
     }
     return
   }
@@ -1534,7 +1560,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic build aborted: config file not found."
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("The application configuration is missing. Re-extract the complete release ZIP and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Show()
+      $form.Close()
     }
     return
   }
@@ -1555,7 +1581,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic preflight failed: $($_.Exception.Message)"
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("The SD card could not be prepared: $($_.Exception.Message)", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Show()
+      $form.Close()
     }
     return
   }
@@ -1566,7 +1592,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic build aborted: selected SD card is too small."
     [System.Windows.Forms.MessageBox]::Show("The selected SD card is too small. Choose a card with at least $requiredText.", "SD Card Too Small", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
     if ($script:normalLaunch) {
-      $form.Show()
+      $form.Close()
     }
     return
   }
@@ -1660,7 +1686,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic SD build failed with exit code $($result.ExitCode)."
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("Creating the SD card did not finish. Try again after reviewing the error details in Advanced Settings.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Show()
+      $form.Close()
     }
   }
 })

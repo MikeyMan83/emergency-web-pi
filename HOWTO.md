@@ -23,6 +23,8 @@ Fallback when no bundle asset is attached yet: download `Source code (zip)` and 
 
 The EXE and CMD launcher open the same wizard. CMD falls back to the bundled PowerShell frontend only when the EXE is unavailable.
 
+For testing or recovery, select `Developer Tools` in the wizard to open direct build inputs, prepared-image writing, diagnostics, logs, and artifacts. Normal users do not need this workspace.
+
 If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 
 No manual script sequence is required for this path.

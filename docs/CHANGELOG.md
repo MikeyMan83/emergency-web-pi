@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.31] - 2026-09-23
+
+### Changed
+- Replaced the former legacy-screen fallback with an explicit Developer Tools workspace opened from the end-user wizard.
+
 ## [0.1.30] - 2026-09-23
 
 ### Fixed

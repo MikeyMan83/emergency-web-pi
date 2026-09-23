@@ -38,7 +38,8 @@ Debug/support fallback launcher:
 Launcher policy:
 - `EmergencyWebPi.exe` is the primary app entry point.
 - `Launch-EmergencyWebPi.cmd` is a fallback helper that tries EXE first, then the same PowerShell frontend only if needed.
-- Both launch paths open the same end-user wizard automatically. The underlying screen is available only after cancelling the wizard for advanced troubleshooting.
+- Both launch paths open the same end-user wizard automatically.
+- Select `Developer Tools` in that wizard only for testing, recovery, or direct image-build workflows.
 
 If you see missing-file errors that reference a `...\AppData\Local\Temp\...` path,
 you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
