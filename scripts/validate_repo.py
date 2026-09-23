@@ -176,6 +176,9 @@ def main() -> int:
     require("portable\\EmergencyWebPi.ps1" in root_cmd and "powershell.exe" in root_cmd, "root CMD launcher must run the bundled PowerShell frontend")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
     require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")
+    require("--latest" in release_workflow, "release workflow must explicitly mark the published release as latest")
+    require("Verify published release" in release_workflow, "release workflow must verify the published release record")
+    require("isLatest" in release_workflow and "expectedAssets" in release_workflow, "release workflow must verify latest status and expected assets")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")
