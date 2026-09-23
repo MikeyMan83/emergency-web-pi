@@ -872,18 +872,18 @@ function Log-PreflightEstimate {
 }
 
 function Get-SelectableDisks {
-  $all = Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem -and $_.Size -gt 0 }
-  $preferred = $all | Where-Object { $_.BusType -in @("USB", "SD") }
+  $all = @(Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem -and $_.Size -gt 0 })
+  $preferred = @($all | Where-Object { $_.BusType -in @("USB", "SD") })
   if ($preferred.Count -gt 0) {
-    return $preferred
+    return @($preferred)
   }
-  return $all
+  return @($all)
 }
 
 function Refresh-DiskPicker {
   $cmbDisks.Items.Clear()
   try {
-    $disks = Get-SelectableDisks
+    $disks = @(Get-SelectableDisks)
     foreach ($disk in $disks) {
       $label = "Disk {0} - {1} - {2} - {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
       [void]$cmbDisks.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number })

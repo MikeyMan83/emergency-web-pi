@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.43] - 2026-09-23
+
+### Fixed
+- Normalize an empty removable-disk list before opening the wizard so it remains usable when no SD card is inserted.
+
 ## [0.1.42] - 2026-09-23
 
 ### Fixed
