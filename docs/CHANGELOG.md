@@ -6,8 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-09-23
+
+### Fixed
+- Hardened portable frontend startup path discovery for EXE/script launches so bundled scripts resolve correctly across runtime contexts.
+- Launchers now detect missing extracted files early and show clear "extract full ZIP first" guidance instead of cryptic file-not-found errors.
+
 ### Docs
 - Aligned README quick-launch commands to EXE-first startup and explicit CMD debug fallback.
+- Added explicit guidance to fully extract release ZIPs before launch and troubleshooting note for Temp-path missing-file errors.
 
 ## [0.1.10] - 2026-09-23
 

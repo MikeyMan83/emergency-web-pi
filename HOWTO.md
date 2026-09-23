@@ -9,7 +9,7 @@ For normal deployment, use the portable app wizard:
 
 1. Go to https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest.
 2. Download `PiKiwixPortable-<version>-windows.zip`.
-3. Extract it.
+3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
 4. Start `PiKiwixPortable.exe` from the extracted root folder.
 5. Click `Start End-User Wizard`.
 6. Select catalog items.
@@ -23,6 +23,8 @@ For normal deployment, use the portable app wizard:
 12. Open `http://10.42.0.1:8080` when ready.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-PiKiwixPortable.cmd` from the extracted root.
+
+If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 
 No manual script sequence is required for this path.
 

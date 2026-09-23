@@ -13,19 +13,37 @@ trap {
   exit 1
 }
 
-# Support both script and compiled EXE launches where $PSScriptRoot may be empty.
-$portableDir = ""
-if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
-  $portableDir = $PSScriptRoot
-} elseif ($MyInvocation.MyCommand.Path) {
-  $portableDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-} else {
-  $portableDir = Join-Path (Get-Location).Path "portable"
+$candidateDirs = @()
+if ($PSScriptRoot) {
+  $candidateDirs += $PSScriptRoot
+}
+if ($MyInvocation.MyCommand.Path) {
+  $candidateDirs += (Split-Path -Parent $MyInvocation.MyCommand.Path)
+}
+if ([System.AppDomain]::CurrentDomain.BaseDirectory) {
+  $candidateDirs += ([System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\\'))
+}
+$candidateDirs += (Get-Location).Path
+
+$repoRoot = ""
+foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+  $direct = Join-Path $dir "scripts/create-sd-dynamic.ps1"
+  if (Test-Path $direct) {
+    $repoRoot = [System.IO.Path]::GetFullPath($dir)
+    break
+  }
+
+  $parent = [System.IO.Path]::GetFullPath((Join-Path $dir ".."))
+  $parentDirect = Join-Path $parent "scripts/create-sd-dynamic.ps1"
+  if (Test-Path $parentDirect) {
+    $repoRoot = $parent
+    break
+  }
 }
 
-if (-not (Test-Path $portableDir)) {
+if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   [System.Windows.Forms.MessageBox]::Show(
-    "Unable to locate the portable application folder. Start the app from the extracted release bundle.",
+    "Unable to locate bundled scripts. Extract the full release ZIP first, then run PiKiwixPortable.exe from the extracted folder.",
     "Pi Kiwix Portable",
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error
@@ -33,7 +51,6 @@ if (-not (Test-Path $portableDir)) {
   exit 1
 }
 
-$repoRoot = Split-Path -Parent $portableDir
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
 $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"

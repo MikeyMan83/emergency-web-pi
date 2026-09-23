@@ -10,7 +10,7 @@ End-user path:
 
 1. Download from Releases: https://github.com/MikeyMan83/pi-kiwix-survival/releases/latest
 2. Download `PiKiwixPortable-<version>-windows.zip` (release asset).
-3. Extract the zip.
+3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
 4. Run `PiKiwixPortable.exe` from the extracted root folder.
 5. Start the end-user wizard.
 6. Select the catalog items you want.
@@ -35,6 +35,9 @@ Debug/support fallback launcher:
 ```powershell
 .\Launch-PiKiwixPortable.cmd
 ```
+
+If you see missing-file errors that reference a `...\AppData\Local\Temp\...` path,
+you are likely launching from a temporary/partial extraction context. Extract the full ZIP first.
 
 The portable app wraps the same validated script engine used below.
 
