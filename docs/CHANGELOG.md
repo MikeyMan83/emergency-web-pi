@@ -6,11 +6,18 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-09-23
+
+### Fixed
+- Portable frontend path discovery now also probes the current process executable directory, improving reliability when launched elevated.
+- Root launcher now starts `PiKiwixPortable.exe` directly when present before falling back to nested launch scripts.
+
 ## [0.1.11] - 2026-09-23
 
 ### Fixed
 - Hardened portable frontend startup path discovery for EXE/script launches so bundled scripts resolve correctly across runtime contexts.
 - Launchers now detect missing extracted files early and show clear "extract full ZIP first" guidance instead of cryptic file-not-found errors.
+- Fixed elevated Windows launch edge cases where runtime path probing could fall back to temp/System32 and fail to find bundled scripts.
 
 ### Docs
 - Aligned README quick-launch commands to EXE-first startup and explicit CMD debug fallback.

@@ -20,8 +20,18 @@ if ($PSScriptRoot) {
 if ($MyInvocation.MyCommand.Path) {
   $candidateDirs += (Split-Path -Parent $MyInvocation.MyCommand.Path)
 }
+if ($PSCommandPath) {
+  $candidateDirs += (Split-Path -Parent $PSCommandPath)
+}
 if ([System.AppDomain]::CurrentDomain.BaseDirectory) {
   $candidateDirs += ([System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\\'))
+}
+try {
+  $procPath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+  if ($procPath) {
+    $candidateDirs += (Split-Path -Parent $procPath)
+  }
+} catch {
 }
 $candidateDirs += (Get-Location).Path
 
@@ -42,8 +52,9 @@ foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSp
 }
 
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
+  $checked = ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join "`n"
   [System.Windows.Forms.MessageBox]::Show(
-    "Unable to locate bundled scripts. Extract the full release ZIP first, then run PiKiwixPortable.exe from the extracted folder.",
+    "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run PiKiwixPortable.exe from the extracted folder.`n`nChecked paths:`n$checked",
     "Pi Kiwix Portable",
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Error

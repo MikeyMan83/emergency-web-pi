@@ -2,6 +2,11 @@
 setlocal
 set ROOT_DIR=%~dp0
 
+if exist "%ROOT_DIR%PiKiwixPortable.exe" (
+	start "" "%ROOT_DIR%PiKiwixPortable.exe"
+	exit /b 0
+)
+
 if not exist "%ROOT_DIR%portable\Launch-PiKiwixPortable.cmd" (
 	echo The portable app files were not found next to this launcher.
 	echo Extract the full release ZIP first, then run this launcher again.
