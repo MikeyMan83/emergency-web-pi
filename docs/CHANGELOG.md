@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-09-23
+
+### Fixed
+- `scripts/package-portable.ps1` now bootstraps the NuGet provider and trusts PSGallery non-interactively before installing `ps2exe`, preventing packaging prompts on fresh Windows hosts.
+
 ## [0.1.13] - 2026-09-23
 
 ### Changed

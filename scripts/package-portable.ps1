@@ -62,6 +62,17 @@ $portableScript = Join-Path $bundleDir "portable/EmergencyWebPi.ps1"
 $portableExe = Join-Path $bundleDir "portable/EmergencyWebPi.exe"
 $rootExe = Join-Path $bundleDir "EmergencyWebPi.exe"
 
+try {
+  $null = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction Stop
+} catch {
+  Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+}
+
+try {
+  Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+} catch {
+}
+
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
   Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
