@@ -3,7 +3,37 @@ Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+trap {
+  [System.Windows.Forms.MessageBox]::Show(
+    $_.Exception.Message,
+    "Pi Kiwix Portable",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Error
+  ) | Out-Null
+  exit 1
+}
+
+# Support both script and compiled EXE launches where $PSScriptRoot may be empty.
+$portableDir = ""
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+  $portableDir = $PSScriptRoot
+} elseif ($MyInvocation.MyCommand.Path) {
+  $portableDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+} else {
+  $portableDir = Join-Path (Get-Location).Path "portable"
+}
+
+if (-not (Test-Path $portableDir)) {
+  [System.Windows.Forms.MessageBox]::Show(
+    "Unable to locate the portable application folder. Start the app from the extracted release bundle.",
+    "Pi Kiwix Portable",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Error
+  ) | Out-Null
+  exit 1
+}
+
+$repoRoot = Split-Path -Parent $portableDir
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
 $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"

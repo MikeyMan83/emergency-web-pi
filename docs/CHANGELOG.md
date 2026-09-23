@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-23
+
+### Fixed
+- Fixed portable frontend startup when launched from bundled EXE paths where script-root detection could be empty and cause immediate path-binding errors.
+- Fixed root and portable launchers to start the UI without leaving a black command window open.
+
+### Changed
+- Portable frontend now shows a clearer fatal error dialog for unhandled startup/runtime failures.
+
 ## [0.1.8] - 2026-09-23
 
 ### Added
