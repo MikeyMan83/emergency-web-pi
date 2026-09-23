@@ -17,7 +17,7 @@ if not exist "%ROOT_DIR%portable\EmergencyWebPi.ps1" (
 	exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%portable\EmergencyWebPi.ps1" >> "%LOG_FILE%" 2>&1
+powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%portable\EmergencyWebPi.ps1" >> "%LOG_FILE%" 2>&1
 set ERR=%ERRORLEVEL%
 echo [%DATE% %TIME%] Frontend process exited with code %ERR%. >> "%LOG_FILE%"
 if not "%ERR%"=="0" (

@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.45] - 2026-09-23
+
+### Fixed
+- Start WinForms frontends in STA mode and record early initialization checkpoints before bundle discovery and wizard startup.
+
 ## [0.1.44] - 2026-09-23
 
 ### Fixed

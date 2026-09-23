@@ -104,7 +104,7 @@ if (-not (Test-Path $scriptPath)) {
 }
 
 Add-Content -Path $logPath -Value ("[{0}] Starting frontend PowerShell process." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff")) -Encoding utf8
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+& powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File $scriptPath
 $exitCode = $LASTEXITCODE
 Add-Content -Path $logPath -Value ("[{0}] Frontend PowerShell process exited with code {1}." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $exitCode) -Encoding utf8
 exit $exitCode

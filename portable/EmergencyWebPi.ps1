@@ -16,9 +16,16 @@ function Write-AppLog {
 
 Write-AppLog "Frontend startup requested."
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
+$script:startupStage = "Loading WinForms assemblies"
+try {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  [System.Windows.Forms.Application]::EnableVisualStyles()
+  Write-AppLog "WinForms assemblies loaded."
+} catch {
+  Write-AppLog ("Failed during $script:startupStage: {0}" -f $_.Exception.ToString())
+  exit 1
+}
 
 trap {
   Write-AppLog ("Unhandled error: {0}" -f $_.Exception.ToString())
@@ -52,6 +59,7 @@ try {
 } catch {
 }
 $candidateDirs += (Get-Location).Path
+Write-AppLog "Resolving extracted bundle location."
 
 $repoRoot = ""
 foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
@@ -97,6 +105,8 @@ if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Te
   ) | Out-Null
   exit 1
 }
+
+Write-AppLog "Required builder scripts found."
 
 function Quote-Arg {
   param([Parameter(Mandatory = $true)][string]$Value)
