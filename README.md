@@ -4,7 +4,16 @@ Offline-first Kiwix emergency appliance for Raspberry Pi 3B+.
 
 ## Windows end-to-end appliance flow
 
-Build and write a complete appliance SD card from Windows:
+Build and write a complete appliance SD card from Windows.
+
+End-user path:
+
+1. Download the app and launch the portable frontend.
+2. Start the end-user wizard.
+3. Select the catalog items you want.
+4. Select your SD card and let the wizard build/write it.
+5. Insert the card into the Pi and boot.
+6. Join the Pi Wi-Fi and open `http://10.42.0.1:8080`.
 
 Portable frontend option:
 
@@ -13,6 +22,11 @@ Portable frontend option:
 ```
 
 The portable app wraps the same validated script engine used below.
+
+The wizard defaults to dynamic mode with automatic latest-base fetch,
+catalog item selection, and preflight size estimation before write.
+
+Advanced script-first paths are still available below for operators.
 
 Dynamic mode (recommended for fresh content at build time):
 

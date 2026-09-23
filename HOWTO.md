@@ -3,7 +3,19 @@
 This page is for routine operations after the Pi is deployed.
 For the Windows appliance-builder contract and offline acceptance target, see [docs/APPLIANCE.md](docs/APPLIANCE.md).
 
-## First bring-up
+## End-user flow
+
+For normal deployment, use the portable app wizard:
+
+1. Start `portable/Launch-PiKiwixPortable.cmd`.
+2. Click `Start End-User Wizard`.
+3. Select catalog items and target SD card.
+4. Confirm the size estimate and write.
+5. Insert the SD card in the Pi and boot.
+
+No manual script sequence is required for this path.
+
+## Advanced/operator flow
 
 This section is for direct setup on an already running Pi.
 Most users should use the Windows appliance flow instead.

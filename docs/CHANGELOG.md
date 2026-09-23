@@ -15,11 +15,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Added `scripts/rebuild-library.sh` shared helper for local library reconstruction.
 - Added dynamic profile preset item picking in the portable frontend, allowing item-level selection before SD creation.
 - Added preflight dynamic size estimation in the portable frontend before destructive write confirmation.
+- Added an end-user wizard entry point in the portable frontend (`Start End-User Wizard`) to guide catalog selection and SD creation with minimal technical input.
 
 ### Changed
 - `scripts/sync.sh` now refreshes `library.xml` from local ZIM files even when offline and reuses shared rebuild logic.
 - `pi-kiwix-serve.service` now runs a pre-start library rebuild so copied content is indexed before serving.
 - `scripts/create-sd-dynamic.ps1` can now auto-fetch latest base image + manifest from latest GitHub release assets via `-FetchLatestBase`.
+- README and HOWTO now prioritize the end-user wizard workflow and mark manual/script-heavy paths as advanced/operator usage.
 
 ## [0.1.6] - 2026-09-22
 

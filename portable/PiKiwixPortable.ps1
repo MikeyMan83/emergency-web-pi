@@ -394,6 +394,13 @@ $btnCheck.Top = $y
 $btnCheck.Width = 120
 $form.Controls.Add($btnCheck)
 
+$btnWizard = New-Object System.Windows.Forms.Button
+$btnWizard.Text = "Start End-User Wizard"
+$btnWizard.Left = 20
+$btnWizard.Top = $y - 32
+$btnWizard.Width = 220
+$form.Controls.Add($btnWizard)
+
 $btnBuild = New-Object System.Windows.Forms.Button
 $btnBuild.Text = "Build Image"
 $btnBuild.Left = 150
@@ -558,6 +565,227 @@ function Log-PreflightEstimate {
   }
 }
 
+function Get-SelectableDisks {
+  $all = Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem }
+  $preferred = $all | Where-Object { $_.BusType -in @("USB", "SD") }
+  if ($preferred.Count -gt 0) {
+    return $preferred
+  }
+  return $all
+}
+
+function Show-EndUserWizard {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$ProfilePaths,
+    [Parameter(Mandatory = $true)][string]$DefaultProfile,
+    [Parameter(Mandatory = $true)]$Disks
+  )
+
+  $wizard = New-Object System.Windows.Forms.Form
+  $wizard.Text = "Pi Kiwix SD Wizard"
+  $wizard.Size = New-Object System.Drawing.Size(900, 700)
+  $wizard.StartPosition = "CenterParent"
+  $wizard.FormBorderStyle = "FixedDialog"
+  $wizard.MaximizeBox = $false
+  $wizard.MinimizeBox = $false
+  $wizard.Font = $font
+
+  $wy = 16
+
+  $lblIntro = New-Object System.Windows.Forms.Label
+  $lblIntro.Left = 16
+  $lblIntro.Top = $wy
+  $lblIntro.Width = 850
+  $lblIntro.Height = 44
+  $lblIntro.Text = "Select content and target SD card. The wizard then writes a ready-to-boot card for the Pi."
+  $wizard.Controls.Add($lblIntro)
+  $wy += 50
+
+  $lblProfile = New-Object System.Windows.Forms.Label
+  $lblProfile.Left = 16
+  $lblProfile.Top = $wy
+  $lblProfile.Width = 180
+  $lblProfile.Text = "Catalog preset"
+  $wizard.Controls.Add($lblProfile)
+
+  $cmbWizardProfile = New-Object System.Windows.Forms.ComboBox
+  $cmbWizardProfile.Left = 210
+  $cmbWizardProfile.Top = $wy - 3
+  $cmbWizardProfile.Width = 660
+  $cmbWizardProfile.DropDownStyle = "DropDownList"
+  foreach ($path in $ProfilePaths) {
+    [void]$cmbWizardProfile.Items.Add($path)
+  }
+  if ($cmbWizardProfile.Items.Count -gt 0) {
+    $defaultIndex = [Math]::Max(0, $cmbWizardProfile.Items.IndexOf($DefaultProfile))
+    $cmbWizardProfile.SelectedIndex = $defaultIndex
+  }
+  $wizard.Controls.Add($cmbWizardProfile)
+  $wy += 38
+
+  $lblItems = New-Object System.Windows.Forms.Label
+  $lblItems.Left = 16
+  $lblItems.Top = $wy
+  $lblItems.Width = 180
+  $lblItems.Text = "Catalog items"
+  $wizard.Controls.Add($lblItems)
+
+  $lstWizardItems = New-Object System.Windows.Forms.CheckedListBox
+  $lstWizardItems.Left = 210
+  $lstWizardItems.Top = $wy
+  $lstWizardItems.Width = 660
+  $lstWizardItems.Height = 280
+  $lstWizardItems.CheckOnClick = $true
+  $wizard.Controls.Add($lstWizardItems)
+  $wy += 290
+
+  $btnAll = New-Object System.Windows.Forms.Button
+  $btnAll.Text = "Select All"
+  $btnAll.Left = 210
+  $btnAll.Top = $wy
+  $btnAll.Width = 100
+  $wizard.Controls.Add($btnAll)
+
+  $btnNone = New-Object System.Windows.Forms.Button
+  $btnNone.Text = "Select None"
+  $btnNone.Left = 320
+  $btnNone.Top = $wy
+  $btnNone.Width = 100
+  $wizard.Controls.Add($btnNone)
+  $wy += 36
+
+  $lblDisk = New-Object System.Windows.Forms.Label
+  $lblDisk.Left = 16
+  $lblDisk.Top = $wy
+  $lblDisk.Width = 180
+  $lblDisk.Text = "Target SD disk"
+  $wizard.Controls.Add($lblDisk)
+
+  $cmbWizardDisk = New-Object System.Windows.Forms.ComboBox
+  $cmbWizardDisk.Left = 210
+  $cmbWizardDisk.Top = $wy - 3
+  $cmbWizardDisk.Width = 660
+  $cmbWizardDisk.DropDownStyle = "DropDownList"
+  foreach ($disk in $Disks) {
+    $label = "Disk {0} | {1} | {2} | {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
+    [void]$cmbWizardDisk.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number })
+  }
+  if ($cmbWizardDisk.Items.Count -gt 0) {
+    $cmbWizardDisk.SelectedIndex = 0
+  }
+  $cmbWizardDisk.DisplayMember = "Label"
+  $wizard.Controls.Add($cmbWizardDisk)
+  $wy += 38
+
+  $chkWizardFetch = New-Object System.Windows.Forms.CheckBox
+  $chkWizardFetch.Left = 210
+  $chkWizardFetch.Top = $wy
+  $chkWizardFetch.Width = 660
+  $chkWizardFetch.Checked = $true
+  $chkWizardFetch.Text = "Auto-fetch latest base image and manifest"
+  $wizard.Controls.Add($chkWizardFetch)
+  $wy += 40
+
+  $btnCancelWizard = New-Object System.Windows.Forms.Button
+  $btnCancelWizard.Text = "Cancel"
+  $btnCancelWizard.Left = 670
+  $btnCancelWizard.Top = $wy
+  $btnCancelWizard.Width = 100
+  $wizard.Controls.Add($btnCancelWizard)
+
+  $btnStartWizard = New-Object System.Windows.Forms.Button
+  $btnStartWizard.Text = "Estimate + Build"
+  $btnStartWizard.Left = 780
+  $btnStartWizard.Top = $wy
+  $btnStartWizard.Width = 100
+  $wizard.Controls.Add($btnStartWizard)
+
+  $result = $null
+
+  $loadItems = {
+    $lstWizardItems.Items.Clear()
+    if ($cmbWizardProfile.SelectedItem -eq $null) {
+      return
+    }
+
+    try {
+      $profileAbs = To-Absolute -PathValue ([string]$cmbWizardProfile.SelectedItem)
+      $entries = Read-ProfileEntriesFromFile -ProfileFile $profileAbs
+      foreach ($entry in $entries) {
+        [void]$lstWizardItems.Items.Add($entry, $true)
+      }
+    } catch {
+      [System.Windows.Forms.MessageBox]::Show(
+        "Failed to load catalog preset: $($_.Exception.Message)",
+        "Wizard",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+      ) | Out-Null
+    }
+  }
+
+  $cmbWizardProfile.add_SelectedIndexChanged($loadItems)
+  & $loadItems
+
+  $btnAll.Add_Click({
+    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
+      $lstWizardItems.SetItemChecked($i, $true)
+    }
+  })
+
+  $btnNone.Add_Click({
+    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
+      $lstWizardItems.SetItemChecked($i, $false)
+    }
+  })
+
+  $btnCancelWizard.Add_Click({
+    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $wizard.Close()
+  })
+
+  $btnStartWizard.Add_Click({
+    if ($cmbWizardProfile.SelectedItem -eq $null) {
+      [System.Windows.Forms.MessageBox]::Show("Select a catalog preset.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+
+    if ($cmbWizardDisk.SelectedItem -eq $null) {
+      [System.Windows.Forms.MessageBox]::Show("Select a target disk.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+
+    $entries = @()
+    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
+      if ($lstWizardItems.GetItemChecked($i)) {
+        $entries += [string]$lstWizardItems.Items[$i]
+      }
+    }
+
+    if ($entries.Count -eq 0) {
+      [System.Windows.Forms.MessageBox]::Show("Select at least one catalog item.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+
+    $result = [PSCustomObject]@{
+      Profile = [string]$cmbWizardProfile.SelectedItem
+      Entries = $entries
+      DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
+      AutoFetch = [bool]$chkWizardFetch.Checked
+    }
+
+    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $wizard.Close()
+  })
+
+  $dialogResult = $wizard.ShowDialog($form)
+  if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK) {
+    return $null
+  }
+
+  return $result
+}
+
 $btnBase.Add_Click({
   $dlg = New-Object System.Windows.Forms.OpenFileDialog
   $dlg.Filter = "Image Files (*.img)|*.img|All Files (*.*)|*.*"
@@ -600,6 +828,56 @@ $btnProfile.Add_Click({
 $btnRefreshProfiles.Add_Click({
   Refresh-ProfilePicker
   Add-Log "Profile preset list refreshed."
+})
+
+$btnWizard.Add_Click({
+  try {
+    if ($cmbProfiles.Items.Count -eq 0) {
+      Refresh-ProfilePicker
+    }
+
+    $profilePaths = @()
+    foreach ($item in $cmbProfiles.Items) {
+      $profilePaths += [string]$item
+    }
+
+    if ($profilePaths.Count -eq 0) {
+      Add-Log "Wizard aborted: no profile presets found in profiles/*.txt"
+      return
+    }
+
+    $disks = Get-SelectableDisks
+    if ($disks.Count -eq 0) {
+      Add-Log "Wizard aborted: no writable target disks found."
+      return
+    }
+
+    $defaultProfile = if ($cmbProfiles.SelectedItem) { [string]$cmbProfiles.SelectedItem } else { $profilePaths[0] }
+    $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks
+    if ($null -eq $selection) {
+      Add-Log "Wizard cancelled."
+      return
+    }
+
+    $txtDisk.Text = [string]$selection.DiskNumber
+    $chkAutoFetchBase.Checked = $selection.AutoFetch
+    $chkUsePicker.Checked = $true
+    $cmbProfiles.SelectedItem = $selection.Profile
+    $txtProfilePath.Text = $selection.Profile
+
+    $lstProfileItems.Items.Clear()
+    foreach ($entry in $selection.Entries) {
+      [void]$lstProfileItems.Items.Add($entry, $true)
+    }
+
+    $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $selection.AutoFetch -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
+    Log-PreflightEstimate -Estimate $estimate
+
+    Add-Log "Wizard selection applied. Continuing with dynamic build."
+    $btnDynamic.PerformClick()
+  } catch {
+    Add-Log "Wizard failed: $($_.Exception.Message)"
+  }
 })
 
 $btnLoadProfile.Add_Click({
