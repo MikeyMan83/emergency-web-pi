@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.27] - 2026-09-23
+
+### Added
+- Added an on-device hardware acceptance command for first-boot, prebuilt, and finished-appliance checks.
+
+### Tests
+- Added CI shell syntax coverage for the hardware acceptance check and a regression guard against screenshot-capture blocking code.
+
 ## [0.1.26] - 2026-09-23
 
 ### Changed

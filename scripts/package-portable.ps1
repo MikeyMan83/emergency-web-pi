@@ -77,8 +77,15 @@ try {
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
   Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
 }
-Import-Module ps2exe -Force
-Invoke-ps2exe -inputFile $portableScript -outputFile $portableExe -noConsole -title "Emergency Web Pi" -version $Version
+
+$escapedInput = $portableScript.Replace("'", "''")
+$escapedOutput = $portableExe.Replace("'", "''")
+$escapedVersion = $Version.Replace("'", "''")
+$compileCommand = "Import-Module ps2exe -Force; Invoke-ps2exe -inputFile '$escapedInput' -outputFile '$escapedOutput' -noConsole -title 'Emergency Web Pi' -version '$escapedVersion'"
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $compileCommand
+if ($LASTEXITCODE -ne 0) {
+  throw "ps2exe failed with exit code $LASTEXITCODE."
+}
 
 if (-not (Test-Path $portableExe)) {
   throw "Failed to produce portable/EmergencyWebPi.exe. Release packaging requires a working EXE frontend."

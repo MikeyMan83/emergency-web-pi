@@ -36,6 +36,7 @@ jobs:
           bash -n scripts/enable-readonly.sh
           bash -n scripts/build-appliance-image.sh
           bash -n scripts/rebuild-library.sh
+          bash -n scripts/hardware-acceptance.sh
 
       - name: Validate estimator script syntax
         run: |

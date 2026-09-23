@@ -42,6 +42,7 @@ def main() -> int:
     sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-sync.service"
     create_sd_path = repo_root / "scripts" / "create-sd.ps1"
     sync_path = repo_root / "scripts" / "sync.sh"
+    hardware_acceptance_path = repo_root / "scripts" / "hardware-acceptance.sh"
     estimate_md_path = repo_root / "docs" / "SPACE_ESTIMATE.md"
     initial_sync_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-initial-sync.service"
     estimate_json_path = repo_root / "docs" / "SPACE_ESTIMATE.json"
@@ -61,6 +62,7 @@ def main() -> int:
     sync_service = sync_service_path.read_text(encoding="utf-8")
     initial_sync_service = initial_sync_service_path.read_text(encoding="utf-8")
     sync_script = sync_path.read_text(encoding="utf-8")
+    hardware_acceptance = hardware_acceptance_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -130,6 +132,7 @@ def main() -> int:
     require(status_service_path.exists(), "scripts/systemd/pi-kiwix-status.service must exist")
     require(create_sd_path.exists(), "scripts/create-sd.ps1 must exist")
     require(sync_path.exists(), "scripts/sync.sh must exist")
+    require(hardware_acceptance_path.exists(), "scripts/hardware-acceptance.sh must exist")
     require(initial_sync_service_path.exists(), "scripts/systemd/pi-kiwix-initial-sync.service must exist")
     require("Manifest.build.configSha256" in create_sd, "create-sd.ps1 must verify the resolved config hash")
     require("network.ap.password is a placeholder" in create_sd, "create-sd.ps1 must reject placeholder AP passwords")
@@ -147,6 +150,10 @@ def main() -> int:
     require("scripts/sync.sh --initial" in initial_sync_service, "initial sync service must use initial completion semantics")
     require("Initial content installation complete" in sync_script, "sync script must complete first-boot content installation")
     require('"ready": kiwix_active and zim_data_mounted' in status_web, "status page must require mounted content before ready")
+    require("pi-kiwix-ap" in hardware_acceptance, "hardware acceptance must verify the emergency Wi-Fi connection")
+    require("--first-boot" in hardware_acceptance and "--prebuilt" in hardware_acceptance, "hardware acceptance must support both content modes")
+    require("pi-kiwix-serve.service" in hardware_acceptance, "hardware acceptance must verify the library service")
+    require("SetWindowDisplayAffinity" not in portable_ps1_path.read_text(encoding="utf-8"), "portable frontend must not block screenshot capture")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

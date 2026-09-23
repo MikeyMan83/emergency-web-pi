@@ -29,6 +29,23 @@ first-boot mode requires temporary Internet only until selected content is insta
 8. Browse to `http://10.42.0.1:8080` when ready.
 9. Confirm Kiwix starts and all expected ZIMs are present.
 
+Run this check on the Pi to record the result:
+
+```bash
+cd /opt/emergency-web-pi
+sudo scripts/hardware-acceptance.sh --first-boot
+```
+
+After first-boot content installation finishes, or immediately for a prebuilt card:
+
+```bash
+cd /opt/emergency-web-pi
+sudo scripts/hardware-acceptance.sh --final
+```
+
+For a prebuilt card that must work without Internet from its first boot, disconnect
+Ethernet or upstream Wi-Fi before running `--final`.
+
 Maintenance path:
 
 1. Provide upstream internet later.
