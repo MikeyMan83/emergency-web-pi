@@ -59,6 +59,16 @@ jobs:
         run: |
           ./scripts/package-portable.ps1 -Version "${{ steps.verify.outputs.version }}"
 
+      - name: Smoke test portable frontend
+        shell: pwsh
+        run: |
+          $bundle = "artifacts/release/EmergencyWebPi-${{ steps.verify.outputs.version }}-windows"
+          $required = @("EmergencyWebPi.exe", "Launch-EmergencyWebPi.cmd", "portable/EmergencyWebPi.ps1")
+          foreach ($path in $required) {
+            if (-not (Test-Path (Join-Path $bundle $path))) { throw "Missing release entry-point file: $path" }
+          }
+          ./scripts/smoke-portable.ps1 -BundleDir $bundle
+
       - name: Create draft GitHub release
         shell: pwsh
         env:
