@@ -60,6 +60,12 @@ class Release053Tests(unittest.TestCase):
         self.assertIn('Columns.Add("Description"', frontend)
         self.assertNotIn('$btnLearnMore.Text = "Learn More"', frontend)
 
+    def test_home_wifi_is_scoped_to_first_boot_mode(self) -> None:
+        frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        self.assertIn('FirstBoot only: use home Wi-Fi for the automatic download', frontend)
+        self.assertIn('$chkUpstream.Enabled = $firstBootSelected', frontend)
+        self.assertIn('$optPrebuilt.Add_CheckedChanged($updateUpstreamAvailability)', frontend)
+
     def test_primary_wizard_button_has_room_for_its_label(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
         self.assertIn('$btnStartWizard.Text = "Estimate + Build"', frontend)

@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.55] - 2026-09-24
+
+### Changed
+- Make the relationship between FirstBoot content downloads and optional home Wi-Fi explicit in the wizard.
+- Disable and clear home Wi-Fi fields while the recommended Prebuilt mode is selected.
+
+### Tests
+- Add regression coverage for the content-mode and home Wi-Fi control relationship.
+
 ## [0.1.54] - 2026-09-24
 
 ### Changed

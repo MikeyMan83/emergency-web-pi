@@ -217,7 +217,7 @@ def main() -> int:
     require(portable_smoke_path.exists(), "scripts/smoke-portable.ps1 must exist")
     require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
     require("temporary extraction path" in portable_frontend, "portable frontend must reject temporary extraction paths")
-    require("Use home Wi-Fi during first boot" in portable_frontend, "wizard must expose home Wi-Fi setup")
+    require("FirstBoot only: use home Wi-Fi" in portable_frontend, "wizard must expose home Wi-Fi setup")
     require("UpstreamSsid" in create_sd_dynamic and "UpstreamPassword" in create_sd_dynamic, "dynamic builder must accept upstream Wi-Fi credentials")
     require("generate_204" in status_web and "hotspot-detect.html" in status_web and "connecttest.txt" in status_web, "status page must answer common captive portal probes")
     require('href=\\\"http://10.42.0.1:{kiwix_port}\\\"' not in status_web, "status page must not hardcode the AP address")

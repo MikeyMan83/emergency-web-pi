@@ -1224,7 +1224,7 @@ function Show-EndUserWizard {
   $chkUpstream.Left = 210
   $chkUpstream.Top = $wy
   $chkUpstream.Width = 740
-  $chkUpstream.Text = "Use home Wi-Fi during first boot for automatic content downloads"
+  $chkUpstream.Text = "FirstBoot only: use home Wi-Fi for the automatic download"
   $wizard.Controls.Add($chkUpstream)
   $wy += 28
 
@@ -1394,6 +1394,21 @@ function Show-EndUserWizard {
   $optPrebuilt.Text = "Recommended: prebuild content now for an offline-ready first boot"
   $wizard.Controls.Add($optPrebuilt)
   $wy += 38
+
+  $updateUpstreamAvailability = {
+    $firstBootSelected = $optFirstBoot.Checked
+    $chkUpstream.Enabled = $firstBootSelected
+    if (-not $firstBootSelected) {
+      $chkUpstream.Checked = $false
+      $txtUpstreamSsid.Text = ""
+      $txtUpstreamPassword.Text = ""
+    }
+    $txtUpstreamSsid.Enabled = $firstBootSelected -and $chkUpstream.Checked
+    $txtUpstreamPassword.Enabled = $firstBootSelected -and $chkUpstream.Checked
+  }
+  $optFirstBoot.Add_CheckedChanged($updateUpstreamAvailability)
+  $optPrebuilt.Add_CheckedChanged($updateUpstreamAvailability)
+  & $updateUpstreamAvailability
 
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
