@@ -10,9 +10,9 @@ including the OS, Kiwix, the selected ZIM content, configuration, and emergency 
 It may optionally inject private configuration during the build.
 
 Insert the SD card into the Raspberry Pi and it automatically starts its own emergency Wi-Fi.
-In recommended first-boot mode, provide temporary Internet so selected content can download;
-after installation completes, the same appliance works offline. Prebuilt mode serves the
-selected library without Internet on first boot.
+The Windows wizard recommends prebuilt mode, which serves the selected library without
+Internet on first boot. First-boot mode remains available as an advanced option for builders
+who can provide temporary Internet and troubleshoot a stalled download.
 
 No manual runtime configuration is required. Prebuilt mode requires no first-boot Internet;
 first-boot mode requires temporary Internet only until selected content is installed.
@@ -138,7 +138,7 @@ Portable frontend behavior for dynamic mode:
 - Select individual items with checkboxes
 - Run preflight SD size estimation before the destructive write step
 - Embed the selected catalog profile during appliance construction before the SD card is written
-- Default to first-boot installation, with fully prebuilt offline cards available as an explicit choice
+- Default the end-user wizard to fully prebuilt offline cards, with first-boot installation available as an advanced choice
 
 Runtime UX behavior:
 

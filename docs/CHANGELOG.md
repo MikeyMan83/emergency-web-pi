@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.53] - 2026-09-24
+
+### Changed
+- Make the Windows end-user wizard select offline-ready Prebuilt content by default; retain FirstBoot as an advanced option.
+- Move AP handoff until the initial content service succeeds, then disable upstream auto-connect and bring the standalone AP online.
+- Return HTTP 200 for Android and Chrome captive-portal probes so they receive the local portal instead of a bare no-portal 204.
+
+### Tests
+- Add regression tests for the default content mode, non-root service identities, AP handoff ordering, captive-portal responses, dynamic status links, and temporary extraction safety.
+
 ## [0.1.52] - 2026-09-24
 
 ### Added
@@ -20,7 +30,6 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Fixed
 - Reject running an incomplete portable bundle from a temporary extraction directory.
 - Provision the service account and assign ownership of the ZIM data directory during installation and image creation.
-- Add regression contracts covering service identity, Wi-Fi configuration, extraction safety, and captive-portal behavior.
 
 ## [0.1.51] - 2026-09-23
 

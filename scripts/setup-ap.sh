@@ -84,16 +84,6 @@ sudo systemctl restart NetworkManager
 sudo nmcli connection up pi-kiwix-ap
 sudo iw reg set "$AP_COUNTRY_CODE" || true
 
-if nmcli -t -f NAME connection show | grep -Fxq emergency-web-pi-upstream; then
-  echo "==> Attempting upstream Wi-Fi handoff"
-  if sudo nmcli connection up emergency-web-pi-upstream; then
-    sudo nmcli connection down pi-kiwix-ap 2>/dev/null || true
-    echo "Upstream Wi-Fi is connected; standalone AP was stopped."
-  else
-    echo "Upstream Wi-Fi is unavailable; keeping standalone AP online."
-  fi
-fi
-
 echo
 echo "AP mode configured. Connect to SSID: ${AP_SSID}"
 echo "Kiwix URL: http://${AP_HOST}:8080"

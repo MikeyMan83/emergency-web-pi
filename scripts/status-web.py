@@ -182,7 +182,7 @@ class StatusHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path in {"/generate_204", "/gen_204", "/hotspot-detect.html", "/connecttest.txt", "/ncsi.txt", "/success.txt"}:
-            self.send_response(204 if path in {"/generate_204", "/gen_204"} else 200)
+            self.send_response(200)
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return

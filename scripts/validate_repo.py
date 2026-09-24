@@ -36,6 +36,7 @@ def main() -> int:
     rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
     status_web_path = repo_root / "scripts" / "status-web.py"
     setup_ap_path = repo_root / "scripts" / "setup-ap.sh"
+    switch_to_ap_path = repo_root / "scripts" / "switch-to-ap.sh"
     portable_ps1_path = repo_root / "portable" / "EmergencyWebPi.ps1"
     root_cmd_path = repo_root / "Launch-EmergencyWebPi.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
@@ -63,6 +64,7 @@ def main() -> int:
     create_sd_dynamic = create_sd_dynamic_path.read_text(encoding="utf-8")
     status_web = status_web_path.read_text(encoding="utf-8")
     setup_ap = setup_ap_path.read_text(encoding="utf-8")
+    switch_to_ap = switch_to_ap_path.read_text(encoding="utf-8")
     kiwix_service = kiwix_service_path.read_text(encoding="utf-8")
     sync_service = sync_service_path.read_text(encoding="utf-8")
     initial_sync_service = initial_sync_service_path.read_text(encoding="utf-8")
@@ -168,7 +170,9 @@ def main() -> int:
         require("User=emergency-web-pi" in service_text, f"{service_name} must run as the dedicated non-root account")
     require("network.upstream.enabled" in build_image_sh, "image builder must support optional upstream Wi-Fi injection")
     require("emergency-web-pi-upstream.nmconnection" in build_image_sh, "image builder must write the optional upstream connection")
-    require("Attempting upstream Wi-Fi handoff" in setup_ap, "AP setup must attempt upstream Wi-Fi handoff")
+    require("connection down emergency-web-pi-upstream" not in setup_ap, "AP setup must not tear down upstream before initial content completes")
+    require("ExecStartPost=__REPO_DIR__/scripts/switch-to-ap.sh" in initial_sync_service, "initial sync must switch back to AP only after success")
+    require("connection.autoconnect no" in switch_to_ap and "connection up pi-kiwix-ap" in switch_to_ap, "AP handoff must disable upstream auto-connect and restore the AP")
     require("interface-name=wlan0" not in build_image_sh, "image builder AP profile must not hardcode wlan0")
     require("AP_INTERFACE=wlan0" not in env_example, ".env.example must not hardcode wlan0")
     require("ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending" in initial_sync_service, "initial sync service must run only while content installation is pending")
@@ -216,6 +220,7 @@ def main() -> int:
     require("UpstreamSsid" in create_sd_dynamic and "UpstreamPassword" in create_sd_dynamic, "dynamic builder must accept upstream Wi-Fi credentials")
     require("generate_204" in status_web and "hotspot-detect.html" in status_web and "connecttest.txt" in status_web, "status page must answer common captive portal probes")
     require('href=\\\"http://10.42.0.1:{kiwix_port}\\\"' not in status_web, "status page must not hardcode the AP address")
+    require('self.send_response(200)' in status_web, "captive portal probes must return a portal-signaling HTTP 200")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

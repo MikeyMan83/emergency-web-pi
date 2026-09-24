@@ -13,8 +13,8 @@ For normal deployment, use the portable app wizard:
 4. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
 5. Select catalog items and the target SD card. The app downloads and verifies the pinned official Raspberry Pi OS Lite base image automatically.
 7. Choose a content mode:
-  - **Recommended: download on first boot.** The Pi downloads selected catalogs when it first has Internet access.
-  - **Fully prebuild.** The Windows PC downloads catalogs before writing, so the Pi is offline-ready on first boot.
+  - **Recommended: fully prebuild.** The Windows PC downloads catalogs before writing, so the Pi is offline-ready on first boot.
+  - **Advanced: download on first boot.** The Pi downloads selected catalogs after it gets temporary Internet access.
 8. Insert the SD card in the Pi and boot. For first-boot mode, provide temporary Pi Internet access, such as Ethernet.
 9. Open `http://10.42.0.1` to watch installation progress.
 10. Open `http://10.42.0.1:8080` when ready.

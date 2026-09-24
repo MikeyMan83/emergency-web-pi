@@ -9,9 +9,11 @@ ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending
 Type=oneshot
 User=emergency-web-pi
 Group=emergency-web-pi
+PermissionsStartOnly=true
 WorkingDirectory=__REPO_DIR__
 EnvironmentFile=__REPO_DIR__/.env
 ExecStart=__REPO_DIR__/scripts/sync.sh --initial
+ExecStartPost=__REPO_DIR__/scripts/switch-to-ap.sh
 Restart=on-failure
 RestartSec=5min
 

@@ -746,8 +746,8 @@ $btnWizard.Text = "Quick Wizard"
 $chkUsePicker.Checked = $true
 $chkUsePicker.Visible = $false
 
-# Default to first-boot content installation; fully prebuilt cards remain available in the wizard.
-$chkDownloadOnPi.Checked = $true
+# Default to offline-ready prebuilt content; first-boot download remains available as an advanced option.
+$chkDownloadOnPi.Checked = $false
 
 $advancedControls = @(
   $lblBaseImage, $txtBase, $btnBase,
@@ -1392,8 +1392,7 @@ function Show-EndUserWizard {
   $optFirstBoot.Left = 210
   $optFirstBoot.Top = $wy
   $optFirstBoot.Width = 740
-  $optFirstBoot.Checked = $true
-  $optFirstBoot.Text = "Recommended: download selected content on first boot (Internet required once)"
+  $optFirstBoot.Text = "Advanced: download selected content on first boot (Internet required once)"
   $wizard.Controls.Add($optFirstBoot)
   $wy += 24
 
@@ -1401,7 +1400,8 @@ function Show-EndUserWizard {
   $optPrebuilt.Left = 210
   $optPrebuilt.Top = $wy
   $optPrebuilt.Width = 740
-  $optPrebuilt.Text = "Fully prebuild: download content now for an offline-ready first boot"
+  $optPrebuilt.Checked = $true
+  $optPrebuilt.Text = "Recommended: prebuild content now for an offline-ready first boot"
   $wizard.Controls.Add($optPrebuilt)
   $wy += 38
 

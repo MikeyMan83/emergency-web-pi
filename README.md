@@ -15,8 +15,8 @@ End-user path:
 5. Start the end-user wizard, select catalog items, then select your SD card.
    Emergency Web Pi automatically downloads and SHA-256 verifies its pinned official Raspberry Pi OS Lite base image.
 7. Choose a content mode:
-   - **Recommended: download on first boot.** The Pi prepares the appliance quickly, then downloads selected catalogs when it first has Internet access.
-   - **Fully prebuild.** The Windows PC downloads selected catalogs before writing, so the Pi needs no Internet on first boot.
+   - **Recommended: fully prebuild.** The Windows PC downloads selected catalogs before writing, so the Pi is offline-ready on first boot.
+   - **Advanced: download on first boot.** The Pi downloads selected catalogs after it gets temporary Internet access; this is intended for builders comfortable troubleshooting connectivity.
 8. Insert the card into the Pi and boot. For first-boot mode, provide temporary Internet to the Pi, such as Ethernet.
 9. Join the Pi Wi-Fi and open http://10.42.0.1 to watch installation progress.
 10. When installation is complete, open http://10.42.0.1:8080 for the offline library.
@@ -64,7 +64,7 @@ Dynamic mode (recommended for fresh content at build time):
 ./scripts/create-sd-dynamic.ps1 -DiskNumber <N> -ConfirmDiskNumber <N> -ProfilePath profiles/medical-survival-zimlist.txt
 ```
 
-This mode defaults to `-ContentMode FirstBoot`, which writes the selected profile
+This mode defaults to `-ContentMode FirstBoot` when called directly from PowerShell, while the end-user wizard defaults to offline-ready prebuilt content. First-boot mode writes the selected profile
 to the ext4 `zimdata` partition and downloads catalogs automatically on the Pi.
 Use `-ContentMode Prebuilt` to download selected ZIM files on Windows and create
 a card that is offline-ready at its first boot.
