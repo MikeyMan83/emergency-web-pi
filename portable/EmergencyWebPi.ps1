@@ -1306,13 +1306,18 @@ function Show-EndUserWizard {
   $lblItems.Text = "Fine-tune libraries"
   $wizard.Controls.Add($lblItems)
 
-  $lstWizardItems = New-Object System.Windows.Forms.CheckedListBox
+  $lstWizardItems = New-Object System.Windows.Forms.ListView
   $lstWizardItems.Left = 210
   $lstWizardItems.Top = $wy
   $lstWizardItems.Width = 740
   $lstWizardItems.Height = 210
-  $lstWizardItems.CheckOnClick = $false
-  $lstWizardItems.DisplayMember = "Display"
+  $lstWizardItems.View = [System.Windows.Forms.View]::Details
+  $lstWizardItems.CheckBoxes = $true
+  $lstWizardItems.FullRowSelect = $true
+  $lstWizardItems.MultiSelect = $false
+  [void]$lstWizardItems.Columns.Add("Library", 185)
+  [void]$lstWizardItems.Columns.Add("Size", 100)
+  [void]$lstWizardItems.Columns.Add("Description", 430)
   $wizard.Controls.Add($lstWizardItems)
   $wy += 220
 
@@ -1341,21 +1346,6 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($lblSelection)
   $wy += 28
 
-  $lblItemInfo = New-Object System.Windows.Forms.Label
-  $lblItemInfo.Left = 210
-  $lblItemInfo.Top = $wy
-  $lblItemInfo.Width = 620
-  $lblItemInfo.Height = 34
-  $wizard.Controls.Add($lblItemInfo)
-
-  $btnLearnMore = New-Object System.Windows.Forms.Button
-  $btnLearnMore.Text = "Learn More"
-  $btnLearnMore.Left = 840
-  $btnLearnMore.Top = $wy - 4
-  $btnLearnMore.Width = 110
-  $btnLearnMore.Enabled = $false
-  Set-SecondaryButtonStyle -Button $btnLearnMore
-  $wizard.Controls.Add($btnLearnMore)
   $wy += 42
 
   $lblDisk = New-Object System.Windows.Forms.Label
@@ -1423,9 +1413,9 @@ function Show-EndUserWizard {
 
   $btnStartWizard = New-Object System.Windows.Forms.Button
   $btnStartWizard.Text = "Estimate + Build"
-  $btnStartWizard.Left = 850
+  $btnStartWizard.Left = 830
   $btnStartWizard.Top = $wy
-  $btnStartWizard.Width = 100
+  $btnStartWizard.Width = 120
   Set-PrimaryButtonStyle -Button $btnStartWizard
   $wizard.Controls.Add($btnStartWizard)
 
@@ -1445,7 +1435,13 @@ function Show-EndUserWizard {
       foreach ($entry in $entries) {
         $item = Get-CatalogItem -Url $entry
         $profileBytes += [int64]$item.EstimatedBytes
-        [void]$lstWizardItems.Items.Add($item, $true)
+        $row = New-Object System.Windows.Forms.ListViewItem
+        $row.Text = $item.Name
+        [void]$row.SubItems.Add((Format-Bytes -Bytes $item.EstimatedBytes))
+        [void]$row.SubItems.Add($item.Description)
+        $row.Tag = $item
+        $row.Checked = $true
+        [void]$lstWizardItems.Items.Add($row)
       }
       $lblProfileInfo.Text = "$(Get-ProfileDescription -Path $cmbWizardProfile.SelectedItem.Path) Includes $($entries.Count) libraries, about $(Format-Bytes -Bytes $profileBytes). Uncheck anything you do not need below."
     } catch {
@@ -1465,8 +1461,8 @@ function Show-EndUserWizard {
     [int64]$selectedBytes = 0
     $selectedCount = 0
     $selectedItems = @()
-    foreach ($checkedIndex in $lstWizardItems.CheckedIndices) {
-      $item = $lstWizardItems.Items[$checkedIndex]
+    foreach ($row in $lstWizardItems.CheckedItems) {
+      $item = $row.Tag
       $selectedBytes += [int64]$item.EstimatedBytes
       $selectedCount += 1
       $selectedItems += $item
@@ -1488,30 +1484,18 @@ function Show-EndUserWizard {
       & $updateSelection
     }
   })
-  $lstWizardItems.Add_SelectedIndexChanged({
-    if ($lstWizardItems.SelectedItem -ne $null) {
-      $item = $lstWizardItems.SelectedItem
-      $lblItemInfo.Text = $item.Description
-      $btnLearnMore.Enabled = -not [string]::IsNullOrWhiteSpace($item.LearnMoreUrl)
-    }
-  })
   $cmbWizardDisk.Add_SelectedIndexChanged({ & $updateSelection })
-  $btnLearnMore.Add_Click({
-    if ($lstWizardItems.SelectedItem -ne $null) {
-      Open-LearnMoreUrl -Url ([string]$lstWizardItems.SelectedItem.LearnMoreUrl) -Owner $wizard
-    }
-  })
   & $updateSelection
 
   $btnAll.Add_Click({
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
-      $lstWizardItems.SetItemChecked($i, $true)
+      $lstWizardItems.Items[$i].Checked = $true
     }
   })
 
   $btnNone.Add_Click({
     for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
-      $lstWizardItems.SetItemChecked($i, $false)
+      $lstWizardItems.Items[$i].Checked = $false
     }
   })
 
@@ -1540,9 +1524,9 @@ function Show-EndUserWizard {
     }
 
     $entries = @()
-    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
-      if ($lstWizardItems.GetItemChecked($i)) {
-        $entries += [string]$lstWizardItems.Items[$i].Url
+    foreach ($row in $lstWizardItems.CheckedItems) {
+      if ($null -ne $row.Tag) {
+        $entries += [string]$row.Tag.Url
       }
     }
 
@@ -1552,8 +1536,8 @@ function Show-EndUserWizard {
     }
 
     $selectedItems = @()
-    foreach ($checkedIndex in $lstWizardItems.CheckedIndices) {
-      $selectedItems += $lstWizardItems.Items[$checkedIndex]
+    foreach ($row in $lstWizardItems.CheckedItems) {
+      $selectedItems += $row.Tag
     }
     $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
     if ([int64]$cmbWizardDisk.SelectedItem.Size -lt $requiredBytes) {

@@ -54,6 +54,17 @@ class Release053Tests(unittest.TestCase):
         self.assertIn('$optPrebuilt.Checked = $true', frontend)
         self.assertIn('Advanced: download selected content on first boot', frontend)
 
+    def test_wizard_shows_library_descriptions_inline(self) -> None:
+        frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        self.assertIn('New-Object System.Windows.Forms.ListView', frontend)
+        self.assertIn('Columns.Add("Description"', frontend)
+        self.assertNotIn('$btnLearnMore.Text = "Learn More"', frontend)
+
+    def test_primary_wizard_button_has_room_for_its_label(self) -> None:
+        frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        self.assertIn('$btnStartWizard.Text = "Estimate + Build"', frontend)
+        self.assertIn('$btnStartWizard.Width = 120', frontend)
+
     def test_all_services_use_dedicated_non_root_account(self) -> None:
         for service in (REPO_ROOT / "scripts" / "systemd").glob("*.service"):
             text = service.read_text(encoding="utf-8")

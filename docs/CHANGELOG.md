@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.54] - 2026-09-24
+
+### Changed
+- Show each library's name, size, and description together in the end-user wizard using a checked details list.
+- Remove the disconnected single-item description and Learn More strip from the library picker.
+
+### Fixed
+- Give the primary `Estimate + Build` button enough width to display its complete label.
+
 ### Documentation
 - Rewrite the end-user instructions with continuous numbering, plain-language choices, concrete Ethernet and Wi-Fi guidance, captive-portal navigation, and a clear boundary before advanced/operator procedures.
 
