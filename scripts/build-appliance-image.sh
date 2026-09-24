@@ -233,6 +233,10 @@ hostname_cfg=$(jq -r '.system.hostname' "$CONFIG_PATH")
 profile=$(jq -r '.content.profile' "$CONFIG_PATH")
 snapshot=$(jq -r '.content.snapshot' "$CONFIG_PATH")
 version=$(jq -r '.applianceVersion' "$CONFIG_PATH")
+ap_autoconnect=true
+if [[ "$upstream_enabled" == "true" ]]; then
+  ap_autoconnect=false
+fi
 
 if [[ ! "$ap_country" =~ ^[A-Z]{2}$ ]]; then
   echo "network.ap.countryCode must be a two-letter uppercase value (example: NL, US, DE)." >&2
@@ -279,7 +283,7 @@ sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnec
 [connection]
 id=pi-kiwix-ap
 type=wifi
-autoconnect=true
+autoconnect=$ap_autoconnect
 
 [wifi]
 mode=ap

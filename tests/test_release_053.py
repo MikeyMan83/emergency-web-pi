@@ -71,6 +71,11 @@ class Release053Tests(unittest.TestCase):
         self.assertIn("connection.autoconnect no", handoff)
         self.assertIn("connection up pi-kiwix-ap", handoff)
 
+    def test_upstream_enabled_images_do_not_autostart_the_ap(self) -> None:
+        builder = (REPO_ROOT / "scripts" / "build-appliance-image.sh").read_text(encoding="utf-8")
+        self.assertIn("ap_autoconnect=false", builder)
+        self.assertIn("autoconnect=$ap_autoconnect", builder)
+
     def test_android_captive_endpoints_signal_portal(self) -> None:
         for path in ("/generate_204", "/gen_204"):
             request = FakeRequest(path)
