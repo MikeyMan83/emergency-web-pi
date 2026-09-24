@@ -62,9 +62,15 @@ class Release053Tests(unittest.TestCase):
 
     def test_home_wifi_is_scoped_to_first_boot_mode(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('FirstBoot only: use home Wi-Fi for the automatic download', frontend)
+        self.assertIn('Use home Wi-Fi for the FirstBoot download', frontend)
         self.assertIn('$chkUpstream.Enabled = $firstBootSelected', frontend)
         self.assertIn('$optPrebuilt.Add_CheckedChanged($updateUpstreamAvailability)', frontend)
+
+    def test_wizard_displays_app_and_raspberry_pi_os_versions(self) -> None:
+        frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        self.assertIn('Emergency Web Pi v$appVersion', frontend)
+        self.assertIn('Raspberry Pi OS: $($baseInfo.codename)', frontend)
+        self.assertIn('$appVersion = "unknown"', frontend)
 
     def test_primary_wizard_button_has_room_for_its_label(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")

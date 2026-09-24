@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.56] - 2026-09-24
+
+### Changed
+- Put the Recommended Prebuilt option before Advanced FirstBoot in the wizard.
+- Move home Wi-Fi settings directly under the FirstBoot option and disable them for Prebuilt mode.
+- Display the Emergency Web Pi app version and pinned Raspberry Pi OS release in the wizard.
+
+### Tests
+- Add regression coverage for wizard option order, Wi-Fi grouping, and version visibility.
+
 ## [0.1.55] - 2026-09-24
 
 ### Changed

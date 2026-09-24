@@ -105,6 +105,16 @@ foreach ($temporaryRoot in $temporaryRoots) {
 
 Write-AppLog "Repository root resolved: $repoRoot"
 
+$appVersion = "unknown"
+$versionPath = Join-Path $repoRoot "docs/VERSION"
+if (Test-Path $versionPath) {
+  $candidateVersion = (Get-Content $versionPath -Raw).Trim()
+  if (-not [string]::IsNullOrWhiteSpace($candidateVersion)) {
+    $appVersion = $candidateVersion
+  }
+}
+Write-AppLog "Application version resolved: $appVersion"
+
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
 $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
@@ -1198,12 +1208,22 @@ function Show-EndUserWizard {
   $wizard.BackColor = $script:uiSurface
   $wizard.ForeColor = $script:uiText
 
+  $versionLabel = New-Object System.Windows.Forms.Label
+  $versionLabel.Left = 760
+  $versionLabel.Top = 18
+  $versionLabel.Width = 190
+  $versionLabel.Height = 24
+  $versionLabel.Text = "Emergency Web Pi v$appVersion"
+  $versionLabel.TextAlign = [System.Drawing.ContentAlignment]::TopRight
+  $versionLabel.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
+  $wizard.Controls.Add($versionLabel)
+
   $wy = 16
 
   $lblIntro = New-Object System.Windows.Forms.Label
   $lblIntro.Left = 16
   $lblIntro.Top = $wy
-  $lblIntro.Width = 850
+  $lblIntro.Width = 720
   $lblIntro.Height = 44
   $lblIntro.Text = "Choose what you want available offline, how to install it, and which SD card to erase."
   $lblIntro.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
@@ -1215,51 +1235,9 @@ function Show-EndUserWizard {
   $lblBase.Top = $wy
   $lblBase.Width = 850
   $baseInfo = Get-PinnedBaseImageInfo
-  $lblBase.Text = "Base system: $($baseInfo.name) ($($baseInfo.architecture), $($baseInfo.releaseDate)) - automatically downloaded and SHA-256 verified"
+  $lblBase.Text = "Raspberry Pi OS: $($baseInfo.codename) ($($baseInfo.architecture), $($baseInfo.releaseDate)) - automatically downloaded and verified"
   $lblBase.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
   $wizard.Controls.Add($lblBase)
-  $wy += 38
-
-  $chkUpstream = New-Object System.Windows.Forms.CheckBox
-  $chkUpstream.Left = 210
-  $chkUpstream.Top = $wy
-  $chkUpstream.Width = 740
-  $chkUpstream.Text = "FirstBoot only: use home Wi-Fi for the automatic download"
-  $wizard.Controls.Add($chkUpstream)
-  $wy += 28
-
-  $lblUpstreamSsid = New-Object System.Windows.Forms.Label
-  $lblUpstreamSsid.Left = 210
-  $lblUpstreamSsid.Top = $wy
-  $lblUpstreamSsid.Width = 120
-  $lblUpstreamSsid.Text = "Wi-Fi name"
-  $wizard.Controls.Add($lblUpstreamSsid)
-
-  $txtUpstreamSsid = New-Object System.Windows.Forms.TextBox
-  $txtUpstreamSsid.Left = 340
-  $txtUpstreamSsid.Top = $wy - 3
-  $txtUpstreamSsid.Width = 260
-  $txtUpstreamSsid.Enabled = $false
-  $wizard.Controls.Add($txtUpstreamSsid)
-
-  $lblUpstreamPassword = New-Object System.Windows.Forms.Label
-  $lblUpstreamPassword.Left = 620
-  $lblUpstreamPassword.Top = $wy
-  $lblUpstreamPassword.Width = 120
-  $lblUpstreamPassword.Text = "Wi-Fi password"
-  $wizard.Controls.Add($lblUpstreamPassword)
-
-  $txtUpstreamPassword = New-Object System.Windows.Forms.TextBox
-  $txtUpstreamPassword.Left = 750
-  $txtUpstreamPassword.Top = $wy - 3
-  $txtUpstreamPassword.Width = 200
-  $txtUpstreamPassword.UseSystemPasswordChar = $true
-  $txtUpstreamPassword.Enabled = $false
-  $wizard.Controls.Add($txtUpstreamPassword)
-  $chkUpstream.Add_CheckedChanged({
-    $txtUpstreamSsid.Enabled = $chkUpstream.Checked
-    $txtUpstreamPassword.Enabled = $chkUpstream.Checked
-  })
   $wy += 38
 
   $lblProfile = New-Object System.Windows.Forms.Label
@@ -1378,14 +1356,6 @@ function Show-EndUserWizard {
   $lblMode.Text = "Content installation"
   $wizard.Controls.Add($lblMode)
 
-  $optFirstBoot = New-Object System.Windows.Forms.RadioButton
-  $optFirstBoot.Left = 210
-  $optFirstBoot.Top = $wy
-  $optFirstBoot.Width = 740
-  $optFirstBoot.Text = "Advanced: download selected content on first boot (Internet required once)"
-  $wizard.Controls.Add($optFirstBoot)
-  $wy += 24
-
   $optPrebuilt = New-Object System.Windows.Forms.RadioButton
   $optPrebuilt.Left = 210
   $optPrebuilt.Top = $wy
@@ -1393,6 +1363,56 @@ function Show-EndUserWizard {
   $optPrebuilt.Checked = $true
   $optPrebuilt.Text = "Recommended: prebuild content now for an offline-ready first boot"
   $wizard.Controls.Add($optPrebuilt)
+  $wy += 24
+
+  $optFirstBoot = New-Object System.Windows.Forms.RadioButton
+  $optFirstBoot.Left = 210
+  $optFirstBoot.Top = $wy
+  $optFirstBoot.Width = 740
+  $optFirstBoot.Text = "Advanced: download selected content on first boot (Internet required once)"
+  $wizard.Controls.Add($optFirstBoot)
+  $wy += 28
+
+  $chkUpstream = New-Object System.Windows.Forms.CheckBox
+  $chkUpstream.Left = 230
+  $chkUpstream.Top = $wy
+  $chkUpstream.Width = 720
+  $chkUpstream.Text = "Use home Wi-Fi for the FirstBoot download"
+  $wizard.Controls.Add($chkUpstream)
+  $wy += 28
+
+  $lblUpstreamSsid = New-Object System.Windows.Forms.Label
+  $lblUpstreamSsid.Left = 250
+  $lblUpstreamSsid.Top = $wy
+  $lblUpstreamSsid.Width = 120
+  $lblUpstreamSsid.Text = "Wi-Fi name"
+  $wizard.Controls.Add($lblUpstreamSsid)
+
+  $txtUpstreamSsid = New-Object System.Windows.Forms.TextBox
+  $txtUpstreamSsid.Left = 380
+  $txtUpstreamSsid.Top = $wy - 3
+  $txtUpstreamSsid.Width = 240
+  $txtUpstreamSsid.Enabled = $false
+  $wizard.Controls.Add($txtUpstreamSsid)
+
+  $lblUpstreamPassword = New-Object System.Windows.Forms.Label
+  $lblUpstreamPassword.Left = 640
+  $lblUpstreamPassword.Top = $wy
+  $lblUpstreamPassword.Width = 120
+  $lblUpstreamPassword.Text = "Wi-Fi password"
+  $wizard.Controls.Add($lblUpstreamPassword)
+
+  $txtUpstreamPassword = New-Object System.Windows.Forms.TextBox
+  $txtUpstreamPassword.Left = 770
+  $txtUpstreamPassword.Top = $wy - 3
+  $txtUpstreamPassword.Width = 180
+  $txtUpstreamPassword.UseSystemPasswordChar = $true
+  $txtUpstreamPassword.Enabled = $false
+  $wizard.Controls.Add($txtUpstreamPassword)
+  $chkUpstream.Add_CheckedChanged({
+    $txtUpstreamSsid.Enabled = $optFirstBoot.Checked -and $chkUpstream.Checked
+    $txtUpstreamPassword.Enabled = $optFirstBoot.Checked -and $chkUpstream.Checked
+  })
   $wy += 38
 
   $updateUpstreamAvailability = {
