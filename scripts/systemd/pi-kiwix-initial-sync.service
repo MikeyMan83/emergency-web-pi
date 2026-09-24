@@ -7,6 +7,8 @@ ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending
 
 [Service]
 Type=oneshot
+User=emergency-web-pi
+Group=emergency-web-pi
 WorkingDirectory=__REPO_DIR__
 EnvironmentFile=__REPO_DIR__/.env
 ExecStart=__REPO_DIR__/scripts/sync.sh --initial

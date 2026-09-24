@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.52] - 2026-09-24
+
+### Added
+- Add optional home Wi-Fi fields to the Windows wizard for first-boot content downloads.
+- Add common captive-portal probe endpoints and a catch-all status page route.
+
+### Changed
+- Run the four appliance systemd services under the dedicated non-root `emergency-web-pi` account.
+- Attempt upstream Wi-Fi handoff after AP setup, keeping the emergency AP as a fallback.
+- Build the status page library link from the request host instead of a hardcoded AP address.
+
+### Fixed
+- Reject running an incomplete portable bundle from a temporary extraction directory.
+- Provision the service account and assign ownership of the ZIM data directory during installation and image creation.
+- Add regression contracts covering service identity, Wi-Fi configuration, extraction safety, and captive-portal behavior.
+
 ## [0.1.51] - 2026-09-23
 
 ### Fixed

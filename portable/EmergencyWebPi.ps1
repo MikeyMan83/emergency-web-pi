@@ -89,6 +89,20 @@ if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   exit 1
 }
 
+$temporaryRoots = @($env:TEMP, $env:TMP) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') }
+foreach ($temporaryRoot in $temporaryRoots) {
+  if ($repoRoot.StartsWith($temporaryRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-AppLog "Refusing to run from temporary extraction path: $repoRoot"
+    [System.Windows.Forms.MessageBox]::Show(
+      "This release is running from a temporary extraction folder. Extract the complete ZIP to a normal folder such as Downloads, then run the app again.",
+      $appDisplayName,
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Warning
+    ) | Out-Null
+    exit 1
+  }
+}
+
 Write-AppLog "Repository root resolved: $repoRoot"
 
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
@@ -1206,6 +1220,48 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($lblBase)
   $wy += 38
 
+  $chkUpstream = New-Object System.Windows.Forms.CheckBox
+  $chkUpstream.Left = 210
+  $chkUpstream.Top = $wy
+  $chkUpstream.Width = 740
+  $chkUpstream.Text = "Use home Wi-Fi during first boot for automatic content downloads"
+  $wizard.Controls.Add($chkUpstream)
+  $wy += 28
+
+  $lblUpstreamSsid = New-Object System.Windows.Forms.Label
+  $lblUpstreamSsid.Left = 210
+  $lblUpstreamSsid.Top = $wy
+  $lblUpstreamSsid.Width = 120
+  $lblUpstreamSsid.Text = "Wi-Fi name"
+  $wizard.Controls.Add($lblUpstreamSsid)
+
+  $txtUpstreamSsid = New-Object System.Windows.Forms.TextBox
+  $txtUpstreamSsid.Left = 340
+  $txtUpstreamSsid.Top = $wy - 3
+  $txtUpstreamSsid.Width = 260
+  $txtUpstreamSsid.Enabled = $false
+  $wizard.Controls.Add($txtUpstreamSsid)
+
+  $lblUpstreamPassword = New-Object System.Windows.Forms.Label
+  $lblUpstreamPassword.Left = 620
+  $lblUpstreamPassword.Top = $wy
+  $lblUpstreamPassword.Width = 120
+  $lblUpstreamPassword.Text = "Wi-Fi password"
+  $wizard.Controls.Add($lblUpstreamPassword)
+
+  $txtUpstreamPassword = New-Object System.Windows.Forms.TextBox
+  $txtUpstreamPassword.Left = 750
+  $txtUpstreamPassword.Top = $wy - 3
+  $txtUpstreamPassword.Width = 200
+  $txtUpstreamPassword.UseSystemPasswordChar = $true
+  $txtUpstreamPassword.Enabled = $false
+  $wizard.Controls.Add($txtUpstreamPassword)
+  $chkUpstream.Add_CheckedChanged({
+    $txtUpstreamSsid.Enabled = $chkUpstream.Checked
+    $txtUpstreamPassword.Enabled = $chkUpstream.Checked
+  })
+  $wy += 38
+
   $lblProfile = New-Object System.Windows.Forms.Label
   $lblProfile.Left = 16
   $lblProfile.Top = $wy
@@ -1953,6 +2009,14 @@ $btnDynamic.Add_Click({
     "-BaseImageCacheDir", (Quote-Arg -Value (Join-Path $workspaceDirectory "base-image-cache")),
     "-ContentMode", $contentMode
   )
+
+  if ($chkUpstream.Checked) {
+    if ([string]::IsNullOrWhiteSpace($txtUpstreamSsid.Text) -or [string]::IsNullOrWhiteSpace($txtUpstreamPassword.Text)) {
+      [System.Windows.Forms.MessageBox]::Show("Enter the home Wi-Fi name and password, or clear the home Wi-Fi option.", "Home Wi-Fi", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+    $args += @("-UpstreamSsid", (Quote-Arg -Value $txtUpstreamSsid.Text), "-UpstreamPassword", (Quote-Arg -Value $txtUpstreamPassword.Text))
+  }
 
   if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
     $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))

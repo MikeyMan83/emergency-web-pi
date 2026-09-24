@@ -35,6 +35,7 @@ def main() -> int:
     config_resolver_path = repo_root / "scripts" / "resolve-appliance-config.ps1"
     rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
     status_web_path = repo_root / "scripts" / "status-web.py"
+    setup_ap_path = repo_root / "scripts" / "setup-ap.sh"
     portable_ps1_path = repo_root / "portable" / "EmergencyWebPi.ps1"
     root_cmd_path = repo_root / "Launch-EmergencyWebPi.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
@@ -61,6 +62,7 @@ def main() -> int:
     create_sd = create_sd_path.read_text(encoding="utf-8")
     create_sd_dynamic = create_sd_dynamic_path.read_text(encoding="utf-8")
     status_web = status_web_path.read_text(encoding="utf-8")
+    setup_ap = setup_ap_path.read_text(encoding="utf-8")
     kiwix_service = kiwix_service_path.read_text(encoding="utf-8")
     sync_service = sync_service_path.read_text(encoding="utf-8")
     initial_sync_service = initial_sync_service_path.read_text(encoding="utf-8")
@@ -161,8 +163,12 @@ def main() -> int:
     require("Format-Volume" not in create_sd_dynamic, "dynamic builder must not format an exFAT content partition")
     require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in kiwix_service, "kiwix service must require the ZIM data mount")
     require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in sync_service, "sync service must require the ZIM data mount")
+    for service_name in ("pi-kiwix-serve.service", "pi-kiwix-sync.service", "pi-kiwix-initial-sync.service", "pi-kiwix-status.service"):
+        service_text = (repo_root / "scripts" / "systemd" / service_name).read_text(encoding="utf-8")
+        require("User=emergency-web-pi" in service_text, f"{service_name} must run as the dedicated non-root account")
     require("network.upstream.enabled" in build_image_sh, "image builder must support optional upstream Wi-Fi injection")
     require("emergency-web-pi-upstream.nmconnection" in build_image_sh, "image builder must write the optional upstream connection")
+    require("Attempting upstream Wi-Fi handoff" in setup_ap, "AP setup must attempt upstream Wi-Fi handoff")
     require("interface-name=wlan0" not in build_image_sh, "image builder AP profile must not hardcode wlan0")
     require("AP_INTERFACE=wlan0" not in env_example, ".env.example must not hardcode wlan0")
     require("ConditionPathExists=/var/lib/pi-kiwix-zimdata/.content-install-pending" in initial_sync_service, "initial sync service must run only while content installation is pending")
@@ -205,6 +211,11 @@ def main() -> int:
     require("PUBLISHED:" in release_status and "PENDING:" in release_status, "release status command must distinguish pending and published releases")
     require(portable_smoke_path.exists(), "scripts/smoke-portable.ps1 must exist")
     require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
+    require("temporary extraction path" in portable_frontend, "portable frontend must reject temporary extraction paths")
+    require("Use home Wi-Fi during first boot" in portable_frontend, "wizard must expose home Wi-Fi setup")
+    require("UpstreamSsid" in create_sd_dynamic and "UpstreamPassword" in create_sd_dynamic, "dynamic builder must accept upstream Wi-Fi credentials")
+    require("generate_204" in status_web and "hotspot-detect.html" in status_web and "connecttest.txt" in status_web, "status page must answer common captive portal probes")
+    require('href=\\\"http://10.42.0.1:{kiwix_port}\\\"' not in status_web, "status page must not hardcode the AP address")
 
     # Estimate completeness checks.
     unknown_count = estimate_json.get("unknown_count")

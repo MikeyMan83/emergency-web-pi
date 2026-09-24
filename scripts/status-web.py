@@ -64,7 +64,7 @@ def content_storage_mounted(path: pathlib.Path) -> bool:
         return False
 
 
-def build_page(status: dict[str, object], kiwix_port: int) -> str:
+def build_page(status: dict[str, object], library_url: str) -> str:
     ready = "true" if status["ready"] else "false"
     message = "Library is ready" if status["ready"] else "Preparing content. Keep power connected."
     return f"""<!doctype html>
@@ -96,7 +96,7 @@ def build_page(status: dict[str, object], kiwix_port: int) -> str:
       <div class=\"row\">Sync service active: <strong id=\"sync\">{status['syncActive']}</strong></div>
       <div class=\"row\">Local ZIM files: <strong id=\"zimCount\">{status['zimCount']}</strong></div>
       <div class=\"row\">Last sync log: <strong id=\"last\">{status['lastSyncLine']}</strong></div>
-      <a id=\"open\" class=\"btn hidden\" href=\"http://10.42.0.1:{kiwix_port}\">Open Library</a>
+    <a id=\"open\" class=\"btn hidden\" href=\"{library_url}\">Open Library</a>
       <div class=\"row\" style=\"margin-top:12px;color:#666;\">Status refreshes automatically every 3 seconds.</div>
     </div>
   </div>
@@ -169,6 +169,7 @@ class StatusHandler(http.server.BaseHTTPRequestHandler):
         }
 
     def do_GET(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
         if self.path.startswith("/status.json"):
             payload = self._status()
             data = json.dumps(payload).encode("utf-8")
@@ -180,9 +181,16 @@ class StatusHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if self.path == "/" or self.path.startswith("/?"):
+        if path in {"/generate_204", "/gen_204", "/hotspot-detect.html", "/connecttest.txt", "/ncsi.txt", "/success.txt"}:
+            self.send_response(204 if path in {"/generate_204", "/gen_204"} else 200)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+
+        if path == "/" or path.startswith("/"):
             payload = self._status()
-            body = build_page(payload, self.kiwix_port).encode("utf-8")
+            host = self.headers.get("Host", "10.42.0.1").split(":", 1)[0]
+            body = build_page(payload, f"http://{host}:{self.kiwix_port}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")

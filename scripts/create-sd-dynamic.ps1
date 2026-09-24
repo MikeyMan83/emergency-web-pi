@@ -19,6 +19,10 @@ param(
 
   [string]$WorkspaceDir = "artifacts",
 
+  [string]$UpstreamSsid = "",
+
+  [string]$UpstreamPassword = "",
+
   [ValidateSet("FirstBoot", "Prebuilt")]
   [string]$ContentMode = "FirstBoot",
 
@@ -217,6 +221,20 @@ $outputImagePath = Join-Path $resolvedWorkspaceDir "dynamic-appliance.img"
 $outputManifestPath = "$outputImagePath.manifest.json"
 
 $urls = Read-ProfileEntries -Path $resolvedProfile
+$baseConfig = Get-Content $resolvedBaseConfig -Raw | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace($UpstreamSsid)) {
+  if ($UpstreamPassword.Length -lt 8 -or $UpstreamPassword.Length -gt 63) {
+    throw "Upstream Wi-Fi password must be 8-63 characters when an SSID is provided."
+  }
+  $baseConfig.network.upstream.enabled = $true
+  $baseConfig.network.upstream.ssid = $UpstreamSsid
+  $baseConfig.network.upstream.password = $UpstreamPassword
+} else {
+  $baseConfig.network.upstream.enabled = $false
+  $baseConfig.network.upstream.ssid = ""
+  $baseConfig.network.upstream.password = ""
+}
+$baseConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $resolvedConfigPath -Encoding utf8
 $effectiveZimPartitionGb = Get-RequiredZimPartitionGb -Urls $urls -MinimumGb $MinZimPartitionGb
 if ($ContentMode -eq "Prebuilt") {
   Require-Aria2

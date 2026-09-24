@@ -49,6 +49,12 @@ command -v kiwix-manage >/dev/null || sudo apt-get install -y kiwix-tools
 echo "==> Preparing data directory"
 mkdir -p "$ZIM_DATA_DIR"
 
+echo "==> Preparing service account"
+if ! id emergency-web-pi >/dev/null 2>&1; then
+  sudo useradd --system --home-dir /var/lib/emergency-web-pi --create-home --shell /usr/sbin/nologin emergency-web-pi
+fi
+sudo chown -R emergency-web-pi:emergency-web-pi "$ZIM_DATA_DIR"
+
 echo "==> Bootstrapping library.xml from any existing content"
 ./scripts/rebuild-library.sh
 

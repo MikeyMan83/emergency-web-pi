@@ -6,6 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=emergency-web-pi
+Group=emergency-web-pi
 WorkingDirectory=__REPO_DIR__
 EnvironmentFile=__REPO_DIR__/.env
 ExecStartPre=/bin/bash -lc '__REPO_DIR__/scripts/rebuild-library.sh'

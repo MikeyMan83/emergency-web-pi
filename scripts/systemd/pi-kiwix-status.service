@@ -5,6 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=emergency-web-pi
+Group=emergency-web-pi
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 WorkingDirectory=__REPO_DIR__
 ExecStart=/usr/bin/python3 __REPO_DIR__/scripts/status-web.py --repo __REPO_DIR__ --host 0.0.0.0 --port 80
 Restart=always

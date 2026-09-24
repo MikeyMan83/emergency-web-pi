@@ -351,6 +351,10 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y kiwix-tools aria2 curl git network-manager dnsmasq-base iw ca-certificates python3
+if ! id emergency-web-pi >/dev/null 2>&1; then
+  useradd --system --home-dir /var/lib/emergency-web-pi --create-home --shell /usr/sbin/nologin emergency-web-pi
+fi
+chown -R emergency-web-pi:emergency-web-pi /var/lib/pi-kiwix-zimdata /opt/emergency-web-pi
 '
 
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
