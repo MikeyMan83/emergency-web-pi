@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Documentation
+- Rewrite the end-user instructions with continuous numbering, plain-language choices, concrete Ethernet and Wi-Fi guidance, captive-portal navigation, and a clear boundary before advanced/operator procedures.
+
 ## [0.1.53] - 2026-09-24
 
 ### Changed

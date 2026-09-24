@@ -12,14 +12,18 @@ End-user path:
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
 4. Run `EmergencyWebPi.exe` from the extracted root folder.
-5. Start the end-user wizard, select catalog items, then select your SD card.
-   Emergency Web Pi automatically downloads and SHA-256 verifies its pinned official Raspberry Pi OS Lite base image.
-7. Choose a content mode:
-   - **Recommended: fully prebuild.** The Windows PC downloads selected catalogs before writing, so the Pi is offline-ready on first boot.
-   - **Advanced: download on first boot.** The Pi downloads selected catalogs after it gets temporary Internet access; this is intended for builders comfortable troubleshooting connectivity.
-8. Insert the card into the Pi and boot. For first-boot mode, provide temporary Internet to the Pi, such as Ethernet.
-9. Join the Pi Wi-Fi and open http://10.42.0.1 to watch installation progress.
-10. When installation is complete, open http://10.42.0.1:8080 for the offline library.
+5. Click **Start End-User Wizard**, choose the information you want on the card, and choose the SD card you want to erase.
+6. Leave **Recommended: prebuild content now** selected. The app downloads everything needed before it writes the card, so the finished card can work without Internet.
+7. Insert the finished card into the Raspberry Pi and turn it on. If you chose the advanced first-boot download option, connect the Pi to the Internet first. An Ethernet cable plugs into the Pi's network socket, the larger socket beside the USB sockets.
+8. On your phone or laptop, connect to the emergency Wi-Fi. The Wi-Fi name and password are the ones set by the person who prepared the card; ask them if they were not written on the card or its label.
+9. Open a web browser and visit any ordinary website. The Pi should show its local status page automatically. If it does not, reconnect to the emergency Wi-Fi and try again.
+10. On the status page, wait until the library says it is ready, then click **Open Library**.
+
+---
+
+## Advanced/operator instructions
+
+The rest of this document is for testing, recovery, and direct maintenance. A normal card recipient does not need these commands.
 
 Fallback if no release asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
@@ -52,11 +56,8 @@ The portable app wraps the same validated script engine used below.
 
 Attribution and open-source notices are in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
-The wizard uses a pinned official Raspberry Pi OS Lite base image, catalog item selection,
-and preflight size estimation before write. Both content modes use the same
-ext4 appliance layout and runtime; they differ only in when selected catalogs download.
-
-Advanced script-first paths are still available below for operators.
+The wizard handles the operating system, library choices, and size check for you. Both
+content choices use the same appliance; they differ only in when the library is downloaded.
 
 Dynamic mode (recommended for fresh content at build time):
 

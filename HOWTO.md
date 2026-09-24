@@ -10,14 +10,19 @@ For normal deployment, use the portable app wizard:
 1. Go to https://github.com/MikeyMan83/emergency-web-pi/releases/latest.
 2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
-4. Start `EmergencyWebPi.exe` from the extracted root folder and start the wizard.
-5. Select catalog items and the target SD card. The app downloads and verifies the pinned official Raspberry Pi OS Lite base image automatically.
-7. Choose a content mode:
-  - **Recommended: fully prebuild.** The Windows PC downloads catalogs before writing, so the Pi is offline-ready on first boot.
-  - **Advanced: download on first boot.** The Pi downloads selected catalogs after it gets temporary Internet access.
-8. Insert the SD card in the Pi and boot. For first-boot mode, provide temporary Pi Internet access, such as Ethernet.
-9. Open `http://10.42.0.1` to watch installation progress.
-10. Open `http://10.42.0.1:8080` when ready.
+4. Start `EmergencyWebPi.exe` from the extracted root folder.
+5. Click **Start End-User Wizard**, choose what you want on the card, and choose the SD card to erase.
+6. Leave **Recommended: prebuild content now** selected. The app downloads the library before writing, so the finished card works without Internet.
+7. Insert the card in the Pi and turn it on. If you selected the advanced first-boot option, connect the Pi to the Internet first with an Ethernet cable in the larger network socket beside the USB sockets.
+8. Connect your phone or laptop to the emergency Wi-Fi. Use the Wi-Fi name and password supplied by the person who prepared the card; they should be written on the card or its label.
+9. Open a browser and visit any ordinary website. The local status page should appear automatically.
+10. Wait for the status page to say the library is ready, then click **Open Library**.
+
+---
+
+## Advanced/operator flow
+
+The rest of this guide is for testing, recovery, and direct maintenance. Normal card recipients do not need it.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
@@ -28,11 +33,6 @@ For testing or recovery, select `Developer Tools` in the wizard to open direct b
 If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 
 No manual script sequence is required for this path.
-
-## Advanced/operator flow
-
-This section is for building images directly or maintaining an already running Pi.
-Most users should use the Windows appliance flow instead.
 
 ## Build appliance image on Windows
 
