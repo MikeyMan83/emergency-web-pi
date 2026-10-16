@@ -1147,7 +1147,12 @@ function Resolve-EntriesForDynamicRun {
     $selected = @()
     for ($i = 0; $i -lt $lstProfileItems.Items.Count; $i++) {
       if ($lstProfileItems.GetItemChecked($i)) {
-        $selected += [string]$lstProfileItems.Items[$i].Url
+        $item = $lstProfileItems.Items[$i]
+        if ($item -is [string]) {
+          $selected += $item
+        } else {
+          $selected += [string]$item.Url
+        }
       }
     }
 
@@ -1823,7 +1828,7 @@ function Start-EndUserFlow {
 
     $lstProfileItems.Items.Clear()
     foreach ($entry in $selection.Entries) {
-      [void]$lstProfileItems.Items.Add($entry, $true)
+      [void]$lstProfileItems.Items.Add((Get-CatalogItem -Url $entry), $true)
     }
 
     $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
@@ -2037,6 +2042,15 @@ $btnEstimate.Add_Click({
   }
 })
 
+# Recoverable abort: reopen the wizard (user-driven, one level per click) instead of quitting.
+function Exit-OrReturnToWizard {
+  if ($script:prebuiltFlow) {
+    Start-EndUserFlow
+  } else {
+    $form.Close()
+  }
+}
+
 $btnDynamic.Add_Click({
   if (-not $script:prebuiltFlow -and -not (Test-WslReady)) {
     if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
@@ -2083,7 +2097,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic preflight failed: $($_.Exception.Message)"
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("The SD card could not be prepared: $($_.Exception.Message)", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Close()
+            Exit-OrReturnToWizard
     }
     return
   }
@@ -2094,7 +2108,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic build aborted: selected SD card is too small."
     [System.Windows.Forms.MessageBox]::Show("The selected SD card is too small. Choose a card with at least $requiredText.", "SD Card Too Small", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
     if ($script:normalLaunch) {
-      $form.Close()
+      Exit-OrReturnToWizard
     }
     return
   }
@@ -2120,7 +2134,7 @@ $btnDynamic.Add_Click({
   if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
     Add-Log "Dynamic build cancelled by user."
     if ($script:normalLaunch) {
-      $form.Close()
+      Exit-OrReturnToWizard
     }
     return
   }
@@ -2322,7 +2336,7 @@ $btnDynamic.Add_Click({
     Add-Log "Dynamic SD build failed with exit code $($result.ExitCode)."
     if ($script:normalLaunch) {
       [System.Windows.Forms.MessageBox]::Show("Creating the SD card did not finish. Try again after reviewing the error details in Advanced Settings.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Close()
+            Exit-OrReturnToWizard
     }
   }
 })

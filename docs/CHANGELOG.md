@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-16
+
+### Fixed
+
+- The wizard exited after clicking "Estimate + Build" because the selected libraries were handed to the SD writer as empty entries. Selections are now passed correctly.
+- The wizard now reopens instead of quitting when a recoverable problem occurs (preflight failure, SD card too small, erase declined, or a failed build).
+
 ## [0.3.1] - 2026-10-16
 
 ### Changed
