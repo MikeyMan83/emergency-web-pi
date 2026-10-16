@@ -114,7 +114,7 @@ Three supported modes exist in this repository:
 Published content size: **64.83 GB**
 Published recommended minimum SD size: **77.79 GB**
 Known subtotal (diagnostic): 64.83 GB
-Last estimate refresh: 2026-09-23T11:15:28Z
+Last estimate refresh: 2026-10-16T11:14:34Z
 <!-- SPACE_ESTIMATE:END -->
 
 In practice the full **Everything** profile needs a **128 GB card** (the next size above the published minimum). The smaller profiles fit on proportionally smaller cards; the wizard checks the selected card before writing.
