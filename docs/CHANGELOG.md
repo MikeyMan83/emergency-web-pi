@@ -35,6 +35,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Add regression coverage for the validate_repo AP-handoff invariant, WSL pre-flight, private-repo release status, SmartScreen guidance, and the requireAdministrator EXE manifest.
 - Run the full release regression suite in CI, not only the status and initial-sync tests.
 
+### Documentation
+- Restructure the README as a concise, end-user-first document: quick start, requirements, card-size guidance, and troubleshooting stay up front; legacy first-boot, direct-on-Pi, and operator procedures moved to `HOWTO.md`.
+
 ## [0.1.56] - 2026-09-24
 
 ### Changed
