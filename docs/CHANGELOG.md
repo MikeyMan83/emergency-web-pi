@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-16
+
 ### Documentation
 - Restructure the README as a concise, end-user-first document: quick start, requirements, card-size guidance, and troubleshooting stay up front; legacy first-boot, direct-on-Pi, and operator procedures moved to `HOWTO.md`.
 
