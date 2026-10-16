@@ -6,7 +6,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
-## [0.1.57] - 2026-10-16
+## [0.2.0] - 2026-10-16
 
 ### Added
 - Bundle a pinned, SHA-256-verified aria2c.exe into the portable release so prebuilt content downloads work without installing aria2.
