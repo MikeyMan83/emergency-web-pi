@@ -456,6 +456,10 @@ sudo umount "$MOUNT_ROOT"
 if [[ "$BASE_MODE" -eq 1 ]]; then
   sudo e2fsck -fy "$ROOT_PART" || [[ $? -le 1 ]]
   sudo resize2fs -M "$ROOT_PART"
+  # ZIMDATA sits after rootfs on the finished card, so the Pi cannot expand root at first boot; keep working headroom.
+  min_blocks=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); print $2}')
+  min_block_size=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /, "", $2); print $2}')
+  sudo resize2fs "$ROOT_PART" "$(( min_blocks + (768 * 1024 * 1024) / min_block_size ))"
   fs_blocks=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); print $2}')
   fs_block_size=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /, "", $2); print $2}')
   root_start_sector=$(sudo sfdisk -J "$LOOP_DEV" | jq -r '.partitiontable.partitions[] | select(.node | endswith("p2")) | .start')
