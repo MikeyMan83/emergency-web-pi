@@ -171,7 +171,7 @@ def main() -> int:
     require("network.upstream.enabled" in build_image_sh, "image builder must support optional upstream Wi-Fi injection")
     require("emergency-web-pi-upstream.nmconnection" in build_image_sh, "image builder must write the optional upstream connection")
     require("connection down emergency-web-pi-upstream" not in setup_ap, "AP setup must not tear down upstream before initial content completes")
-    require("ExecStartPost=__REPO_DIR__/scripts/switch-to-ap.sh" in initial_sync_service, "initial sync must switch back to AP only after success")
+    require("ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh" in initial_sync_service, "initial sync must switch back to AP only after success")
     require("connection.autoconnect no" in switch_to_ap and "connection up pi-kiwix-ap" in switch_to_ap, "AP handoff must disable upstream auto-connect and restore the AP")
     require("interface-name=wlan0" not in build_image_sh, "image builder AP profile must not hardcode wlan0")
     require("AP_INTERFACE=wlan0" not in env_example, ".env.example must not hardcode wlan0")

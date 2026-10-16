@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+- Pin Ubuntu workflows to 24.04 and update GitHub Actions to Node 24-compatible major versions.
+
+### Fixed
+- Align repository validation with the root-run first-boot AP handoff.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added
