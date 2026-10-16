@@ -38,9 +38,47 @@ class WizardPickerContractTests(unittest.TestCase):
     def test_recoverable_aborts_return_to_wizard(self):
         helper = function_body("Exit-OrReturnToWizard")
         self.assertIn("Start-EndUserFlow", helper)
-        match = re.search(r"\$btnDynamic\.Add_Click\(\{", FRONTEND)
-        handler = FRONTEND[match.start():FRONTEND.index("$btnDisks.Add_Click")]
-        self.assertGreaterEqual(handler.count("Exit-OrReturnToWizard"), 4)
+        body = function_body("Invoke-DynamicBuild")
+        self.assertGreaterEqual(body.count("Exit-OrReturnToWizard"), 4)
+
+    def test_wizard_hands_off_by_direct_call_not_perform_click(self):
+        body = function_body("Start-EndUserFlow")
+        self.assertIn("Invoke-DynamicBuild", body)
+        self.assertNotIn("PerformClick", body)
+
+    def test_wizard_click_handler_is_exception_guarded(self):
+        body = function_body("Show-EndUserWizard")
+        start = body.index("$btnStartWizard.Add_Click")
+        end = body.index("$wizard.Add_FormClosing")
+        handler = body[start:end]
+        self.assertRegex(handler, r"\btry\s*\{")
+        self.assertRegex(handler, r"\}\s*catch\s*\{")
+        self.assertIn("Wizard build button threw", handler)
+
+    def test_wizard_handoff_is_logged(self):
+        body = function_body("Show-EndUserWizard")
+        self.assertIn("Wizard form closing: CloseReason", body)
+        self.assertIn("End-user wizard closed with result", body)
+        self.assertIn("End-user wizard result object present", body)
+
+    def test_null_selection_shows_message_before_closing(self):
+        body = function_body("Start-EndUserFlow")
+        start = body.index("if ($null -eq $selection)")
+        branch = body[start:body.index("if ($selection.DeveloperTools)")]
+        self.assertIn("Wizard returned no selection", branch)
+        self.assertIn("MessageBox]::Show", branch)
+        self.assertLess(branch.index("MessageBox]::Show"), branch.index("$form.Close()"))
+
+    def test_ui_thread_exceptions_are_logged(self):
+        self.assertIn("SetUnhandledExceptionMode", FRONTEND)
+        self.assertIn("add_ThreadException", FRONTEND)
+        self.assertIn("UI thread exception", FRONTEND)
+
+    def test_logs_prefer_install_dir_and_rotate(self):
+        self.assertRegex(FRONTEND, r'Join-Path \$appRootDirectory "logs"')
+        self.assertIn("Log directory resolved", FRONTEND)
+        self.assertRegex(FRONTEND, r"Select-Object -Skip 10")
+        self.assertIn("Open logs", FRONTEND)
 
 
 if __name__ == "__main__":

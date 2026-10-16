@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-16
+
+### Fixed
+
+- Clicking "Estimate + Build" could end the app with no message. The build now starts directly from the wizard instead of through a simulated button click, and any failure is reported in a window.
+- The app no longer exits silently: if the setup window closes unexpectedly it explains why and points to the diagnostic log.
+
+### Changed
+
+- Logs now live in a `logs` folder next to the app (falling back to AppData when that folder is not writable). Only the 10 newest startup logs are kept, and Developer Tools has an "Open logs" button.
+
 ## [0.3.2] - 2026-10-16
 
 ### Fixed

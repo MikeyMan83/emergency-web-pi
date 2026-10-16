@@ -143,7 +143,15 @@ if (-not (Test-Path $scriptPath)) {
   $scriptPath = Join-Path $baseDirectory "portable\EmergencyWebPi.ps1"
 }
 
-$logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$logDirectory = Join-Path $baseDirectory "logs"
+try {
+  New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+  $probePath = Join-Path $logDirectory (".probe-{0}" -f [guid]::NewGuid().ToString("N"))
+  Set-Content -Path $probePath -Value "ok"
+  Remove-Item -Path $probePath -Force
+} catch {
+  $logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+}
 $logPath = Join-Path $logDirectory "launcher.log"
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 Add-Content -Path $logPath -Value ("[{0}] EXE launcher started. Frontend: {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $scriptPath) -Encoding utf8

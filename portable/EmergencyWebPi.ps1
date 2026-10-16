@@ -1,7 +1,25 @@
 $ErrorActionPreference = "Stop"
 $appDisplayName = "Emergency Web Pi"
-$logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
-$workspaceDirectory = Join-Path $logDirectory "workspace"
+$localDataDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$workspaceDirectory = Join-Path $localDataDirectory "workspace"
+
+# Logs live next to the app when that folder is writable; otherwise fall back to AppData.
+$appRootDirectory = $null
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+  $appRootDirectory = if ((Split-Path -Leaf $PSScriptRoot) -ieq "portable") { Split-Path -Parent $PSScriptRoot } else { $PSScriptRoot }
+}
+$logDirectory = $localDataDirectory
+if ($appRootDirectory) {
+  try {
+    $candidateLogDirectory = Join-Path $appRootDirectory "logs"
+    New-Item -ItemType Directory -Path $candidateLogDirectory -Force | Out-Null
+    $probePath = Join-Path $candidateLogDirectory (".probe-{0}" -f [guid]::NewGuid().ToString("N"))
+    Set-Content -Path $probePath -Value "ok"
+    Remove-Item -Path $probePath -Force
+    $logDirectory = $candidateLogDirectory
+  } catch {
+  }
+}
 $logPath = Join-Path $logDirectory ("startup-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
 
 function Write-AppLog {
@@ -15,6 +33,14 @@ function Write-AppLog {
 }
 
 Write-AppLog "Frontend startup requested."
+Write-AppLog "Log directory resolved: $logDirectory"
+try {
+  Get-ChildItem -Path $logDirectory -Filter "startup-*.log" -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -Skip 10 |
+    Remove-Item -Force
+} catch {
+}
 
 $script:startupStage = "Loading WinForms assemblies"
 try {
@@ -25,6 +51,22 @@ try {
 } catch {
   Write-AppLog ("Failed during $script:startupStage: {0}" -f $_.Exception.ToString())
   exit 1
+}
+
+try {
+  [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+  [System.Windows.Forms.Application]::add_ThreadException({
+    param($sender, $eventArgs)
+    Write-AppLog ("UI thread exception: {0}" -f $eventArgs.Exception.ToString())
+    [System.Windows.Forms.MessageBox]::Show(
+      "$($eventArgs.Exception.Message)`n`nDiagnostic log:`n$logPath",
+      $appDisplayName,
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+  })
+} catch {
+  Write-AppLog ("Could not install the UI exception handler: {0}" -f $_.Exception.Message)
 }
 
 trap {
@@ -1056,6 +1098,17 @@ function Show-DeveloperTools {
   $txtLog.Visible = $true
   Move-DeveloperControl -Control $btnArtifacts -Parent $diagnosticActions -Left 16 -Top 14 -Width 150
   Move-DeveloperControl -Control $btnAbout -Parent $diagnosticActions -Left 176 -Top 14 -Width 150
+  $btnOpenLogs = New-Object System.Windows.Forms.Button
+  $btnOpenLogs.Text = "Open logs"
+  Move-DeveloperControl -Control $btnOpenLogs -Parent $diagnosticActions -Left 336 -Top 14 -Width 150
+  Set-SecondaryButtonStyle -Button $btnOpenLogs
+  $btnOpenLogs.Add_Click({
+    try {
+      Start-Process -FilePath "explorer.exe" -ArgumentList ('"{0}"' -f $logDirectory) | Out-Null
+    } catch {
+      Write-AppLog ("Could not open the log directory: {0}" -f $_.Exception.Message)
+    }
+  })
   Move-DeveloperControl -Control $btnExit -Parent $diagnosticActions -Left 830 -Top 14 -Width 110
   $btnExit.Text = "Close tools"
   $btnArtifacts.Text = "Open workspace"
@@ -1514,6 +1567,7 @@ function Show-EndUserWizard {
 
   $script:wizardResult = $null
   $script:developerToolsRequested = $false
+  $script:wizardCancelClicked = $false
 
   $loadItems = {
     $lstWizardItems.Items.Clear()
@@ -1593,6 +1647,7 @@ function Show-EndUserWizard {
   })
 
   $btnCancelWizard.Add_Click({
+    $script:wizardCancelClicked = $true
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $wizard.Close()
   })
@@ -1606,6 +1661,7 @@ function Show-EndUserWizard {
 
   $btnStartWizard.Add_Click({
     Write-AppLog "Wizard build requested."
+    try {
     if ($cmbWizardProfile.SelectedItem -eq $null) {
       [System.Windows.Forms.MessageBox]::Show("Select a catalog preset.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
@@ -1647,10 +1703,20 @@ function Show-EndUserWizard {
 
     $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $wizard.Close()
+    } catch {
+      Write-AppLog ("Wizard build button threw: {0}" -f $_.Exception.ToString())
+      $script:wizardResult = $null
+      [System.Windows.Forms.MessageBox]::Show("Something went wrong starting the build: $($_.Exception.Message)`n`nDiagnostic log:`n$logPath", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    }
+  })
+
+  $wizard.Add_FormClosing({
+    Write-AppLog ("Wizard form closing: CloseReason={0}, DialogResult={1}" -f $_.CloseReason, $wizard.DialogResult)
   })
 
   $dialogResult = if ($null -eq $Owner) { $wizard.ShowDialog() } else { $wizard.ShowDialog($Owner) }
-  Write-AppLog "End-user wizard closed with result: $dialogResult"
+  Write-AppLog ("End-user wizard closed with result: {0}" -f $dialogResult)
+  Write-AppLog ("End-user wizard result object present: {0}" -f ($null -ne $script:wizardResult))
   if ($script:developerToolsRequested) {
     return [PSCustomObject]@{ DeveloperTools = $true }
   }
@@ -1786,6 +1852,9 @@ function Start-EndUserFlow {
 
     if ($profilePaths.Count -eq 0) {
       Add-Log "Wizard aborted: no profile presets found in profiles/*.txt"
+      if ($script:normalLaunch) {
+        [System.Windows.Forms.MessageBox]::Show("No content presets were found in the profiles folder. Re-extract the complete release ZIP and try again.`n`nDiagnostic log:`n$logPath", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      }
       return
     }
 
@@ -1799,8 +1868,12 @@ function Start-EndUserFlow {
     $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks -Owner $wizardOwner
     if ($null -eq $selection) {
       Add-Log "Wizard cancelled."
+      Write-AppLog "Wizard returned no selection. See previous lines for the dialog result and result-object state."
       if ($script:normalLaunch) {
-        $form.Close()
+        if (-not $script:wizardCancelClicked) {
+          [System.Windows.Forms.MessageBox]::Show("The setup window closed before the build could start. Nothing was written to the SD card.`n`nDiagnostic log:`n$logPath", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+                  }
+                  $form.Close()
       }
       return
     }
@@ -1835,7 +1908,9 @@ function Start-EndUserFlow {
     Log-PreflightEstimate -Estimate $estimate
 
     Add-Log "Wizard selection applied. Continuing with the native prebuilt build."
-    $btnDynamic.PerformClick()
+    Write-AppLog "Invoking the SD build directly."
+    Invoke-DynamicBuild
+    Write-AppLog "SD build handler returned."
   } catch {
     Add-Log "Wizard failed: $($_.Exception.Message)"
     Write-AppLog ("Wizard failed: {0}" -f $_.Exception.ToString())
@@ -2051,7 +2126,7 @@ function Exit-OrReturnToWizard {
   }
 }
 
-$btnDynamic.Add_Click({
+function Invoke-DynamicBuild {
   if (-not $script:prebuiltFlow -and -not (Test-WslReady)) {
     if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
       Write-AppLog "WSL is not ready; continuing without the setup dialog (non-interactive or CI session)."
@@ -2339,7 +2414,9 @@ $btnDynamic.Add_Click({
             Exit-OrReturnToWizard
     }
   }
-})
+}
+
+$btnDynamic.Add_Click({ Invoke-DynamicBuild })
 
 $btnDisks.Add_Click({
   Refresh-DiskPicker

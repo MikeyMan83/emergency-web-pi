@@ -2,7 +2,9 @@
 setlocal
 set ROOT_DIR=%~dp0
 pushd "%ROOT_DIR%" >nul 2>&1
-set "LOG_DIR=%LOCALAPPDATA%\EmergencyWebPi"
+set "LOG_DIR=%ROOT_DIR%logs"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+(echo.>>"%LOG_DIR%\launcher.log") 2>nul || set "LOG_DIR=%LOCALAPPDATA%\EmergencyWebPi"
 set "LOG_FILE=%LOG_DIR%\launcher.log"
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1

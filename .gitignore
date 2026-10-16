@@ -5,3 +5,5 @@ zim_data/*
 !zim_data/.gitkeep
 secrets/*
 !secrets/.gitkeep
+logs/
+__pycache__/

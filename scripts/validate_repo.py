@@ -197,7 +197,7 @@ def main() -> int:
     require("$btnWizard.PerformClick()" not in portable_frontend, "normal startup must not depend on simulated button clicks")
     require("WinForms assemblies loaded." in portable_frontend, "portable frontend must log successful WinForms initialization")
     require("Resolving extracted bundle location." in portable_frontend, "portable frontend must log bundle discovery")
-    require("$workspaceDirectory = Join-Path $logDirectory \"workspace\"" in portable_frontend, "portable frontend must use an app-data workspace")
+    require("$workspaceDirectory = Join-Path $localDataDirectory \"workspace\"" in portable_frontend, "portable frontend must use an app-data workspace")
     require("-WorkspaceDir" in portable_frontend, "portable frontend must pass its workspace to dynamic builds")
     require("$_.Size -gt 0" in portable_frontend, "portable frontend must filter zero-capacity disks")
     require("return @($all)" in portable_frontend, "portable frontend must return an empty disk array when no disk is available")

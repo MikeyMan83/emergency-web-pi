@@ -14,7 +14,10 @@ if (-not (Test-Path $frontendPath)) {
   throw "Portable frontend is missing: $frontendPath"
 }
 
-$logDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
+$logDirectories = @(
+  (Join-Path $bundlePath "logs"),
+  (Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi")
+)
 $startedAfter = Get-Date
 $process = Start-Process -FilePath "powershell.exe" -ArgumentList @(
   "-STA",
@@ -29,7 +32,7 @@ try {
   $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
   $startupLog = $null
   while ((Get-Date) -lt $deadline) {
-    $startupLog = Get-ChildItem -Path $logDirectory -Filter "startup-*.log" -File -ErrorAction SilentlyContinue |
+    $startupLog = Get-ChildItem -Path $logDirectories -Filter "startup-*.log" -File -ErrorAction SilentlyContinue |
       Where-Object { $_.LastWriteTime -ge $startedAfter } |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
