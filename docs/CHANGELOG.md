@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.1.57] - 2026-10-16
+
 ### Added
 - Bundle a pinned, SHA-256-verified aria2c.exe into the portable release so prebuilt content downloads work without installing aria2.
 - Show the emergency Wi-Fi name and password when the SD card build finishes, and save a printable label file (`EmergencyWebPi-WiFi-Label.html`) on the Desktop.
