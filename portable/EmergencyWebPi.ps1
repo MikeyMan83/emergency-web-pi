@@ -147,8 +147,10 @@ Write-AppLog "Application version resolved: $appVersion"
 $buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
 $writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
 $dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
+$prebuiltScript = Join-Path $repoRoot "scripts/create-sd-prebuilt.ps1"
+$script:prebuiltFlow = $false
 
-if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript)) {
+if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript) -or -not (Test-Path $prebuiltScript)) {
   Write-AppLog "Required build scripts are missing from the resolved repository root."
   [System.Windows.Forms.MessageBox]::Show(
     "Required scripts are missing. Ensure this portable folder is inside the repository root.",
@@ -1765,14 +1767,7 @@ function Show-WslSetupGuidance {
 }
 
 function Start-EndUserFlow {
-  if (-not (Test-WslReady)) {
-    if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
-      Write-AppLog "WSL is not ready; continuing without the setup dialog (non-interactive or CI session)."
-    } else {
-      Show-WslSetupGuidance
-      return
-    }
-  }
+  $script:prebuiltFlow = $true
 
   try {
     if ($cmbProfiles.Items.Count -eq 0) {
@@ -1806,6 +1801,7 @@ function Start-EndUserFlow {
     }
 
     if ($selection.DeveloperTools) {
+      $script:prebuiltFlow = $false
       $script:normalLaunch = $false
       Show-DeveloperTools
       $form.Close()
@@ -1833,7 +1829,7 @@ function Start-EndUserFlow {
     $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
     Log-PreflightEstimate -Estimate $estimate
 
-    Add-Log "Wizard selection applied. Continuing with dynamic build."
+    Add-Log "Wizard selection applied. Continuing with the native prebuilt build."
     $btnDynamic.PerformClick()
   } catch {
     Add-Log "Wizard failed: $($_.Exception.Message)"
@@ -2042,6 +2038,15 @@ $btnEstimate.Add_Click({
 })
 
 $btnDynamic.Add_Click({
+  if (-not $script:prebuiltFlow -and -not (Test-WslReady)) {
+    if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
+      Write-AppLog "WSL is not ready; continuing without the setup dialog (non-interactive or CI session)."
+    } else {
+      Show-WslSetupGuidance
+      return
+    }
+  }
+
   [int]$diskNum = Get-SelectedDiskNumber
   if ($diskNum -lt 0) {
     Add-Log "Dynamic build aborted: select an SD card in Step 2."
@@ -2148,6 +2153,44 @@ $btnDynamic.Add_Click({
 
   Add-Log "Dynamic mode content installation: $contentMode"
 
+  $scriptToRun = $dynamicScript
+  if ($script:prebuiltFlow) {
+    $scriptToRun = $prebuiltScript
+    $wifiAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $pick = {
+      param([int]$Length)
+      $bytes = New-Object byte[] $Length
+      $rng.GetBytes($bytes)
+      $chars = for ($i = 0; $i -lt $Length; $i++) { $wifiAlphabet[$bytes[$i] % $wifiAlphabet.Length] }
+      return (-join $chars)
+    }
+    $generatedSsid = "EmergencyWebPi-" + (& $pick 4)
+    $generatedPassword = (& $pick 12)
+    $rng.Dispose()
+
+    New-Item -ItemType Directory -Path $workspaceDirectory -Force | Out-Null
+    [ordered]@{ network = [ordered]@{ ap = [ordered]@{ ssid = $generatedSsid; password = $generatedPassword } } } |
+      ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $workspaceDirectory "dynamic-appliance-config.json") -Encoding utf8
+
+    $args = @(
+      "-DiskNumber", $diskNum,
+      "-ConfirmDiskNumber", $diskNum,
+      "-Force",
+      "-Profile", (Quote-Arg -Value $generatedProfile),
+      "-ContentDir", (Quote-Arg -Value (To-Absolute -PathValue $txtCacheDir.Text)),
+      "-WorkspaceDir", (Quote-Arg -Value $workspaceDirectory),
+      "-ReleaseRepo", (Quote-Arg -Value $txtReleaseRepo.Text),
+      "-ApSsid", (Quote-Arg -Value $generatedSsid),
+      "-ApPassword", (Quote-Arg -Value $generatedPassword),
+      "-ContentMode", $contentMode
+    )
+    if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs) -and $baseAbs.EndsWith(".gz", [System.StringComparison]::OrdinalIgnoreCase)) {
+      $args += @("-ImagePath", (Quote-Arg -Value $baseAbs))
+    }
+    Add-Log "Running native prebuilt SD build on disk #$diskNum (no WSL needed)"
+  }
+
   Add-Log "Running dynamic SD build on disk #$diskNum"
   $progress = $null
   if ($script:normalLaunch) {
@@ -2172,7 +2215,24 @@ $btnDynamic.Add_Click({
   }
 
   try {
-    $result = Invoke-PowerShellScript -ScriptPath $dynamicScript -Arguments $args
+    $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $args
+    if ($script:prebuiltFlow -and $result.ExitCode -ne 0 -and $result.Output -match "BASE_IMAGE_UNAVAILABLE" -and $script:normalLaunch) {
+      Add-Log $result.Output
+      $progress.Hide()
+      [System.Windows.Forms.MessageBox]::Show(
+        "The base card image could not be downloaded automatically.`n`nDownload the ewp-base files (the .img.gz or its parts, plus the .manifest.json) from the Releases page into one folder:`nhttps://github.com/$($txtReleaseRepo.Text)/releases`n`nThen pick the .img.gz file on the next screen.",
+        $appDisplayName,
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Information
+      ) | Out-Null
+      $dialog = New-Object System.Windows.Forms.OpenFileDialog
+      $dialog.Filter = "Base image (*.img.gz;*.part-aa)|*.img.gz;*.part-aa|All files (*.*)|*.*"
+      if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $progress.Show()
+        $args += @("-ImagePath", (Quote-Arg -Value $dialog.FileName))
+        $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $args
+      }
+    }
   } finally {
     if ($null -ne $progress) {
       $progress.Close()
