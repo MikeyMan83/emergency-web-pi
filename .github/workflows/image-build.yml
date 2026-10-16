@@ -51,6 +51,27 @@ jobs:
             --base-mode \
             --output "artifacts/base/ewp-base-${VERSION}.img"
 
+      - name: Verify base image contents
+        run: |
+          IMG="artifacts/base/ewp-base-$(tr -d '[:space:]' < docs/VERSION).img"
+          test "$(sfdisk -J "$IMG" | jq '.partitiontable.partitions | length')" = "2"
+          OFFSET=$(( $(sfdisk -J "$IMG" | jq '.partitiontable.partitions[1].start') * 512 ))
+          sudo mkdir -p /mnt/ewp-root
+          sudo mount -o loop,ro,offset="$OFFSET" "$IMG" /mnt/ewp-root
+          trap 'sudo umount /mnt/ewp-root' EXIT
+          grep -Eq '^LABEL=ZIMDATA /var/lib/pi-kiwix-zimdata exfat uid=[0-9]+,gid=[0-9]+,umask=022,nofail' /mnt/ewp-root/etc/fstab
+          ! grep -q 'LABEL=zimdata' /mnt/ewp-root/etc/fstab
+          ! ls /mnt/ewp-root/etc/ssh/ssh_host_* 2>/dev/null
+          test ! -s /mnt/ewp-root/etc/machine-id
+          test ! -e /mnt/ewp-root/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection
+          test ! -e /mnt/ewp-root/opt/emergency-web-pi/config/appliance.local.json
+          grep -q '^AP_PASSPHRASE=ChangeThisPassphrase123' /mnt/ewp-root/opt/emergency-web-pi/.env
+          test -L /mnt/ewp-root/etc/systemd/system/multi-user.target.wants/pi-kiwix-device-config.service
+          test -L /mnt/ewp-root/etc/systemd/system/multi-user.target.wants/pi-kiwix-initial-sync.service
+          test ! -e /mnt/ewp-root/etc/systemd/system/multi-user.target.wants/ssh.service
+          test -x /mnt/ewp-root/opt/emergency-web-pi/scripts/device_config.py
+          ! grep -q '__REPO_DIR__' /mnt/ewp-root/etc/systemd/system/pi-kiwix-device-config.service
+
       - name: Package assets
         run: |
           bash scripts/package-base-image.sh \
