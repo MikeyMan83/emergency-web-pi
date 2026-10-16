@@ -40,14 +40,15 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < docs/VERSION)"
           sudo true
-          scripts/build-appliance-image.sh \
+          sudo -v
+          bash scripts/build-appliance-image.sh \
             --base-image base.img.xz \
             --base-mode \
             --output "artifacts/base/ewp-base-${VERSION}.img"
 
       - name: Package assets
         run: |
-          scripts/package-base-image.sh \
+          bash scripts/package-base-image.sh \
             --version "$(tr -d '[:space:]' < docs/VERSION)" \
             --image "artifacts/base/ewp-base-$(tr -d '[:space:]' < docs/VERSION).img" \
             --manifest "artifacts/base/ewp-base-$(tr -d '[:space:]' < docs/VERSION).img.manifest.json" \
