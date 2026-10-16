@@ -125,3 +125,56 @@ jobs:
           if ($actualAssets.Count -ne $expectedAssets.Count -or @($expectedAssets | Where-Object { $_ -notin $actualAssets }).Count -ne 0) {
             throw "Published release assets do not match the expected Windows bundle and checksum."
           }
+
+  base-image:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq rsync parted fdisk e2fsprogs xz-utils unzip qemu-user-static binfmt-support systemd
+
+      - name: Register arm64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Download and verify pinned Raspberry Pi OS Lite base
+        run: |
+          URL="$(jq -r .downloadUrl config/base-image.json)"
+          SHA="$(jq -r .sha256 config/base-image.json)"
+          curl -fL --retry 3 -o base.img.xz "$URL"
+          echo "$SHA  base.img.xz" | sha256sum -c -
+
+      - name: Build base image
+        run: |
+          VERSION="$(tr -d '[:space:]' < docs/VERSION)"
+          sudo -v
+          bash scripts/build-appliance-image.sh \
+            --base-image base.img.xz \
+            --base-mode \
+            --output "artifacts/base/ewp-base-${VERSION}.img"
+
+      - name: Package assets
+        run: |
+          VERSION="$(tr -d '[:space:]' < docs/VERSION)"
+          bash scripts/package-base-image.sh \
+            --version "$VERSION" \
+            --image "artifacts/base/ewp-base-${VERSION}.img" \
+            --manifest "artifacts/base/ewp-base-${VERSION}.img.manifest.json" \
+            --out-dir artifacts/base-assets
+          # Every asset must stay below GitHub's 2 GiB per-file limit.
+          find artifacts/base-assets -type f -size +2000M -print -exec false {} +
+
+      - name: Attach base image to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" artifacts/base-assets/* --clobber --repo "${{ github.repository }}"

@@ -8,8 +8,10 @@ on:
         required: false
         default: ""
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/image-build.yml"
 
 permissions:
   contents: write
@@ -66,11 +68,10 @@ jobs:
           path: artifacts/base-assets/*
           retention-days: 14
 
-      # Tag pushes only build and keep the artifact: release.yml owns tag releases and
-      # verifies an exact asset list, so uploading here would race with it.
+      # TEMPORARY: the push trigger above completes v0.3.0 and is removed right after.
       - name: Upload to existing release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_tag != ''
+        if: github.event_name == 'push' || inputs.publish_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ inputs.publish_tag }}" artifacts/base-assets/* --clobber --repo "${{ github.repository }}"
+          gh release upload "${{ inputs.publish_tag || 'v0.3.0' }}" artifacts/base-assets/* --clobber --repo "${{ github.repository }}"
