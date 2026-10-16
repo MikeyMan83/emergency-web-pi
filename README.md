@@ -11,11 +11,11 @@ End-user path:
 1. Download from Releases: https://github.com/MikeyMan83/emergency-web-pi/releases/latest
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
-4. Run `EmergencyWebPi.exe` from the extracted root folder.
+4. Run `EmergencyWebPi.exe` from the extracted root folder, and click **Yes** when Windows asks for permission. The app needs this permission to write the SD card; it requests it automatically.
 5. Click **Start End-User Wizard**, choose the information you want on the card, and choose the SD card you want to erase.
 6. Leave **Recommended: prebuild content now** selected. The app downloads everything needed before it writes the card, so the finished card can work without Internet.
 7. Insert the finished card into the Raspberry Pi and turn it on. If you chose the advanced first-boot download option, connect the Pi to the Internet first. An Ethernet cable plugs into the Pi's network socket, the larger socket beside the USB sockets.
-8. On your phone or laptop, connect to the emergency Wi-Fi. The Wi-Fi name and password are the ones set by the person who prepared the card; ask them if they were not written on the card or its label.
+8. On your phone or laptop, connect to the emergency Wi-Fi. The Wi-Fi name and password are shown by the app when the card is finished, and saved as a printable label file (`EmergencyWebPi-WiFi-Label.html`, on the Desktop of the PC that built the card). Write them on the card or its box.
 9. Open a web browser and visit any ordinary website. The Pi should show its local status page automatically. If it does not, reconnect to the emergency Wi-Fi and try again.
 10. On the status page, wait until the library says it is ready, then click **Open Library**.
 
@@ -117,6 +117,8 @@ Known subtotal (diagnostic): 64.83 GB
 Last estimate refresh: 2026-09-23T11:15:28Z
 <!-- SPACE_ESTIMATE:END -->
 
+In practice the full **Everything** profile needs a **128 GB card** (the next size above the published minimum). The smaller profiles fit on proportionally smaller cards; the wizard checks the selected card before writing.
+
 ## Legacy first-boot quickstart
 
 ### 1. Flash SD card
@@ -132,7 +134,13 @@ Last estimate refresh: 2026-09-23T11:15:28Z
 
 ### 2. Zero-touch first boot setup
 
-Add a file named `firstrun.sh` to the SD card boot partition:
+Raspberry Pi OS does **not** execute a `firstrun.sh` that is merely copied onto the boot partition.
+Use one of these supported ways to run the first-boot automation:
+
+- **Recommended:** run `scripts/prepare-sd-autoboot.ps1` on Windows after flashing. It wires the
+   first-boot script into the card so it runs automatically (add `-EnableAp` for standalone AP mode).
+- **Alternative:** use Raspberry Pi Imager's OS customisation to run your own first-boot script
+   that downloads and executes `scripts/bootstrap-pi.sh`:
 
 ```bash
 #!/bin/bash

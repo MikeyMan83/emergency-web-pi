@@ -65,6 +65,9 @@ sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-serve.serv
 echo "==> Installing sync timer"
 sudo cp scripts/systemd/pi-kiwix-sync.service /etc/systemd/system/
 sudo cp scripts/systemd/pi-kiwix-sync.timer /etc/systemd/system/
+echo "==> Installing initial-sync service"
+sudo cp scripts/systemd/pi-kiwix-initial-sync.service /etc/systemd/system/
+sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-initial-sync.service
 echo "==> Installing boot status page service"
 sudo cp scripts/systemd/pi-kiwix-status.service /etc/systemd/system/
 sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-sync.service
@@ -72,8 +75,12 @@ sudo sed -i "s#__REPO_DIR__#$REPO_DIR#g" /etc/systemd/system/pi-kiwix-status.ser
 sudo systemctl daemon-reload
 sudo systemctl enable --now pi-kiwix-serve.service
 sudo systemctl enable --now pi-kiwix-sync.timer
+# The initial-sync unit is a no-op unless its content-install marker exists
+# (ConditionPathExists), so enabling it is safe on every install path.
+sudo systemctl enable pi-kiwix-initial-sync.service
 sudo systemctl enable --now pi-kiwix-status.service
-sudo systemctl start pi-kiwix-sync.service
+# --no-block: a first sync can download for hours; never freeze the installer.
+sudo systemctl start --no-block pi-kiwix-sync.service
 
 if [[ "${BOOTSTRAP_ENABLE_AP:-0}" == "1" ]]; then
   echo "==> Enabling standalone AP mode"

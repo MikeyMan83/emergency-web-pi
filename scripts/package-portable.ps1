@@ -47,17 +47,66 @@ foreach ($item in $copyItems) {
   Copy-Item -Path $src -Destination (Join-Path $bundleDir $item) -Recurse -Force
 }
 
+# Bundle the pinned, SHA-256-verified aria2 download utility so end users
+# never need to install aria2 manually for prebuilt content downloads.
+$aria2ManifestPath = Join-Path $repoRoot "config\aria2.json"
+if (-not (Test-Path $aria2ManifestPath)) {
+  throw "Missing required packaging path: config/aria2.json"
+}
+$aria2Manifest = Get-Content $aria2ManifestPath -Raw | ConvertFrom-Json
+foreach ($field in @("downloadUrl", "sha256")) {
+  if ([string]::IsNullOrWhiteSpace($aria2Manifest.$field)) {
+    throw "Pinned aria2 manifest must set $field."
+  }
+}
+$aria2ExpectedHash = $aria2Manifest.sha256.ToLowerInvariant()
+$aria2CacheDir = Join-Path $repoRoot "artifacts\aria2-cache"
+New-Item -ItemType Directory -Path $aria2CacheDir -Force | Out-Null
+$aria2ZipName = [System.IO.Path]::GetFileName(([Uri]$aria2Manifest.downloadUrl).AbsolutePath)
+$aria2ZipPath = Join-Path $aria2CacheDir $aria2ZipName
+if (Test-Path $aria2ZipPath) {
+  if ((Get-FileHash -Path $aria2ZipPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $aria2ExpectedHash) {
+    Remove-Item -Force $aria2ZipPath
+  }
+}
+if (-not (Test-Path $aria2ZipPath)) {
+  Write-Host "Downloading pinned aria2 $($aria2Manifest.version)..."
+  $aria2TempPath = "$aria2ZipPath.download"
+  Remove-Item -Force $aria2TempPath -ErrorAction SilentlyContinue
+  Invoke-WebRequest -Uri $aria2Manifest.downloadUrl -OutFile $aria2TempPath -UseBasicParsing
+  if ((Get-FileHash -Path $aria2TempPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $aria2ExpectedHash) {
+    Remove-Item -Force $aria2TempPath -ErrorAction SilentlyContinue
+    throw "Downloaded aria2 archive failed SHA-256 verification."
+  }
+  Move-Item -Path $aria2TempPath -Destination $aria2ZipPath -Force
+}
+$aria2ExtractDir = Join-Path $aria2CacheDir "extract"
+if (Test-Path $aria2ExtractDir) {
+  Remove-Item -Recurse -Force $aria2ExtractDir
+}
+Expand-Archive -Path $aria2ZipPath -DestinationPath $aria2ExtractDir -Force
+$aria2Exe = Get-ChildItem -Path $aria2ExtractDir -Recurse -Filter "aria2c.exe" | Select-Object -First 1
+if ($null -eq $aria2Exe) {
+  throw "aria2c.exe not found in the pinned aria2 archive."
+}
+$bundleToolsDir = Join-Path $bundleDir "tools\aria2"
+New-Item -ItemType Directory -Path $bundleToolsDir -Force | Out-Null
+Copy-Item -Path $aria2Exe.FullName -Destination (Join-Path $bundleToolsDir "aria2c.exe") -Force
+Write-Host "Bundled aria2c.exe (pinned $($aria2Manifest.version))."
+
 Remove-Item -Path (Join-Path $bundleDir "portable/Launch-EmergencyWebPi.cmd") -Force
 
 $startNote = @(
   "Emergency Web Pi $Version",
   "",
   "Quick start:",
-  "1. Right-click EmergencyWebPi.exe and choose Run as administrator.",
+  "1. Double-click EmergencyWebPi.exe and click Yes when Windows asks for permission. The app needs this to write the SD card.",
   "2. Click Start End-User Wizard. Emergency Web Pi downloads and verifies the required Raspberry Pi OS image automatically.",
   "3. Select catalogs, target SD card, and content mode.",
-  "4. Recommended first-boot mode downloads content on the Pi with temporary Internet; prebuilt mode is offline-ready immediately.",
-  "5. Wait for completion, then insert SD card in Pi."
+  "4. Recommended prebuilt mode downloads content now, so the card works offline immediately; first-boot mode downloads on the Pi with temporary Internet.",
+  "5. Wait for completion. The app shows the emergency Wi-Fi name and password and saves a printable label on your Desktop.",
+  "6. Safely eject the SD card, insert it in the Pi, and power it on.",
+  ""
 )
 Set-Content -Path (Join-Path $bundleDir "START-HERE.txt") -Value $startNote -Encoding utf8
 

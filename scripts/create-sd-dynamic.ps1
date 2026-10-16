@@ -114,7 +114,13 @@ function Resolve-ZimFileName {
 function Require-Aria2 {
   $cmd = Get-Command aria2c -ErrorAction SilentlyContinue
   if (-not $cmd) {
-    throw "aria2c is required for dynamic content download. Install aria2 and retry."
+    $bundledAria2Dir = Join-Path $repoRoot "tools\aria2"
+    if (Test-Path (Join-Path $bundledAria2Dir "aria2c.exe")) {
+      $env:PATH = "$bundledAria2Dir;" + $env:PATH
+      Write-Host "Using bundled aria2c from: $bundledAria2Dir"
+    } else {
+      throw "aria2c is required for dynamic content download. Install aria2 or use a release bundle that includes it."
+    }
   }
 }
 

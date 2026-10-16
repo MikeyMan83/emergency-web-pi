@@ -24,6 +24,12 @@ if [[ ${#AP_PASSPHRASE} -lt 8 || ${#AP_PASSPHRASE} -gt 63 ]]; then
   exit 1
 fi
 
+if [[ "$AP_PASSPHRASE" == "ChangeThisPassphrase123" ]]; then
+  echo "AP_PASSPHRASE is still the published default from .env.example." >&2
+  echo "Set a private passphrase in .env so the emergency Wi-Fi cannot be joined by anyone who reads this repository." >&2
+  exit 1
+fi
+
 if [[ ! "$AP_COUNTRY_CODE" =~ ^[A-Z]{2}$ ]]; then
   echo "AP_COUNTRY_CODE must be a 2-letter uppercase ISO code (example: NL, US, DE)." >&2
   exit 1

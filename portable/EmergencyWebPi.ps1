@@ -38,6 +38,35 @@ trap {
   exit 1
 }
 
+function Test-IsAdministrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not (Test-IsAdministrator)) {
+  if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+    Write-AppLog "Not elevated; requesting elevation via UAC."
+    $relaunchArgs = ('-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath)
+    try {
+      Start-Process -FilePath "powershell.exe" -ArgumentList $relaunchArgs -Verb RunAs -WindowStyle Hidden | Out-Null
+      exit 0
+    } catch {
+      Write-AppLog "Elevation was declined or failed: $($_.Exception.Message)"
+    }
+  } else {
+    Write-AppLog "Not elevated and no script path available for relaunch."
+  }
+  [System.Windows.Forms.MessageBox]::Show(
+    "Emergency Web Pi needs administrator permission to write the SD card.`n`nStart EmergencyWebPi.exe again and click Yes when Windows asks for permission.",
+    $appDisplayName,
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Warning
+  ) | Out-Null
+  exit 1
+}
+Write-AppLog "Running elevated."
+
 $candidateDirs = @()
 if ($PSScriptRoot) {
   $candidateDirs += $PSScriptRoot
@@ -131,6 +160,28 @@ if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Te
 }
 
 Write-AppLog "Required builder scripts found."
+
+function Get-BundledAria2Directory {
+  $candidates = @(
+    (Join-Path $repoRoot "tools\aria2"),
+    (Join-Path $repoRoot "portable\tools\aria2"),
+    (Join-Path $repoRoot "tools")
+  )
+  foreach ($candidate in $candidates) {
+    if (Test-Path (Join-Path $candidate "aria2c.exe")) {
+      return $candidate
+    }
+  }
+  return ""
+}
+
+$bundledAria2Dir = Get-BundledAria2Directory
+if (-not [string]::IsNullOrWhiteSpace($bundledAria2Dir)) {
+  if ((($env:PATH -split ";") -notcontains $bundledAria2Dir)) {
+    $env:PATH = "$bundledAria2Dir;" + $env:PATH
+  }
+  Write-AppLog "Using bundled aria2c from: $bundledAria2Dir"
+}
 
 function Quote-Arg {
   param([Parameter(Mandatory = $true)][string]$Value)
@@ -2083,8 +2134,77 @@ $btnDynamic.Add_Click({
 
   if ($result.ExitCode -eq 0) {
     Add-Log "Dynamic SD build completed successfully."
+
+    $wifiSsid = ""
+    $wifiPassword = ""
+    $resolvedConfigPath = Join-Path $workspaceDirectory "dynamic-appliance-config.json"
+    try {
+      if (Test-Path $resolvedConfigPath) {
+        $resolvedConfig = Get-Content $resolvedConfigPath -Raw | ConvertFrom-Json
+        if ($null -ne $resolvedConfig.network -and $null -ne $resolvedConfig.network.ap) {
+          $wifiSsid = [string]$resolvedConfig.network.ap.ssid
+          $wifiPassword = [string]$resolvedConfig.network.ap.password
+        }
+      }
+    } catch {
+      Write-AppLog ("Could not read the resolved appliance config for the Wi-Fi label: {0}" -f $_.Exception.Message)
+    }
+
+    $labelPath = ""
+    if (-not [string]::IsNullOrWhiteSpace($wifiSsid)) {
+      try {
+        $labelPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "EmergencyWebPi-WiFi-Label.html"
+        $labelHtml = @"
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Emergency Web Pi - Wi-Fi Label</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #1f2a37; }
+  .card { border: 3px dashed #0b5cab; border-radius: 14px; padding: 28px 36px; max-width: 520px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  p.lead { margin: 0 0 18px; color: #4b5563; }
+  .row { font-size: 20px; margin: 10px 0; }
+  .row .value { font-weight: bold; letter-spacing: 1px; }
+  p.hint { font-size: 14px; color: #6b7280; margin-top: 18px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Emergency Web Pi</h1>
+    <p class="lead">Offline emergency library - insert the SD card in the Raspberry Pi and power it on.</p>
+    <div class="row">Wi-Fi name: <span class="value">$wifiSsid</span></div>
+    <div class="row">Wi-Fi password: <span class="value">$wifiPassword</span></div>
+    <p class="hint">Connect a phone or laptop to this Wi-Fi, open any website, and the library page appears. Print this label and keep it with the SD card.</p>
+  </div>
+</body>
+</html>
+"@
+        Set-Content -Path $labelPath -Value $labelHtml -Encoding utf8
+        Write-AppLog "Wi-Fi label saved: $labelPath"
+      } catch {
+        Write-AppLog ("Could not save the Wi-Fi label file: {0}" -f $_.Exception.Message)
+        $labelPath = ""
+      }
+    }
+
     if ($script:normalLaunch) {
-      [System.Windows.Forms.MessageBox]::Show("Your SD card is ready. Insert it into the Raspberry Pi and follow the selected content-installation mode.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+      $successText = "Your SD card is ready. Insert it into the Raspberry Pi and power it on."
+      if (-not [string]::IsNullOrWhiteSpace($wifiSsid)) {
+        $successText += "`n`nEmergency Wi-Fi name:     $wifiSsid`nEmergency Wi-Fi password: $wifiPassword`n`nWrite these on the card or its box. Anyone who connects to this Wi-Fi can open the library."
+      }
+      if (-not [string]::IsNullOrWhiteSpace($labelPath)) {
+        $successText += "`n`nA printable label has been saved on your Desktop and opened in your browser: EmergencyWebPi-WiFi-Label.html"
+      }
+      [System.Windows.Forms.MessageBox]::Show($successText, $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+      if (-not [string]::IsNullOrWhiteSpace($labelPath)) {
+        try {
+          Start-Process -FilePath $labelPath | Out-Null
+        } catch {
+          Write-AppLog ("Could not open the Wi-Fi label in a browser: {0}" -f $_.Exception.Message)
+        }
+      }
       $form.Close()
     }
   } else {

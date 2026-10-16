@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Bundle a pinned, SHA-256-verified aria2c.exe into the portable release so prebuilt content downloads work without installing aria2.
+- Show the emergency Wi-Fi name and password when the SD card build finishes, and save a printable label file (`EmergencyWebPi-WiFi-Label.html`) on the Desktop.
+
+### Changed
+- The portable app now requests administrator permission itself via UAC instead of requiring a manual right-click "Run as administrator".
+- `install.sh` installs and enables `pi-kiwix-initial-sync.service` so the legacy path also retries first-boot content installation.
+- `install.sh` starts the first sync with `--no-block` so a multi-hour content download cannot freeze the installer.
+- Document the practical 128 GB SD card requirement for the full profile.
+
+### Fixed
+- Run the AP handoff (`switch-to-ap.sh`) as root via the systemd `+` exec prefix; it previously failed under the unprivileged service user, so first-boot mode never switched to standalone AP mode.
+- Remove the deprecated `PermissionsStartOnly=true` directive (ignored since systemd 240).
+- Document that Raspberry Pi OS does not execute a manually copied `firstrun.sh`; point legacy users to `prepare-sd-autoboot.ps1` or Imager customisation.
+- `setup-ap.sh` refuses the published default AP passphrase so legacy builds cannot ship a known Wi-Fi password.
+
+### Tests
+- Add regression coverage for automatic elevation, bundled aria2, the Wi-Fi label, initial-sync installation, no-block sync start, default-passphrase rejection, aria2 attribution, and README guidance.
+
 ## [0.1.56] - 2026-09-24
 
 ### Changed

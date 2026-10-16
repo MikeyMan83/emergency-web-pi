@@ -89,7 +89,10 @@ class Release053Tests(unittest.TestCase):
         handoff = (REPO_ROOT / "scripts" / "switch-to-ap.sh").read_text(encoding="utf-8")
         self.assertNotIn("connection down emergency-web-pi-upstream", setup_ap)
         self.assertIn("ExecStart=__REPO_DIR__/scripts/sync.sh --initial", initial_sync)
-        self.assertIn("ExecStartPost=__REPO_DIR__/scripts/switch-to-ap.sh", initial_sync)
+        # The leading "+" makes the AP handoff run as root; the old per-command
+        # privilege directive was deprecated upstream and ignored since systemd 240.
+        self.assertIn("ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh", initial_sync)
+        self.assertNotIn("PermissionsStartOnly", initial_sync)
         self.assertIn("connection down emergency-web-pi-upstream", handoff)
         self.assertIn("connection.autoconnect no", handoff)
         self.assertIn("connection up pi-kiwix-ap", handoff)
