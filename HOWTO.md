@@ -22,7 +22,7 @@ For normal deployment, use the portable app wizard:
 
 ## Advanced/operator flow
 
-The rest of this guide is for testing, recovery, and direct maintenance. Normal card recipients do not need it.
+The rest of this guide is for testing, recovery, and direct maintenance. Normal card recipients do not need it. End users never need WSL, `create-sd-dynamic.ps1`, or any script below: the wizard uses the native `scripts/create-sd-prebuilt.ps1`.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 

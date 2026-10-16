@@ -32,6 +32,7 @@ def main() -> int:
     build_image_ps1_path = repo_root / "scripts" / "build-appliance-image.ps1"
     build_image_sh_path = repo_root / "scripts" / "build-appliance-image.sh"
     create_sd_dynamic_path = repo_root / "scripts" / "create-sd-dynamic.ps1"
+    create_sd_prebuilt_path = repo_root / "scripts" / "create-sd-prebuilt.ps1"
     config_resolver_path = repo_root / "scripts" / "resolve-appliance-config.ps1"
     rebuild_library_path = repo_root / "scripts" / "rebuild-library.sh"
     status_web_path = repo_root / "scripts" / "status-web.py"
@@ -161,6 +162,9 @@ def main() -> int:
     require('string]$ContentMode = "FirstBoot"' in create_sd_dynamic, "dynamic builder must default to first-boot content installation")
     require('"Prebuilt"' in create_sd_dynamic, "dynamic builder must support fully prebuilt content")
     require(".content-install-pending" in create_sd_dynamic, "dynamic builder must mark first-boot content installation")
+    require(create_sd_prebuilt_path.exists(), "scripts/create-sd-prebuilt.ps1 must exist")
+    require("scripts/create-sd-prebuilt.ps1" in readme, "README must mention scripts/create-sd-prebuilt.ps1")
+    # The ban applies to the dynamic (ext4) builder only; the prebuilt writer is the sanctioned exFAT path.
     require("New-ZimDataPartition" not in create_sd_dynamic, "dynamic builder must not create a separate exFAT content partition")
     require("Format-Volume" not in create_sd_dynamic, "dynamic builder must not format an exFAT content partition")
     require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in kiwix_service, "kiwix service must require the ZIM data mount")
@@ -222,7 +226,26 @@ def main() -> int:
     require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
     require("temporary extraction path" in portable_frontend, "portable frontend must reject temporary extraction paths")
     require("Use home Wi-Fi for the FirstBoot download" in portable_frontend, "wizard must expose home Wi-Fi setup")
-    require("function Test-WslReady" in portable_frontend, "portable frontend must preflight WSL before the end-user flow")
+    require("function Test-WslReady" in portable_frontend, "portable frontend must keep the WSL preflight for the developer (dynamic builder) path")
+    end_user_flow = portable_frontend.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
+    require("Test-WslReady" not in end_user_flow and "Show-WslSetupGuidance" not in end_user_flow, "end-user flow must not require WSL")
+    require("$scriptToRun = $prebuiltScript" in portable_frontend, "end-user flow must run the native prebuilt writer")
+    create_sd_prebuilt = create_sd_prebuilt_path.read_text(encoding="utf-8")
+    for needle, message in (
+        ("schemaVersion -ne 3", "prebuilt writer must validate the schemaVersion 3 manifest"),
+        ("Get-FileSha256", "prebuilt writer must verify SHA-256 of the base image"),
+        ("New-Partition", "prebuilt writer must create the content partition"),
+        ("-FileSystem exFAT -NewFileSystemLabel ZIMDATA", "prebuilt writer must format ZIMDATA as exFAT"),
+        ("content-manifest.json", "prebuilt writer must write content-manifest.json"),
+        (".content-complete", "prebuilt writer must write .content-complete"),
+        (".content-install-pending", "prebuilt writer must mark first-boot installs"),
+        ("device-config.json", "prebuilt writer must write device-config.json"),
+        ("aria2c", "prebuilt writer must download content with aria2c"),
+        ("ConfirmDiskNumber", "prebuilt writer must double-confirm the target disk"),
+        ("Refusing to write", "prebuilt writer must refuse non-removable disks"),
+    ):
+        require(needle in create_sd_prebuilt, message)
+    require("wsl" not in create_sd_prebuilt.lower(), "prebuilt writer must not depend on WSL")
     require("Emergency Web Pi v$appVersion" in portable_frontend and "Raspberry Pi OS: $($baseInfo.codename)" in portable_frontend, "wizard must display app and Raspberry Pi OS versions")
     require("UpstreamSsid" in create_sd_dynamic and "UpstreamPassword" in create_sd_dynamic, "dynamic builder must accept upstream Wi-Fi credentials")
     require("generate_204" in status_web and "hotspot-detect.html" in status_web and "connecttest.txt" in status_web, "status page must answer common captive portal probes")

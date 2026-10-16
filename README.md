@@ -13,7 +13,7 @@ Build a complete offline library — medical reference, disaster and survival gu
 
 ## Requirements
 
-- A Windows 10/11 PC. The app needs WSL (Windows Subsystem for Linux) with Ubuntu — it checks this before anything is downloaded and offers to install it for you.
+- A Windows 10/11 PC. Nothing else needs to be installed: no WSL, no extra Windows features, no restart.
 - An SD card and a card reader. The full **Everything** profile needs a **128 GB card**; smaller profiles fit smaller cards, and the wizard checks the selected card before writing.
 - A Raspberry Pi 3B+ with its power supply.
 
@@ -88,7 +88,8 @@ End users never need anything below. For operators:
 | --- | --- |
 | `portable/EmergencyWebPi.ps1` | Portable Windows frontend (build + SD write wizard). |
 | `Launch-EmergencyWebPi.cmd` | Debug/support launcher for the same frontend. |
-| `scripts/create-sd-dynamic.ps1` | Dynamic Windows SD builder (default operator entry point). |
+| `scripts/create-sd-prebuilt.ps1` | Native Windows SD writer used by the wizard: pre-built base image plus an exFAT `ZIMDATA` partition (no WSL). |
+| `scripts/create-sd-dynamic.ps1` | Dynamic Windows SD builder (developer/operator path; needs WSL). |
 | `scripts/create-sd.ps1` | Prepared-image writer with manifest invariants. |
 | `scripts/build-appliance-image.ps1` | Windows wrapper for the appliance image build (runs in WSL). |
 | `scripts/estimate_space.py` | CI-driven SD space estimator. |

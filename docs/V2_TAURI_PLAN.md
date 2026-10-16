@@ -9,18 +9,22 @@ rewrite the appliance build logic in Rust.
 
 ## V1 Contract To Freeze
 
-The V2 backend invokes the existing Windows builder with bounded arguments:
+The V2 backend invokes the native Windows prebuilt writer with bounded arguments
+(the storage redesign landed in V1 first; see `docs/APPLIANCE.md`):
 
 ```text
-scripts/create-sd-dynamic.ps1
+scripts/create-sd-prebuilt.ps1
   -DiskNumber <validated physical disk>
   -ConfirmDiskNumber <same physical disk>
-  -ProfilePath <generated profile>
-  -CacheDir <app workspace cache>
+  -Force
+  -Profile <generated profile>
+  -ContentDir <app workspace cache>
   -WorkspaceDir <app workspace>
-  -BaseImageCacheDir <app workspace base cache>
+  -ApSsid <generated> -ApPassword <generated>
   -ContentMode FirstBoot|Prebuilt
 ```
+
+`scripts/create-sd-dynamic.ps1` remains the WSL-backed developer path and is not part of the frozen end-user contract.
 
 The content catalog uses ZIM filenames as stable library IDs. Before V2 starts,
 each catalog entry must include its approved `sourceUrl`, display metadata, and
@@ -86,6 +90,6 @@ result and release the single-build lock.
 
 - Do not make the existing Windows PowerShell scripts cross-platform.
 - Do not expose generic shell execution through Tauri IPC.
-- Do not use a Tauri migration to redesign appliance storage or content runtime.
+- Do not use a Tauri migration to redesign appliance content runtime. (The storage redesign, a CI-built base image plus a Windows-created exFAT `ZIMDATA` partition, was done in V1 first.)
 - Do not begin macOS disk-write support until a separately reviewed macOS backend
   and privilege model exist.

@@ -70,13 +70,17 @@ class ReleaseUsabilityTests(unittest.TestCase):
         self.assertIn("ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh", initial_sync)
         self.assertIn('"ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh" in initial_sync_service', validate)
 
-    def test_wizard_preflights_wsl_before_downloading(self) -> None:
+    def test_wsl_gate_lives_only_on_the_developer_path(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        # WSL is required by the image builder; the wizard must check it up
-        # front and guide the user instead of failing mid-build.
+        # The dynamic builder still needs WSL; its guard stays, but the
+        # end-user flow must not require it.
         self.assertIn("function Test-WslReady", frontend)
         self.assertIn("Show-WslSetupGuidance", frontend)
         self.assertIn("wsl --install -d Ubuntu", frontend)
+        end_user_flow = frontend.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
+        self.assertNotIn("Test-WslReady", end_user_flow)
+        self.assertNotIn("Show-WslSetupGuidance", end_user_flow)
+        self.assertIn("if (-not $script:prebuiltFlow -and -not (Test-WslReady))", frontend)
 
     def test_release_status_supports_private_repositories(self) -> None:
         release_status = (REPO_ROOT / "scripts" / "release-status.ps1").read_text(encoding="utf-8")

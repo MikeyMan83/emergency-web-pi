@@ -6,13 +6,23 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
 ### Added
 
+- `scripts/create-sd-prebuilt.ps1`: native Windows SD writer. It verifies the base image (schemaVersion 3 manifest, SHA-256), raw-writes it, creates an exFAT `ZIMDATA` partition, copies the content downloaded with the bundled aria2c, and writes `device-config.json`, `content-manifest.json` and `.content-complete`. No WSL needed.
+- The end-user wizard now uses the prebuilt writer, with per-card generated Wi-Fi credentials, automatic base-image download from the release (token via `GITHUB_TOKEN`/`gh` for private repos) and a manual-file fallback. The WSL check moved to Developer Tools, where it still guards the dynamic builder.
 - `build-appliance-image.sh --base-mode` builds a shared, credential-free base image (boot + shrunk root, no zimdata partition) with a new `prebuilt-base` manifest (schemaVersion 3).
 - `scripts/package-base-image.sh` and the `image-build.yml` workflow gzip, split (if over the asset limit) and checksum the base image. Existing builder paths are unchanged.
 - Base images mount `LABEL=ZIMDATA` as kernel exFAT with the service account's uid/gid and `umask=022`, and ship `pi-kiwix-device-config.service`: it applies per-card Wi-Fi credentials from `device-config.json` (then deletes it) or generates a password and writes `wifi-credentials.txt`.
 - `sync.sh --initial` treats `.content-complete` plus a valid `content-manifest.json` as fulfilled content (no network), and `hardware-acceptance.sh --prebuilt` checks exFAT mount, uid/gid options, plaintext removal and manifest items on exFAT cards.
 - Base images carry no SSH host keys or machine-id (generated per card on first boot) and have SSH disabled: the card is a phone-only appliance with no console login.
+- Base images keep 768 MiB of rootfs headroom, because ZIMDATA follows root and blocks first-boot expansion.
+
+### Changed
+
+- README requirements no longer mention WSL; docs describe the prebuilt (exFAT) and dynamic (ext4) contracts side by side, and the V2 plan freezes the prebuilt writer invocation. `validate_repo.py` scopes the exFAT ban to the dynamic builder and checks the prebuilt writer.
+- `pi-kiwix-device-config.service` now waits for the ZIMDATA mount.
 
 ## [0.2.1] - 2026-10-16
 

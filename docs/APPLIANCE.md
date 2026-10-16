@@ -149,7 +149,15 @@ Runtime UX behavior:
 The initial config example is provided at `config/appliance.example.json`.
 Private local overrides belong in `config/appliance.local.json` and must not be committed.
 
-## Required manifest invariants
+## Build contracts
+
+Two build contracts exist side by side.
+
+**Prebuilt (end-user path, no WSL).** CI builds a base image (`build-appliance-image.sh --base-mode`, packaged by `scripts/package-base-image.sh`) with boot and root only. `scripts/create-sd-prebuilt.ps1` verifies the schemaVersion 3 manifest and SHA-256, raw-writes the image, creates a `ZIMDATA` exFAT partition, copies the content, and writes `content-manifest.json`, `device-config.json` (per-card Wi-Fi credentials), `.content-complete` (or `.content-install-pending` for first-boot downloads). On the Pi, `pi-kiwix-device-config.service` applies the credentials, and `sync.sh --initial` verifies the content against `content-manifest.json` without network. Prebuilt mode requires no first-boot Internet. The manifest declares `storage.zimdata.createdBy: "windows-writer"`, `contentPartition.filesystem: "exfat"`, and `credentials: "device-config-on-first-boot"`; it has no `zimdata` entry in `storage.partitions`.
+
+**Dynamic/prepared (developer path, WSL).** The invariants below apply: the ext4 `zimdata` partition is baked at build time.
+
+## Required manifest invariants (dynamic/prepared mode)
 
 `scripts/create-sd.ps1` verifies the manifest before writing:
 
