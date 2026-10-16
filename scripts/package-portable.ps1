@@ -101,6 +101,7 @@ $startNote = @(
   "",
   "Quick start:",
   "1. Double-click EmergencyWebPi.exe and click Yes when Windows asks for permission. The app needs this to write the SD card.",
+  "   If Windows first shows a blue box saying 'Windows protected your PC', click 'More info' and then 'Run anyway'. The app is not code-signed yet, so this warning is expected; the .sha256.txt file next to the download lets you verify it.",
   "2. Click Start End-User Wizard. Emergency Web Pi downloads and verifies the required Raspberry Pi OS image automatically.",
   "3. Select catalogs, target SD card, and content mode.",
   "4. Recommended prebuilt mode downloads content now, so the card works offline immediately; first-boot mode downloads on the Pi with temporary Internet.",
@@ -161,7 +162,7 @@ exit $exitCode
 Set-Content -Path $portableLauncherScript -Value $launcherSource -Encoding utf8
 
 $escapedInput = $portableLauncherScript.Replace("'", "''")
-$compileCommand = "Import-Module ps2exe -Force; Invoke-ps2exe -inputFile '$escapedInput' -outputFile '$escapedOutput' -noConsole -title 'Emergency Web Pi' -version '$escapedVersion'"
+$compileCommand = "Import-Module ps2exe -Force; Invoke-ps2exe -inputFile '$escapedInput' -outputFile '$escapedOutput' -noConsole -requireAdmin -title 'Emergency Web Pi' -version '$escapedVersion'"
 $powershellHost = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 & $powershellHost -NoProfile -Command $compileCommand
 if ($LASTEXITCODE -ne 0) {

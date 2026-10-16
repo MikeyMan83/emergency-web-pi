@@ -1722,7 +1722,58 @@ $btnToggleAdvanced.Add_Click({
   Set-AdvancedVisibility -Visible (-not $showAdvanced)
 })
 
+function Test-WslReady {
+  try {
+    $distros = & wsl -l -q 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      if (-not $distros -or [string]::IsNullOrWhiteSpace(($distros | Out-String))) {
+        return $false
+      }
+      return $true
+    }
+  } catch {
+  }
+  return $false
+}
+
+function Show-WslSetupGuidance {
+  Add-Log "WSL is not ready; showing setup guidance before anything is downloaded."
+  Write-AppLog "WSL preflight failed; showing setup guidance."
+  $choice = [System.Windows.Forms.MessageBox]::Show(
+    "Emergency Web Pi needs one extra Windows feature (Windows Subsystem for Linux) to prepare the SD card, and it is missing or not set up yet.`n`nClick OK to install it automatically now. This can take a few minutes, and Windows will ask you to restart your PC afterwards. After the restart, run Emergency Web Pi again.`n`nIf you prefer to install it yourself, open PowerShell as administrator and run: wsl --install -d Ubuntu",
+    $appDisplayName,
+    [System.Windows.Forms.MessageBoxButtons]::OKCancel,
+    [System.Windows.Forms.MessageBoxIcon]::Information
+  )
+  if ($choice -eq [System.Windows.Forms.DialogResult]::OK) {
+    try {
+      Start-Process -FilePath "wsl.exe" -ArgumentList "--install -d Ubuntu" | Out-Null
+      Write-AppLog "WSL installation started."
+    } catch {
+      Write-AppLog ("WSL installation could not start: {0}" -f $_.Exception.Message)
+      [System.Windows.Forms.MessageBox]::Show(
+        "Windows could not start the WSL installation automatically.`n`nOpen PowerShell as administrator and run: wsl --install -d Ubuntu`n`nThen restart your PC and run Emergency Web Pi again.",
+        $appDisplayName,
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+      ) | Out-Null
+    }
+  }
+  if ($script:normalLaunch) {
+    $form.Close()
+  }
+}
+
 function Start-EndUserFlow {
+  if (-not (Test-WslReady)) {
+    if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
+      Write-AppLog "WSL is not ready; continuing without the setup dialog (non-interactive or CI session)."
+    } else {
+      Show-WslSetupGuidance
+      return
+    }
+  }
+
   try {
     if ($cmbProfiles.Items.Count -eq 0) {
       Refresh-ProfilePicker

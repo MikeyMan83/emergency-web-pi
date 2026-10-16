@@ -6,32 +6,34 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
-### Changed
-- Pin Ubuntu workflows to 24.04 and update GitHub Actions to Node 24-compatible major versions.
-
-### Fixed
-- Align repository validation with the root-run first-boot AP handoff.
-
 ## [0.2.0] - 2026-10-16
 
 ### Added
 - Bundle a pinned, SHA-256-verified aria2c.exe into the portable release so prebuilt content downloads work without installing aria2.
 - Show the emergency Wi-Fi name and password when the SD card build finishes, and save a printable label file (`EmergencyWebPi-WiFi-Label.html`) on the Desktop.
+- Pre-flight the WSL requirement at wizard start: if it is missing or has no distribution, the app explains it in plain language and offers to run `wsl --install -d Ubuntu` automatically.
+- `scripts/release-status.ps1` accepts `-Token` for private repositories and reports `INDETERMINATE` instead of `PENDING` when it cannot authenticate (the GitHub API answers 404 for private repos).
+- START-HERE.txt and the README explain the expected SmartScreen warning ("Windows protected your PC") for the unsigned executable.
 
 ### Changed
 - The portable app now requests administrator permission itself via UAC instead of requiring a manual right-click "Run as administrator".
 - `install.sh` installs and enables `pi-kiwix-initial-sync.service` so the legacy path also retries first-boot content installation.
 - `install.sh` starts the first sync with `--no-block` so a multi-hour content download cannot freeze the installer.
 - Document the practical 128 GB SD card requirement for the full profile.
+- The release EXE now carries a requireAdministrator manifest (ps2exe `-requireAdmin`), so Windows shows the elevation prompt at launch instead of relying on the runtime relaunch.
+- Pin Ubuntu workflows to 24.04 and update GitHub Actions to Node 24-compatible major versions.
 
 ### Fixed
 - Run the AP handoff (`switch-to-ap.sh`) as root via the systemd `+` exec prefix; it previously failed under the unprivileged service user, so first-boot mode never switched to standalone AP mode.
 - Remove the deprecated `PermissionsStartOnly=true` directive (ignored since systemd 240).
 - Document that Raspberry Pi OS does not execute a manually copied `firstrun.sh`; point legacy users to `prepare-sd-autoboot.ps1` or Imager customisation.
 - `setup-ap.sh` refuses the published default AP passphrase so legacy builds cannot ship a known Wi-Fi password.
+- Align repository validation with the root-run first-boot AP handoff (the CI invariant checker previously failed on `main`).
 
 ### Tests
 - Add regression coverage for automatic elevation, bundled aria2, the Wi-Fi label, initial-sync installation, no-block sync start, default-passphrase rejection, aria2 attribution, and README guidance.
+- Add regression coverage for the validate_repo AP-handoff invariant, WSL pre-flight, private-repo release status, SmartScreen guidance, and the requireAdministrator EXE manifest.
+- Run the full release regression suite in CI, not only the status and initial-sync tests.
 
 ## [0.1.56] - 2026-09-24
 

@@ -62,5 +62,40 @@ class ReleaseUsabilityTests(unittest.TestCase):
         self.assertIn("does **not** execute a `firstrun.sh`", readme)
         self.assertIn("prepare-sd-autoboot.ps1", readme)
 
+    def test_validate_repo_matches_initial_sync_service(self) -> None:
+        validate = (REPO_ROOT / "scripts" / "validate_repo.py").read_text(encoding="utf-8")
+        initial_sync = (REPO_ROOT / "scripts" / "systemd" / "pi-kiwix-initial-sync.service").read_text(encoding="utf-8")
+        # The CI invariant script must expect the same root-privileged AP
+        # handoff the service file actually uses (systemd "+" exec prefix).
+        self.assertIn("ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh", initial_sync)
+        self.assertIn('"ExecStartPost=+__REPO_DIR__/scripts/switch-to-ap.sh" in initial_sync_service', validate)
+
+    def test_wizard_preflights_wsl_before_downloading(self) -> None:
+        frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        # WSL is required by the image builder; the wizard must check it up
+        # front and guide the user instead of failing mid-build.
+        self.assertIn("function Test-WslReady", frontend)
+        self.assertIn("Show-WslSetupGuidance", frontend)
+        self.assertIn("wsl --install -d Ubuntu", frontend)
+
+    def test_release_status_supports_private_repositories(self) -> None:
+        release_status = (REPO_ROOT / "scripts" / "release-status.ps1").read_text(encoding="utf-8")
+        # The GitHub API answers 404 for a private repo without a token;
+        # the checker must not misreport that as "pending".
+        self.assertIn("[string]$Token", release_status)
+        self.assertIn("Authorization", release_status)
+        self.assertIn("INDETERMINATE", release_status)
+
+    def test_start_here_prepares_users_for_smartscreen(self) -> None:
+        packaging = (REPO_ROOT / "scripts" / "package-portable.ps1").read_text(encoding="utf-8")
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("More info", packaging)
+        self.assertIn("Run anyway", packaging)
+        self.assertIn("Windows protected your PC", readme)
+
+    def test_exe_requests_administrator_at_launch(self) -> None:
+        packaging = (REPO_ROOT / "scripts" / "package-portable.ps1").read_text(encoding="utf-8")
+        self.assertIn("-requireAdmin", packaging)
+
 if __name__ == "__main__":
     unittest.main()

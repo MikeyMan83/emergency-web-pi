@@ -12,6 +12,7 @@ End-user path:
 2. Download `EmergencyWebPi-<version>-windows.zip` (release asset).
 3. Extract the zip completely to a normal folder (do not run directly from inside the ZIP preview).
 4. Run `EmergencyWebPi.exe` from the extracted root folder, and click **Yes** when Windows asks for permission. The app needs this permission to write the SD card; it requests it automatically.
+   If Windows first shows a blue box saying **Windows protected your PC**, click **More info** and then **Run anyway**. The app is not code-signed yet, so this warning is expected; the `.sha256.txt` file next to the download lets you verify it.
 5. Click **Start End-User Wizard**, choose the information you want on the card, and choose the SD card you want to erase.
 6. Leave **Recommended: prebuild content now** selected. The app downloads everything needed before it writes the card, so the finished card can work without Internet.
 7. Insert the finished card into the Raspberry Pi and turn it on. If you chose the advanced first-boot download option, connect the Pi to the Internet first. An Ethernet cable plugs into the Pi's network socket, the larger socket beside the USB sockets.
