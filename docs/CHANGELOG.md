@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-16
+
 ### Changed
 
 - The Release workflow now builds and attaches the base image automatically; the Image Build tag trigger was removed (manual dispatch remains for one-off builds).
