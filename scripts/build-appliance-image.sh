@@ -9,6 +9,8 @@ MANIFEST_PATH=""
 ZIM_SOURCE_DIR=""
 MIN_ZIM_PARTITION_GB=8
 ALLOW_EMPTY_ZIMDATA=0
+BASE_MODE=0
+BASE_ROOT_HEADROOM_MIB=1024
 
 usage() {
   cat <<'EOF'
@@ -25,6 +27,10 @@ Options:
   --zim-source-dir <path>         Directory containing preloaded .zim files
   --min-zim-partition-gb <int>    Minimum dedicated zimdata partition size in GB (default: 8)
   --allow-empty-zimdata           Allow image build without preloaded .zim files
+  --base-mode                     Build a shared, credential-free base image: boot + root only,
+                                  no zimdata partition, rootfs shrunk to minimum. The content
+                                  partition (exFAT, label ZIMDATA) is created later by the
+                                  Windows writer. Cannot be combined with --zim-source-dir.
 EOF
 }
 
@@ -66,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       ALLOW_EMPTY_ZIMDATA=1
       shift
       ;;
+    --base-mode)
+      BASE_MODE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -103,6 +113,12 @@ require_cmd xz
 require_cmd chroot
 require_cmd systemctl
 require_cmd qemu-aarch64-static
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  require_cmd sfdisk
+  require_cmd e2fsck
+  require_cmd resize2fs
+  require_cmd dumpe2fs
+fi
 
 if [[ ! -f "$BASE_IMAGE_PATH" ]]; then
   echo "Base image not found: $BASE_IMAGE_PATH" >&2
@@ -116,7 +132,11 @@ if [[ -n "$ZIM_SOURCE_DIR" && ! -d "$ZIM_SOURCE_DIR" ]]; then
   echo "ZIM source directory not found: $ZIM_SOURCE_DIR" >&2
   exit 1
 fi
-if [[ -z "$ZIM_SOURCE_DIR" && "$ALLOW_EMPTY_ZIMDATA" -ne 1 ]]; then
+if [[ "$BASE_MODE" -eq 1 && -n "$ZIM_SOURCE_DIR" ]]; then
+  echo "--base-mode builds contain no content; do not pass --zim-source-dir." >&2
+  exit 1
+fi
+if [[ -z "$ZIM_SOURCE_DIR" && "$ALLOW_EMPTY_ZIMDATA" -ne 1 && "$BASE_MODE" -ne 1 ]]; then
   echo "ZIM source directory is required for offline-ready appliance builds." >&2
   echo "Provide --zim-source-dir or pass --allow-empty-zimdata for development-only images." >&2
   exit 1
@@ -163,6 +183,22 @@ esac
 
 cp "$SRC_IMAGE" "$OUTPUT_IMAGE_PATH"
 
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  # Grow the root partition by a fixed headroom so apt has room; it is shrunk again at the end.
+  current_size=$(stat -c '%s' "$OUTPUT_IMAGE_PATH")
+  truncate -s $(( current_size + BASE_ROOT_HEADROOM_MIB * 1024 * 1024 )) "$OUTPUT_IMAGE_PATH"
+  LOOP_DEV=$(sudo losetup --show -fP "$OUTPUT_IMAGE_PATH")
+  ROOT_PART="${LOOP_DEV}p2"
+  BOOT_PART="${LOOP_DEV}p1"
+  echo ", +" | sudo sfdisk --no-reread -N 2 "$LOOP_DEV" >/dev/null
+  sudo partprobe "$LOOP_DEV"
+  sudo e2fsck -fy "$ROOT_PART" || [[ $? -le 1 ]]
+  sudo resize2fs "$ROOT_PART"
+  sudo mount "$ROOT_PART" "$MOUNT_ROOT"
+  sudo mount "$BOOT_PART" "$MOUNT_BOOT"
+  # Empty mountpoint only; the Windows writer creates the exFAT ZIMDATA partition later.
+  sudo mkdir -p "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata"
+else
 min_partition_bytes=$(( MIN_ZIM_PARTITION_GB * 1024 * 1024 * 1024 ))
 required_partition_bytes=$min_partition_bytes
 if [[ -n "$ZIM_SOURCE_DIR" ]]; then
@@ -212,6 +248,7 @@ sudo mkdir -p "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata"
 sudo tee -a "$MOUNT_ROOT/etc/fstab" >/dev/null <<'EOF'
 LABEL=zimdata /var/lib/pi-kiwix-zimdata ext4 defaults,nofail 0 2
 EOF
+fi
 
 sudo mkdir -p "$MOUNT_ROOT/opt/emergency-web-pi"
 sudo rsync -a --delete \
@@ -234,6 +271,13 @@ profile=$(jq -r '.content.profile' "$CONFIG_PATH")
 snapshot=$(jq -r '.content.snapshot' "$CONFIG_PATH")
 version=$(jq -r '.applianceVersion' "$CONFIG_PATH")
 ap_autoconnect=true
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  # Shared image: no credentials of any kind are baked in; the first-boot device-config oneshot supplies them.
+  password=""
+  upstream_enabled=false
+  upstream_ssid=""
+  upstream_password=""
+fi
 if [[ "$upstream_enabled" == "true" ]]; then
   ap_autoconnect=false
 fi
@@ -243,7 +287,7 @@ if [[ ! "$ap_country" =~ ^[A-Z]{2}$ ]]; then
   exit 1
 fi
 
-if [[ "$password" == "__GENERATE__" || "$password" == "ChangeThisEmergencyPassword123" ]]; then
+if [[ "$BASE_MODE" -ne 1 && ( "$password" == "__GENERATE__" || "$password" == "ChangeThisEmergencyPassword123" ) ]]; then
   echo "network.ap.password is a placeholder. Run scripts/build-appliance-image.ps1 so the resolved config is generated before image construction." >&2
   exit 1
 fi
@@ -256,12 +300,16 @@ else
   ap_host="$ap_address"
 fi
 
+if [[ "$BASE_MODE" -ne 1 ]]; then
 jq --arg p "$password" '.network.ap.password = $p' "$CONFIG_PATH" | sudo tee "$MOUNT_ROOT/opt/emergency-web-pi/config/appliance.local.json" >/dev/null
 sudo chown 1000:1000 "$MOUNT_ROOT/opt/emergency-web-pi/config/appliance.local.json" || true
+fi
 
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/.env.example" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
 sudo sed -i "s|^AP_SSID=.*|AP_SSID=$ssid|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+if [[ "$BASE_MODE" -ne 1 ]]; then
 sudo sed -i "s|^AP_PASSPHRASE=.*|AP_PASSPHRASE=$password|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
+fi
 sudo sed -i "s|^AP_ADDRESS=.*|AP_ADDRESS=${ap_cidr}|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
 sudo sed -i "s|^AP_COUNTRY_CODE=.*|AP_COUNTRY_CODE=${ap_country}|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
 sudo sed -i "s|^SYNC_INTERVAL_SECONDS=.*|SYNC_INTERVAL_SECONDS=$interval|" "$MOUNT_ROOT/opt/emergency-web-pi/.env"
@@ -279,6 +327,7 @@ sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-sync.timer" "
 sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-status.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-status.service"
 
 sudo mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
+if [[ "$BASE_MODE" -ne 1 ]]; then
 sudo tee "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection" >/dev/null <<EOF
 [connection]
 id=pi-kiwix-ap
@@ -303,6 +352,7 @@ address1=${ap_cidr}
 method=ignore
 EOF
 sudo chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/pi-kiwix-ap.nmconnection"
+fi
 
 if [[ "$upstream_enabled" == "true" ]]; then
   if [[ -z "$upstream_ssid" || ${#upstream_password} -lt 8 || ${#upstream_password} -gt 63 ]]; then
@@ -339,7 +389,9 @@ address=/#/$ap_host
 EOF
 
 sudo mkdir -p "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata"
+if [[ "$BASE_MODE" -ne 1 ]]; then
 sudo touch "$MOUNT_ROOT/var/lib/pi-kiwix-zimdata/library.xml"
+fi
 
 echo "$hostname_cfg" | sudo tee "$MOUNT_ROOT/etc/hostname" >/dev/null
 
@@ -360,10 +412,17 @@ if ! id emergency-web-pi >/dev/null 2>&1; then
 fi
 chown -R emergency-web-pi:emergency-web-pi /var/lib/pi-kiwix-zimdata /opt/emergency-web-pi
 '
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /bin/bash -c 'apt-get clean && rm -rf /var/lib/apt/lists/*'
+  sudo rm -f "$MOUNT_ROOT/usr/bin/qemu-aarch64-static"
+fi
 
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-serve.service
-sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-initial-sync.service
+# Base mode has no content yet; the initial-sync/handoff contract is defined in the Pi-side phase.
+if [[ "$BASE_MODE" -ne 1 ]]; then
+  sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-initial-sync.service
+fi
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-sync.timer
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-status.service
 
@@ -372,16 +431,78 @@ sudo umount "$MOUNT_ROOT/sys"
 sudo umount "$MOUNT_ROOT/dev/pts"
 sudo umount "$MOUNT_ROOT/dev"
 
-sudo umount "$MOUNT_ZIM"
+if mountpoint -q "$MOUNT_ZIM"; then sudo umount "$MOUNT_ZIM"; fi
 sudo umount "$MOUNT_BOOT"
 sudo umount "$MOUNT_ROOT"
+
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  sudo e2fsck -fy "$ROOT_PART" || [[ $? -le 1 ]]
+  sudo resize2fs -M "$ROOT_PART"
+  fs_blocks=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); print $2}')
+  fs_block_size=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /, "", $2); print $2}')
+  root_start_sector=$(sudo sfdisk -J "$LOOP_DEV" | jq -r '.partitiontable.partitions[] | select(.node | endswith("p2")) | .start')
+  root_sectors=$(( (fs_blocks * fs_block_size + 511) / 512 ))
+  echo ",$root_sectors" | sudo sfdisk --no-reread -N 2 "$LOOP_DEV" >/dev/null
+  root_end_bytes=$(( (root_start_sector + root_sectors) * 512 ))
+fi
 sudo losetup -d "$LOOP_DEV"
 LOOP_DEV=""
+
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  truncate -s "$root_end_bytes" "$OUTPUT_IMAGE_PATH"
+fi
 
 image_size_bytes=$(stat -c '%s' "$OUTPUT_IMAGE_PATH")
 image_sha256=$(sha256sum "$OUTPUT_IMAGE_PATH" | awk '{print $1}')
 config_sha256=$(sha256sum "$CONFIG_PATH" | awk '{print $1}')
 built_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+if [[ "$BASE_MODE" -eq 1 ]]; then
+cat > "$MANIFEST_PATH" <<EOF
+{
+  "schemaVersion": 3,
+  "kind": "prebuilt-base",
+  "applianceVersion": "$version",
+  "builtAtUtc": "$built_at",
+  "build": {
+    "configSha256": "$config_sha256"
+  },
+  "image": {
+    "path": "$(basename "$OUTPUT_IMAGE_PATH")",
+    "sizeBytes": $image_size_bytes,
+    "sha256": "$image_sha256"
+  },
+  "storage": {
+    "partitions": [
+      { "name": "boot", "filesystem": "vfat" },
+      { "name": "root", "filesystem": "ext4", "startSector": $root_start_sector, "sectors": $root_sectors }
+    ],
+    "zimdata": {
+      "createdBy": "windows-writer"
+    }
+  },
+  "contentPartition": {
+    "filesystem": "exfat",
+    "label": "ZIMDATA"
+  },
+  "credentials": "device-config-on-first-boot",
+  "runtime": {
+    "serverMode": "native-kiwix-serve",
+    "overlayRootEnabled": false,
+    "zimDataOnDedicatedPartition": true,
+    "docker": {
+      "storageDriver": "none"
+    }
+  }
+}
+EOF
+
+echo
+echo "Base image build complete (no content partition, no credentials)"
+echo "Image:    $OUTPUT_IMAGE_PATH ($image_size_bytes bytes)"
+echo "Manifest: $MANIFEST_PATH"
+exit 0
+fi
 
 cat > "$MANIFEST_PATH" <<EOF
 {

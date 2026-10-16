@@ -1,0 +1,70 @@
+name: Image Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: "Existing release tag to upload the base image assets to (leave empty to only keep a workflow artifact)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  base-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq rsync parted fdisk e2fsprogs xz-utils unzip qemu-user-static binfmt-support systemd
+
+      - name: Download and verify pinned Raspberry Pi OS Lite base
+        run: |
+          URL="$(jq -r .downloadUrl config/base-image.json)"
+          SHA="$(jq -r .sha256 config/base-image.json)"
+          curl -fL --retry 3 -o base.img.xz "$URL"
+          echo "$SHA  base.img.xz" | sha256sum -c -
+
+      - name: Build base image
+        run: |
+          VERSION="$(tr -d '[:space:]' < docs/VERSION)"
+          sudo true
+          scripts/build-appliance-image.sh \
+            --base-image base.img.xz \
+            --base-mode \
+            --output "artifacts/base/ewp-base-${VERSION}.img"
+
+      - name: Package assets
+        run: |
+          scripts/package-base-image.sh \
+            --version "$(tr -d '[:space:]' < docs/VERSION)" \
+            --image "artifacts/base/ewp-base-$(tr -d '[:space:]' < docs/VERSION).img" \
+            --manifest "artifacts/base/ewp-base-$(tr -d '[:space:]' < docs/VERSION).img.manifest.json" \
+            --out-dir artifacts/base-assets
+          # Every asset must stay below GitHub's 2 GiB per-file limit.
+          find artifacts/base-assets -type f -size +2000M -print -exec false {} +
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ewp-base-image
+          path: artifacts/base-assets/*
+          retention-days: 14
+
+      # Tag pushes only build and keep the artifact: release.yml owns tag releases and
+      # verifies an exact asset list, so uploading here would race with it.
+      - name: Upload to existing release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.publish_tag }}" artifacts/base-assets/* --clobber --repo "${{ github.repository }}"

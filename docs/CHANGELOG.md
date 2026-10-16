@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+
+- `build-appliance-image.sh --base-mode` builds a shared, credential-free base image (boot + shrunk root, no zimdata partition) with a new `prebuilt-base` manifest (schemaVersion 3).
+- `scripts/package-base-image.sh` and the `image-build.yml` workflow gzip, split (if over the asset limit) and checksum the base image. Existing builder paths are unchanged.
+
 ## [0.2.1] - 2026-10-16
 
 ### Documentation
