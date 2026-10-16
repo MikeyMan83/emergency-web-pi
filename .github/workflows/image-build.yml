@@ -29,6 +29,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq rsync parted fdisk e2fsprogs xz-utils unzip qemu-user-static binfmt-support systemd
 
+      - name: Register arm64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Download and verify pinned Raspberry Pi OS Lite base
         run: |
           URL="$(jq -r .downloadUrl config/base-image.json)"
