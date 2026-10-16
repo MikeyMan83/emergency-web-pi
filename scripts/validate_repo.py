@@ -178,6 +178,8 @@ def main() -> int:
     require("ConditionPathExists=|/var/lib/pi-kiwix-zimdata/.content-install-pending" in initial_sync_service, "initial sync service must run while content installation is pending")
     require("ConditionPathExists=|/var/lib/pi-kiwix-zimdata/.content-complete" in initial_sync_service, "initial sync service must also run for prebuilt cards carrying .content-complete")
     require("scripts/sync.sh --initial" in initial_sync_service, "initial sync service must use initial completion semantics")
+    device_config_service = (repo_root / "scripts" / "systemd" / "pi-kiwix-device-config.service").read_text(encoding="utf-8")
+    require("RequiresMountsFor=/var/lib/pi-kiwix-zimdata" in device_config_service, "device-config service must run after the ZIMDATA mount is up")
     require("Initial content installation complete" in sync_script, "sync script must complete first-boot content installation")
     require("TEMP_LIBRARY_FILE" in rebuild_library and "mv -f \"$TEMP_LIBRARY_FILE\" \"$LIBRARY_FILE\"" in rebuild_library, "library rebuild must publish atomically")
     require('"ready": kiwix_active and zim_data_mounted' in status_web, "status page must require mounted content before ready")

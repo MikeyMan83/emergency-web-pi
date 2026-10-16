@@ -1,6 +1,7 @@
 [Unit]
 Description=Emergency Web Pi - first-boot Wi-Fi credential setup
 DefaultDependencies=yes
+RequiresMountsFor=/var/lib/pi-kiwix-zimdata
 After=local-fs.target
 Before=network-pre.target NetworkManager.service pi-kiwix-status.service
 
