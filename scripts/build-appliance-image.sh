@@ -10,7 +10,7 @@ ZIM_SOURCE_DIR=""
 MIN_ZIM_PARTITION_GB=8
 ALLOW_EMPTY_ZIMDATA=0
 BASE_MODE=0
-BASE_ROOT_HEADROOM_MIB=1024
+BASE_ROOT_HEADROOM_MIB=2048
 
 usage() {
   cat <<'EOF'
@@ -459,7 +459,20 @@ if [[ "$BASE_MODE" -eq 1 ]]; then
   # ZIMDATA sits after rootfs on the finished card, so the Pi cannot expand root at first boot; keep working headroom.
   min_blocks=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); print $2}')
   min_block_size=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /, "", $2); print $2}')
-  sudo resize2fs "$ROOT_PART" "$(( min_blocks + (768 * 1024 * 1024) / min_block_size ))"
+  part_bytes=$(sudo blockdev --getsize64 "$ROOT_PART")
+  for v in min_blocks min_block_size part_bytes; do
+    if ! [[ "${!v}" =~ ^[0-9]+$ ]] || [[ "${!v}" -eq 0 ]]; then
+      echo "ERROR: could not read ext4 geometry for headroom step: $v='${!v}' (root=$ROOT_PART)" >&2
+      exit 1
+    fi
+  done
+  target_blocks=$(( min_blocks + (768 * 1024 * 1024) / min_block_size ))
+  max_blocks=$(( part_bytes / min_block_size ))
+  if (( target_blocks > max_blocks )); then
+    echo "WARNING: wanted $target_blocks blocks (min $min_blocks + 768 MiB) but the partition holds $max_blocks; using the partition size. Raise BASE_ROOT_HEADROOM_MIB for more headroom." >&2
+    target_blocks=$max_blocks
+  fi
+  sudo resize2fs "$ROOT_PART" "$target_blocks"
   fs_blocks=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); print $2}')
   fs_block_size=$(sudo dumpe2fs -h "$ROOT_PART" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /, "", $2); print $2}')
   root_start_sector=$(sudo sfdisk -J "$LOOP_DEV" | jq -r '.partitiontable.partitions[] | select(.node | endswith("p2")) | .start')

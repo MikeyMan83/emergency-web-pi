@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Fixed
+
+- Image Build base-mode failure: the 768 MiB rootfs headroom regrow asked for more blocks than the partition held (876,544 available vs 976,171 requested). The base build now grows the root partition by 2 GiB, and the regrow validates the parsed ext4 geometry and caps at the partition size with a clear message.
+
 ## [0.3.0] - 2026-10-16
 
 ### Added
