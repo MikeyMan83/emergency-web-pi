@@ -1507,7 +1507,7 @@ function Show-EndUserWizard {
   Set-PrimaryButtonStyle -Button $btnStartWizard
   $wizard.Controls.Add($btnStartWizard)
 
-  $result = $null
+  $script:wizardResult = $null
   $script:developerToolsRequested = $false
 
   $loadItems = {
@@ -1633,7 +1633,7 @@ function Show-EndUserWizard {
       return
     }
 
-    $result = [PSCustomObject]@{
+    $script:wizardResult = [PSCustomObject]@{
       Profile = [string]$cmbWizardProfile.SelectedItem.Path
       Entries = $entries
       DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
@@ -1653,7 +1653,7 @@ function Show-EndUserWizard {
     return $null
   }
 
-  return $result
+  return $script:wizardResult
 }
 
 $btnBase.Add_Click({
