@@ -10,6 +10,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - `build-appliance-image.sh --base-mode` builds a shared, credential-free base image (boot + shrunk root, no zimdata partition) with a new `prebuilt-base` manifest (schemaVersion 3).
 - `scripts/package-base-image.sh` and the `image-build.yml` workflow gzip, split (if over the asset limit) and checksum the base image. Existing builder paths are unchanged.
+- Base images mount `LABEL=ZIMDATA` as kernel exFAT with the service account's uid/gid and `umask=022`, and ship `pi-kiwix-device-config.service`: it applies per-card Wi-Fi credentials from `device-config.json` (then deletes it) or generates a password and writes `wifi-credentials.txt`.
+- `sync.sh --initial` treats `.content-complete` plus a valid `content-manifest.json` as fulfilled content (no network), and `hardware-acceptance.sh --prebuilt` checks exFAT mount, uid/gid options, plaintext removal and manifest items on exFAT cards.
+- Base images carry no SSH host keys or machine-id (generated per card on first boot) and have SSH disabled: the card is a phone-only appliance with no console login.
 
 ## [0.2.1] - 2026-10-16
 

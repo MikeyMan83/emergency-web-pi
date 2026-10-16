@@ -77,3 +77,22 @@ if PATH="$FAKE_BIN:$PATH" ZIM_DATA_DIR="$atomic_dir" KIWIX_MANAGE_FAIL=1 "$TEST_
   exit 1
 fi
 grep -qx 'previous-index' "$atomic_dir/library.xml"
+prebuilt_dir="$TEMP_DIR/prebuilt"
+mkdir -p "$prebuilt_dir"
+printf 'zim-a' > "$prebuilt_dir/a.zim"
+printf '{"schemaVersion":1,"items":[{"name":"a.zim","bytes":5}]}' > "$prebuilt_dir/content-manifest.json"
+touch "$prebuilt_dir/.content-complete" "$prebuilt_dir/.content-install-pending"
+ARIA2_FAIL=1 run_initial_sync "$prebuilt_dir"
+test ! -e "$prebuilt_dir/.content-install-pending"
+test -s "$prebuilt_dir/library.xml"
+
+short_dir="$TEMP_DIR/prebuilt-short"
+mkdir -p "$short_dir"
+printf 'zim' > "$short_dir/a.zim"
+printf '{"schemaVersion":1,"items":[{"name":"a.zim","bytes":5},{"name":"b.zim","bytes":1}]}' > "$short_dir/content-manifest.json"
+touch "$short_dir/.content-complete" "$short_dir/.content-install-pending"
+if run_initial_sync "$short_dir"; then
+  echo "Prebuilt check unexpectedly passed with missing content." >&2
+  exit 1
+fi
+test -e "$short_dir/.content-install-pending"

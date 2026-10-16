@@ -413,15 +413,33 @@ fi
 chown -R emergency-web-pi:emergency-web-pi /var/lib/pi-kiwix-zimdata /opt/emergency-web-pi
 '
 if [[ "$BASE_MODE" -eq 1 ]]; then
+  zim_uid=$(sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /usr/bin/id -u emergency-web-pi)
+  zim_gid=$(sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /usr/bin/id -g emergency-web-pi)
+  # The Windows writer creates this exFAT partition after the image is written, so mount by label.
+  # Kernel exfat has no ownership model; uid/gid/umask make it writable for the service account.
+  sudo tee -a "$MOUNT_ROOT/etc/fstab" >/dev/null <<EOF
+LABEL=ZIMDATA /var/lib/pi-kiwix-zimdata exfat uid=${zim_uid},gid=${zim_gid},umask=022,nofail,x-systemd.device-timeout=10s 0 0
+EOF
+
+  sudo sed -i "s/__REPO_DIR__/\/opt\/emergency-web-pi/g" "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-device-config.service"
+  sudo cp "$MOUNT_ROOT/opt/emergency-web-pi/scripts/systemd/pi-kiwix-device-config.service" "$MOUNT_ROOT/etc/systemd/system/pi-kiwix-device-config.service"
+
+  # Every card is flashed from this one image: no shared host keys or machine-id. Both regenerate on first boot.
+  sudo rm -f "$MOUNT_ROOT"/etc/ssh/ssh_host_*
+  sudo truncate -s 0 "$MOUNT_ROOT/etc/machine-id"
+  sudo rm -f "$MOUNT_ROOT/var/lib/dbus/machine-id"
+
   sudo chroot "$MOUNT_ROOT" /usr/bin/qemu-aarch64-static /bin/bash -c 'apt-get clean && rm -rf /var/lib/apt/lists/*'
   sudo rm -f "$MOUNT_ROOT/usr/bin/qemu-aarch64-static"
 fi
 
 sudo systemctl --root "$MOUNT_ROOT" enable NetworkManager.service
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-serve.service
-# Base mode has no content yet; the initial-sync/handoff contract is defined in the Pi-side phase.
-if [[ "$BASE_MODE" -ne 1 ]]; then
-  sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-initial-sync.service
+sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-initial-sync.service
+if [[ "$BASE_MODE" -eq 1 ]]; then
+  sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-device-config.service
+  # Phone-only appliance: no remote login and no operator account on the shared image.
+  sudo systemctl --root "$MOUNT_ROOT" disable ssh.service ssh.socket 2>/dev/null || true
 fi
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-sync.timer
 sudo systemctl --root "$MOUNT_ROOT" enable pi-kiwix-status.service
@@ -483,7 +501,11 @@ cat > "$MANIFEST_PATH" <<EOF
   },
   "contentPartition": {
     "filesystem": "exfat",
-    "label": "ZIMDATA"
+    "label": "ZIMDATA",
+    "mountOptions": "uid=<emergency-web-pi>,gid=<emergency-web-pi>,umask=022,nofail",
+    "deviceConfigFile": "device-config.json",
+    "contentManifestFile": "content-manifest.json",
+    "completeMarker": ".content-complete"
   },
   "credentials": "device-config-on-first-boot",
   "runtime": {

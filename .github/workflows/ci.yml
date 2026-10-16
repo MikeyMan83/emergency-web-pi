@@ -42,6 +42,7 @@ jobs:
       - name: Validate estimator script syntax
         run: |
           python -m py_compile scripts/estimate_space.py
+          python -m py_compile scripts/device_config.py
 
       - name: Run first-boot content regression tests
         run: |

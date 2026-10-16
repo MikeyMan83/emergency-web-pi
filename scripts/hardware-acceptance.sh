@@ -70,6 +70,38 @@ curl -fsS --max-time 10 "http://10.42.0.1:$KIWIX_PORT/" >/dev/null || fail "Offl
 pass "Offline library responds"
 
 if [[ "$MODE" == "prebuilt" ]]; then
+  fstype=$(findmnt -no FSTYPE "$ZIM_DATA_DIR")
+fi
+# ext4 cards from the dynamic builder keep their existing checks; exFAT is the WSL-free prebuilt layout.
+if [[ "$MODE" == "prebuilt" && "$fstype" == "exfat" ]]; then
+  [[ -f "$ZIM_DATA_DIR/.content-complete" ]] || fail ".content-complete marker is missing"
+  pass ".content-complete marker present"
+
+  mount_source=$(findmnt -no SOURCE "$ZIM_DATA_DIR")
+  [[ "$(lsblk -no LABEL "$mount_source" | head -n1)" == "ZIMDATA" ]] || fail "$mount_source does not carry the ZIMDATA label"
+  pass "ZIMDATA is mounted as exfat"
+
+  service_uid=$(id -u emergency-web-pi)
+  service_gid=$(id -g emergency-web-pi)
+  mount_options=$(findmnt -no OPTIONS "$ZIM_DATA_DIR")
+  [[ ",$mount_options," == *",uid=$service_uid,"* && ",$mount_options," == *",gid=$service_gid,"* ]] || fail "exfat mount options lack uid=$service_uid,gid=$service_gid ($mount_options)"
+  pass "exfat mount options apply the emergency-web-pi uid/gid"
+
+  [[ ! -e "$ZIM_DATA_DIR/device-config.json" ]] || fail "device-config.json plaintext was not removed after first boot"
+  pass "Plaintext device-config.json removed"
+
+  python3 - "$ZIM_DATA_DIR" <<'PYEOF' || fail "content-manifest.json items are missing or the wrong size"
+import json, os, sys
+data_dir = sys.argv[1]
+items = json.load(open(os.path.join(data_dir, "content-manifest.json"), encoding="utf-8"))["items"]
+bad = [i["name"] for i in items if not os.path.isfile(os.path.join(data_dir, os.path.basename(i["name"]))) or os.path.getsize(os.path.join(data_dir, os.path.basename(i["name"]))) != i["bytes"]]
+if not items or bad:
+    print("bad items:", bad)
+    sys.exit(1)
+PYEOF
+  pass "All content-manifest items are present"
+  pass "Prebuilt appliance acceptance complete"
+elif [[ "$MODE" == "prebuilt" ]]; then
   pass "Prebuilt appliance acceptance complete"
 else
   pass "Finished appliance acceptance complete"

@@ -1,0 +1,13 @@
+[Unit]
+Description=Emergency Web Pi - first-boot Wi-Fi credential setup
+DefaultDependencies=yes
+After=local-fs.target
+Before=network-pre.target NetworkManager.service pi-kiwix-status.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 __REPO_DIR__/scripts/device_config.py
+
+[Install]
+WantedBy=multi-user.target

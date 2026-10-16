@@ -39,6 +39,42 @@ list_available=1
 local_list_path="$ZIM_DATA_DIR/zimlist.txt"
 local_mode_marker="$ZIM_DATA_DIR/.use_local_zimlist"
 pending_marker="$ZIM_DATA_DIR/.content-install-pending"
+complete_marker="$ZIM_DATA_DIR/.content-complete"
+content_manifest="$ZIM_DATA_DIR/content-manifest.json"
+
+# Prebuilt cards: the Windows writer already placed every ZIM and wrote content-manifest.json
+# (items: [{name, bytes}]). Verify it and finish without touching the network.
+if [[ "$INITIAL_INSTALL" -eq 1 && -f "$complete_marker" ]]; then
+  if python3 - "$ZIM_DATA_DIR" "$content_manifest" <<'PYEOF'
+import json, os, sys
+data_dir, manifest_path = sys.argv[1], sys.argv[2]
+try:
+    with open(manifest_path, encoding="utf-8") as handle:
+        items = json.load(handle)["items"]
+except (OSError, ValueError, KeyError) as exc:
+    print(f"content-manifest.json unreadable: {exc}")
+    sys.exit(1)
+bad = []
+for item in items:
+    name = os.path.basename(str(item.get("name", "")))
+    path = os.path.join(data_dir, name)
+    if not name or not os.path.isfile(path) or os.path.getsize(path) != item.get("bytes"):
+        bad.append(name or "?")
+if not items or bad:
+    print("content items missing or wrong size: " + ", ".join(bad or ["<none listed>"]))
+    sys.exit(1)
+PYEOF
+  then
+    log "Prebuilt content verified against content-manifest.json."
+    rm -f "$pending_marker"
+    log "Rebuilding library.xml from current ZIM files"
+    "$REPO_DIR/scripts/rebuild-library.sh"
+    log "Initial content installation complete (prebuilt)."
+    exit 0
+  fi
+  log "Prebuilt content check failed; initial installation stays incomplete."
+  exit 1
+fi
 
 if [[ -f "$local_mode_marker" && -s "$local_list_path" ]]; then
   cp "$local_list_path" "$TMP_LIST"

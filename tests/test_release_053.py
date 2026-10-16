@@ -78,7 +78,11 @@ class Release053Tests(unittest.TestCase):
         self.assertIn('$btnStartWizard.Width = 120', frontend)
 
     def test_all_services_use_dedicated_non_root_account(self) -> None:
+        # The first-boot credential oneshot writes root-only NetworkManager profiles, so it is the sole root unit.
+        root_units = {"pi-kiwix-device-config.service"}
         for service in (REPO_ROOT / "scripts" / "systemd").glob("*.service"):
+            if service.name in root_units:
+                continue
             text = service.read_text(encoding="utf-8")
             self.assertIn("User=emergency-web-pi", text, service.name)
             self.assertIn("Group=emergency-web-pi", text, service.name)
