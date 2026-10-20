@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-20
+
+### Fixed
+
+- The progress window stays responsive during the build; the last lines of the SD build output are shown live in the window instead of freezing it.
+
+### Removed
+
+- The non-functional home Wi-Fi first-boot option was removed from the wizard (first-boot downloads need Ethernet).
+
+### Changed
+
+- Internal rename of the dynamic build argument list (`$args` to `$buildArgs`).
+
 ## [0.3.3] - 2026-10-16
 
 ### Fixed

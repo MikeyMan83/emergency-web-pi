@@ -225,7 +225,8 @@ def main() -> int:
     require(portable_smoke_path.exists(), "scripts/smoke-portable.ps1 must exist")
     require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
     require("temporary extraction path" in portable_frontend, "portable frontend must reject temporary extraction paths")
-    require("Use home Wi-Fi for the FirstBoot download" in portable_frontend, "wizard must expose home Wi-Fi setup")
+    require("Use home Wi-Fi for the FirstBoot download" not in portable_frontend, "wizard must not expose the removed home Wi-Fi option")
+    require("$chkUpstream" not in portable_frontend, "wizard must not define the removed home Wi-Fi checkbox")
     require("function Test-WslReady" in portable_frontend, "portable frontend must keep the WSL preflight for the developer (dynamic builder) path")
     end_user_flow = portable_frontend.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
     require("Test-WslReady" not in end_user_flow and "Show-WslSetupGuidance" not in end_user_flow, "end-user flow must not require WSL")

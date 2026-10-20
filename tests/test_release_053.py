@@ -60,11 +60,19 @@ class Release053Tests(unittest.TestCase):
         self.assertIn('Columns.Add("Description"', frontend)
         self.assertNotIn('$btnLearnMore.Text = "Learn More"', frontend)
 
-    def test_home_wifi_is_scoped_to_first_boot_mode(self) -> None:
+    def test_home_wifi_option_is_removed_from_wizard(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('Use home Wi-Fi for the FirstBoot download', frontend)
-        self.assertIn('$chkUpstream.Enabled = $firstBootSelected', frontend)
-        self.assertIn('$optPrebuilt.Add_CheckedChanged($updateUpstreamAvailability)', frontend)
+        for needle in (
+            "Use home Wi-Fi for the FirstBoot download",
+            "$chkUpstream",
+            "$txtUpstreamSsid",
+            "$txtUpstreamPassword",
+            "$updateUpstreamAvailability",
+        ):
+            self.assertNotIn(needle, frontend)
+        prebuilt = (REPO_ROOT / "scripts" / "create-sd-prebuilt.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("UpstreamSsid", prebuilt)
+        self.assertNotIn("UpstreamPassword", prebuilt)
 
     def test_wizard_displays_app_and_raspberry_pi_os_versions(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")

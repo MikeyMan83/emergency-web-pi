@@ -247,7 +247,8 @@ function New-ProcessResult {
 function Invoke-PowerShellScript {
   param(
     [Parameter(Mandatory = $true)][string]$ScriptPath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [System.Windows.Forms.Label]$StatusLabel = $null
   )
 
   $quotedScript = Quote-Arg -Value $ScriptPath
@@ -269,11 +270,37 @@ function Invoke-PowerShellScript {
   $proc.StartInfo = $psi
 
   [void]$proc.Start()
-  $stdout = $proc.StandardOutput.ReadToEnd()
-  $stderr = $proc.StandardError.ReadToEnd()
+  $pendingOut = $proc.StandardOutput.ReadLineAsync()
+  $pendingErr = $proc.StandardError.ReadLineAsync()
+  $combined = New-Object System.Text.StringBuilder
+  $tail = New-Object System.Collections.Generic.List[string]
+  while ($true) {
+    $tasks = @($pendingOut, $pendingErr) | Where-Object { $null -ne $_ }
+    if ($tasks.Count -eq 0 -and $proc.HasExited) { break }
+    if ($tasks.Count -gt 0) {
+      [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$tasks, 150)
+    } else {
+      Start-Sleep -Milliseconds 150
+    }
+    if ($null -ne $pendingOut -and $pendingOut.IsCompleted) {
+      $line = $pendingOut.Result
+      if ($null -ne $line) { [void]$combined.AppendLine($line); $tail.Add($line) } else { $pendingOut = $null }
+      if ($null -ne $pendingOut) { $pendingOut = $proc.StandardOutput.ReadLineAsync() }
+    }
+    if ($null -ne $pendingErr -and $pendingErr.IsCompleted) {
+      $line = $pendingErr.Result
+      if ($null -ne $line) { [void]$combined.AppendLine($line); $tail.Add($line) } else { $pendingErr = $null }
+      if ($null -ne $pendingErr) { $pendingErr = $proc.StandardError.ReadLineAsync() }
+    }
+    if ($null -ne $StatusLabel -and $tail.Count -gt 0) {
+      while ($tail.Count -gt 4) { $tail.RemoveAt(0) }
+      $StatusLabel.Text = ($tail -join "`r`n")
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+  }
   $proc.WaitForExit()
 
-  return New-ProcessResult -ExitCode $proc.ExitCode -Output (($stdout + "`r`n" + $stderr).Trim())
+  return New-ProcessResult -ExitCode $proc.ExitCode -Output $combined.ToString().Trim()
 }
 
 function To-Absolute {
@@ -1484,63 +1511,6 @@ function Show-EndUserWizard {
   $wizard.Controls.Add($optFirstBoot)
   $wy += 28
 
-  $chkUpstream = New-Object System.Windows.Forms.CheckBox
-  $chkUpstream.Left = 230
-  $chkUpstream.Top = $wy
-  $chkUpstream.Width = 720
-  $chkUpstream.Text = "Use home Wi-Fi for the FirstBoot download"
-  $wizard.Controls.Add($chkUpstream)
-  $wy += 28
-
-  $lblUpstreamSsid = New-Object System.Windows.Forms.Label
-  $lblUpstreamSsid.Left = 250
-  $lblUpstreamSsid.Top = $wy
-  $lblUpstreamSsid.Width = 120
-  $lblUpstreamSsid.Text = "Wi-Fi name"
-  $wizard.Controls.Add($lblUpstreamSsid)
-
-  $txtUpstreamSsid = New-Object System.Windows.Forms.TextBox
-  $txtUpstreamSsid.Left = 380
-  $txtUpstreamSsid.Top = $wy - 3
-  $txtUpstreamSsid.Width = 240
-  $txtUpstreamSsid.Enabled = $false
-  $wizard.Controls.Add($txtUpstreamSsid)
-
-  $lblUpstreamPassword = New-Object System.Windows.Forms.Label
-  $lblUpstreamPassword.Left = 640
-  $lblUpstreamPassword.Top = $wy
-  $lblUpstreamPassword.Width = 120
-  $lblUpstreamPassword.Text = "Wi-Fi password"
-  $wizard.Controls.Add($lblUpstreamPassword)
-
-  $txtUpstreamPassword = New-Object System.Windows.Forms.TextBox
-  $txtUpstreamPassword.Left = 770
-  $txtUpstreamPassword.Top = $wy - 3
-  $txtUpstreamPassword.Width = 180
-  $txtUpstreamPassword.UseSystemPasswordChar = $true
-  $txtUpstreamPassword.Enabled = $false
-  $wizard.Controls.Add($txtUpstreamPassword)
-  $chkUpstream.Add_CheckedChanged({
-    $txtUpstreamSsid.Enabled = $optFirstBoot.Checked -and $chkUpstream.Checked
-    $txtUpstreamPassword.Enabled = $optFirstBoot.Checked -and $chkUpstream.Checked
-  })
-  $wy += 38
-
-  $updateUpstreamAvailability = {
-    $firstBootSelected = $optFirstBoot.Checked
-    $chkUpstream.Enabled = $firstBootSelected
-    if (-not $firstBootSelected) {
-      $chkUpstream.Checked = $false
-      $txtUpstreamSsid.Text = ""
-      $txtUpstreamPassword.Text = ""
-    }
-    $txtUpstreamSsid.Enabled = $firstBootSelected -and $chkUpstream.Checked
-    $txtUpstreamPassword.Enabled = $firstBootSelected -and $chkUpstream.Checked
-  }
-  $optFirstBoot.Add_CheckedChanged($updateUpstreamAvailability)
-  $optPrebuilt.Add_CheckedChanged($updateUpstreamAvailability)
-  & $updateUpstreamAvailability
-
   $btnCancelWizard = New-Object System.Windows.Forms.Button
   $btnCancelWizard.Text = "Cancel"
   $btnCancelWizard.Left = 630
@@ -1711,6 +1681,9 @@ function Show-EndUserWizard {
   })
 
   $wizard.Add_FormClosing({
+    if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
+      $script:wizardCancelClicked = $true
+    }
     Write-AppLog ("Wizard form closing: CloseReason={0}, DialogResult={1}" -f $_.CloseReason, $wizard.DialogResult)
   })
 
@@ -2214,7 +2187,7 @@ function Invoke-DynamicBuild {
     return
   }
 
-  $args = @(
+  $buildArgs = @(
     "-DiskNumber", $diskNum,
     "-ConfirmDiskNumber", $diskNum,
     "-BaseConfigPath", (Quote-Arg -Value $configAbs),
@@ -2225,16 +2198,8 @@ function Invoke-DynamicBuild {
     "-ContentMode", $contentMode
   )
 
-  if ($chkUpstream.Checked) {
-    if ([string]::IsNullOrWhiteSpace($txtUpstreamSsid.Text) -or [string]::IsNullOrWhiteSpace($txtUpstreamPassword.Text)) {
-      [System.Windows.Forms.MessageBox]::Show("Enter the home Wi-Fi name and password, or clear the home Wi-Fi option.", "Home Wi-Fi", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-    $args += @("-UpstreamSsid", (Quote-Arg -Value $txtUpstreamSsid.Text), "-UpstreamPassword", (Quote-Arg -Value $txtUpstreamPassword.Text))
-  }
-
   if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
-    $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
+    $buildArgs += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
     Add-Log "Using advanced local Raspberry Pi OS image override."
   } else {
     Add-Log "Using pinned, verified Raspberry Pi OS Lite image."
@@ -2262,7 +2227,7 @@ function Invoke-DynamicBuild {
     [ordered]@{ network = [ordered]@{ ap = [ordered]@{ ssid = $generatedSsid; password = $generatedPassword } } } |
       ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $workspaceDirectory "dynamic-appliance-config.json") -Encoding utf8
 
-    $args = @(
+    $buildArgs = @(
       "-DiskNumber", $diskNum,
       "-ConfirmDiskNumber", $diskNum,
       "-Force",
@@ -2275,17 +2240,18 @@ function Invoke-DynamicBuild {
       "-ContentMode", $contentMode
     )
     if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs) -and $baseAbs.EndsWith(".gz", [System.StringComparison]::OrdinalIgnoreCase)) {
-      $args += @("-ImagePath", (Quote-Arg -Value $baseAbs))
+      $buildArgs += @("-ImagePath", (Quote-Arg -Value $baseAbs))
     }
     Add-Log "Running native prebuilt SD build on disk #$diskNum (no WSL needed)"
   }
 
   Add-Log "Running dynamic SD build on disk #$diskNum"
   $progress = $null
+  $statusLabel = $null
   if ($script:normalLaunch) {
     $progress = New-Object System.Windows.Forms.Form
     $progress.Text = $appDisplayName
-    $progress.Size = New-Object System.Drawing.Size(520, 180)
+    $progress.ClientSize = New-Object System.Drawing.Size(520, 168)
     $progress.StartPosition = "CenterScreen"
     $progress.FormBorderStyle = "FixedDialog"
     $progress.ControlBox = $false
@@ -2298,13 +2264,21 @@ function Invoke-DynamicBuild {
     $message.Text = "Creating your Emergency Web Pi SD card.`r`nKeep this window open. Large downloads can take a while."
     $progress.Controls.Add($message)
 
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Left = 24
+    $statusLabel.Top = 88
+    $statusLabel.Width = 450
+    $statusLabel.Height = 64
+    $statusLabel.Text = "Starting..."
+    $progress.Controls.Add($statusLabel)
+
     $progress.Show()
     $progress.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
   }
 
   try {
-    $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $args
+    $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $buildArgs -StatusLabel $statusLabel
     if ($script:prebuiltFlow -and $result.ExitCode -ne 0 -and $result.Output -match "BASE_IMAGE_UNAVAILABLE" -and $script:normalLaunch) {
       Add-Log $result.Output
       $progress.Hide()
@@ -2318,8 +2292,8 @@ function Invoke-DynamicBuild {
       $dialog.Filter = "Base image (*.img.gz;*.part-aa)|*.img.gz;*.part-aa|All files (*.*)|*.*"
       if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $progress.Show()
-        $args += @("-ImagePath", (Quote-Arg -Value $dialog.FileName))
-        $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $args
+        $buildArgs += @("-ImagePath", (Quote-Arg -Value $dialog.FileName))
+        $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $buildArgs -StatusLabel $statusLabel
       }
     }
   } finally {

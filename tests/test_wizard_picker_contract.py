@@ -80,6 +80,41 @@ class WizardPickerContractTests(unittest.TestCase):
         self.assertRegex(FRONTEND, r"Select-Object -Skip 10")
         self.assertIn("Open logs", FRONTEND)
 
+    def test_home_wifi_controls_are_removed_from_frontend(self):
+        for needle in (
+            "$chkUpstream",
+            "$txtUpstreamSsid",
+            "$txtUpstreamPassword",
+            "$updateUpstreamAvailability",
+            "Use home Wi-Fi for the FirstBoot download",
+        ):
+            self.assertNotIn(needle, FRONTEND)
+
+    def test_dynamic_build_uses_build_args_variable(self):
+        body = function_body("Invoke-DynamicBuild")
+        self.assertNotIn("$args", body)
+        self.assertIn("-Arguments $buildArgs", body)
+
+    def test_powershell_script_pumps_output_to_status_label(self):
+        body = function_body("Invoke-PowerShellScript")
+        for needle in ("ReadLineAsync", "WaitAny", "DoEvents", "$StatusLabel"):
+            self.assertIn(needle, body)
+        for needle in ("ReadToEnd", "add_OutputDataReceived", "add_ErrorDataReceived", "BeginOutputReadLine"):
+            self.assertNotIn(needle, body)
+
+    def test_wizard_marks_user_closing_as_cancel(self):
+        body = function_body("Show-EndUserWizard")
+        start = body.index("$wizard.Add_FormClosing")
+        end = body.index("$dialogResult =")
+        handler = body[start:end]
+        self.assertIn("CloseReason]::UserClosing", handler)
+        self.assertIn("$script:wizardCancelClicked = $true", handler)
+
+    def test_frontend_is_pure_ascii_without_bom(self):
+        raw = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_bytes()
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+        raw.decode("ascii")
+
 
 if __name__ == "__main__":
     unittest.main()
