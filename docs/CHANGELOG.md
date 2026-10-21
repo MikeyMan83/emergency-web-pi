@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-21
+
 ### Fixed
 
 - The creator no longer hangs on "Checking requirements" with a blank details panel. The build-output pump read the child process streams before starting the process, so the build never launched and progress stopped silently; the pump now starts the process first and streams stdout and stderr on the UI dispatcher, forwarding every writer line to the details log and status line.
