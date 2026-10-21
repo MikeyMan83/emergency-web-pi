@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$BundleDir,
 
-  [int]$StartupTimeoutSeconds = 8
+  # Cold CI runners need more than a few seconds to load WPF and read the
+  # freshly written bundle files; keep this timeout generous.
+  [int]$StartupTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +14,26 @@ $frontendPath = Join-Path $bundlePath "portable/EmergencyWebPi.ps1"
 
 if (-not (Test-Path $frontendPath)) {
   throw "Portable frontend is missing: $frontendPath"
+}
+
+function Read-LogFileContent {
+  param([Parameter(Mandatory)][string]$Path)
+  # Get-Content opens files with a read-only share, which makes the frontend's
+  # Add-Content appends fail while we poll ("The stream is not readable").
+  # Read through a handle that shares write access so polling never blocks the
+  # frontend's logging.
+  for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    try {
+      $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+      try {
+        $reader = New-Object System.IO.StreamReader($stream)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+      } finally { $stream.Dispose() }
+    } catch [System.IO.IOException] {
+      Start-Sleep -Milliseconds 100
+    }
+  }
+  return $null
 }
 
 $logDirectories = @(
@@ -47,7 +69,7 @@ try {
       Select-Object -First 1
 
     if ($null -ne $startupLog) {
-      $content = Get-Content -Path $startupLog.FullName -Raw
+      $content = Read-LogFileContent -Path $startupLog.FullName
       $reached = $true
       foreach ($checkpoint in $requiredCheckpoints) {
         if ($content -notmatch [regex]::Escape($checkpoint)) { $reached = $false; break }
@@ -58,13 +80,14 @@ try {
   }
 
   if ($null -eq $startupLog) {
-    throw "Portable frontend did not create a startup log within $StartupTimeoutSeconds seconds."
+    throw ("Portable frontend did not create a startup log within {0} seconds. Searched: {1}" -f $StartupTimeoutSeconds, ($logDirectories -join '; '))
   }
 
-  $content = Get-Content -Path $startupLog.FullName -Raw
+  $content = Read-LogFileContent -Path $startupLog.FullName
   foreach ($checkpoint in $requiredCheckpoints) {
     if ($content -notmatch [regex]::Escape($checkpoint)) {
-      throw "Portable frontend did not reach startup checkpoint: $checkpoint"
+      $tail = @($content -split "`r?`n" | Select-Object -Last 30)
+      throw ("Portable frontend did not reach startup checkpoint: {0}. Startup log {1}:`n{2}" -f $checkpoint, $startupLog.FullName, ($tail -join "`n"))
     }
   }
 

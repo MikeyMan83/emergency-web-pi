@@ -40,7 +40,17 @@ function Write-AppLog {
         if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
         $script:logFile = Join-Path $logDir ("startup-" + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.log')
     }
-    try { Add-Content -Path $script:logFile -Value $line -Encoding UTF8 } catch { }
+    # Another process (the release smoke test, antivirus) can briefly hold the
+    # log file with a share mode that makes this append fail; retry so no line
+    # is silently lost.
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            Add-Content -Path $script:logFile -Value $line -Encoding UTF8 -ErrorAction Stop
+            break
+        } catch {
+            Start-Sleep -Milliseconds 50
+        }
+    }
 }
 
 function Add-Log {
