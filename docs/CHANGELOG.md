@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-21
+
 ### Fixed
 
 - The base image is now acquired entirely inside the creator. The writer downloads the pinned `ewp-base` release asset from the configured GitHub release, verifies it against the manifest SHA-256, and reuses a verified cached copy instead of downloading again. Downloads are atomic (`.partial` file plus rename), stale partial downloads are cleaned up on the next run, cached assets are hash-verified with self-healing when the cache does not match, and the workspace drive free-space requirement (download plus unpack, with a margin) is checked before anything is downloaded.
