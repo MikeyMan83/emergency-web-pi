@@ -7,6 +7,15 @@ script contracts, release flow, and hardware acceptance before beginning the
 Tauri migration. V2 replaces only the WinForms presentation layer; it does not
 rewrite the appliance build logic in Rust.
 
+## Status (2026-10-21)
+
+The Tauri 2 rewrite was **not adopted** for the 0.4.0 release. The Windows
+frontend now ships as a WPF creator (built into Windows 10/11, so end users
+still need no extra runtime), preserving the frozen writer contract below.
+This plan is retained for future consideration; the interface boundary it
+describes (typed operations, opaque disk tokens, narrow elevation) remains
+the reference model if a Tauri or other frontend migration is revisited.
+
 ## V1 Contract To Freeze
 
 The V2 backend invokes the native Windows prebuilt writer with bounded arguments

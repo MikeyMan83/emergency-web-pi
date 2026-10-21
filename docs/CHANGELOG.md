@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
+### Changed
+
+- The portable Windows app was rebuilt as a modern WPF creator. It opens directly into a four-step guided flow (Content, Installation, SD card, Review) followed by a dedicated progress view and a success screen with first-boot instructions and the printable Wi-Fi label.
+- Content profiles are presented as cards with descriptions, download sizes, library counts, and category tags. The recommended profile stays preselected, and an optional **Customize content** view lists every library with its description, size, and Learn more link.
+- The installation step explains the two modes in plain language (**Prepare everything now** / **Download content on first boot**) without exposing internal mode names.
+- Removable drives are shown as selectable cards with model, capacity, drive letters, and a clear Ready / Too small / Not removable status. The selected card is revalidated immediately before writing, and the capacity indicator compares the card against the real required size. Unknown sizes are reported as "cannot be estimated" instead of being treated as zero.
+- Progress is mapped from the actual writer output to human-readable stages (checking requirements, preparing system files, downloading content, writing the appliance, preparing the partition, copying the library, verifying, finished), with live download percentages, a safe-cancel window before the destructive write, and technical logs behind **Show details**. Errors state what failed in plain language and what to do next.
+- Developer Tools is now a separate tabbed window (Build, Content, SD & Output, Diagnostics, Advanced) opened from the creator window. It keeps every existing developer capability.
+- The shared creator logic moved to `portable/EmergencyWebPi-Core.ps1` (catalog and profile loading, capacity formula, disk classification, stage mapping, frozen writer arguments, Wi-Fi credentials and label), covered by a new PowerShell test suite that also runs in CI.
+
+### Removed
+
+- The legacy WinForms wizard frontend was replaced by the WPF creator; no supported workflow depended on it.
+
+### Fixed
+
+- The UI no longer blocks while streaming build output: child-process output is pumped on a dispatcher timer instead of blocking reads.
+- The **Customize content** expander header now renders, so the selected library total is always visible and updates as selections change.
+- Profile sorting, the **Recommended** badge, and the recommended-profile preselection now work: profile file names carry a `-zimlist` suffix that previously defeated the name match.
+- Unchecking every library now disables **Continue** and the review summary reports exactly the libraries that will be built, instead of silently falling back to the full profile.
+- The **Learn more** link in the library list uses the correct WPF hyperlink type, and the link style is applied to the link itself.
+
+### Notes
+
+- The planned Tauri 2 rewrite (docs/V2_TAURI_PLAN.md) was not adopted for this release: the app ships as WPF, which is built into Windows 10/11 and needs no extra runtime. See docs/V2_TAURI_PLAN.md for the status.
+
 ## [0.3.4] - 2026-10-20
 
 ### Fixed

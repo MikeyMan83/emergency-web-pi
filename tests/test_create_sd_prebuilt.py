@@ -39,16 +39,19 @@ class PrebuiltWriterTests(unittest.TestCase):
         self.assertIn("[A-Z]{2}", WRITER)
 
 
-class WizardUsesPrebuiltWriterTests(unittest.TestCase):
+class CreatorUsesPrebuiltWriterTests(unittest.TestCase):
     def test_end_user_flow_is_wsl_free(self) -> None:
-        flow = FRONTEND.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
+        flow = FRONTEND.split("function Start-EndUserFlow", 1)[1].split("\nStart-EndUserFlow", 1)[0]
         self.assertNotIn("Test-WslReady", flow)
-        self.assertIn("$script:prebuiltFlow = $true", flow)
+        self.assertNotIn("create-sd-dynamic", flow)
+        build = FRONTEND.split("function Start-CreatorBuild", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("$script:prebuiltFlow = $true", build)
+        self.assertIn("$scriptToRun = $prebuiltScript", build)
 
     def test_developer_path_keeps_wsl_guard(self) -> None:
         self.assertIn("if (-not $script:prebuiltFlow -and -not (Test-WslReady))", FRONTEND)
 
-    def test_wizard_runs_prebuilt_script_and_keeps_label(self) -> None:
+    def test_creator_runs_prebuilt_script_and_keeps_label(self) -> None:
         self.assertIn("$scriptToRun = $prebuiltScript", FRONTEND)
         self.assertIn("EmergencyWebPi-WiFi-Label.html", FRONTEND)
         self.assertIn("BASE_IMAGE_UNAVAILABLE", FRONTEND)

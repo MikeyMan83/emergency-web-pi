@@ -4,13 +4,13 @@ This document defines the Windows-first appliance build model for this repositor
 
 ## Product definition
 
-Use the portable wizard or the dynamic Windows builder on a Windows PC with a blank SD card inserted.
+Use the portable creator or the dynamic Windows builder on a Windows PC with a blank SD card inserted.
 The guided builder writes a complete, self-contained Raspberry Pi appliance to the SD card,
 including the OS, Kiwix, the selected ZIM content, configuration, and emergency Wi-Fi setup.
 It may optionally inject private configuration during the build.
 
 Insert the SD card into the Raspberry Pi and it automatically starts its own emergency Wi-Fi.
-The Windows wizard recommends prebuilt mode, which serves the selected library without
+The Windows creator recommends prebuilt mode, which serves the selected library without
 Internet on first boot. First-boot mode remains available as an advanced option for builders
 who can provide temporary Internet and troubleshoot a stalled download.
 
@@ -20,7 +20,7 @@ first-boot mode requires temporary Internet only until selected content is insta
 ## Acceptance test
 
 1. Insert a blank SD card into a Windows machine.
-2. Run the portable wizard or `scripts/create-sd-dynamic.ps1`; both automatically download and verify the pinned official Raspberry Pi OS base image.
+2. Run the portable creator or `scripts/create-sd-dynamic.ps1`; both automatically download and verify the pinned official Raspberry Pi OS base image.
 3. Remove the finished SD card.
 4. Insert it into a Raspberry Pi 3B+.
 5. Boot with temporary Internet connectivity for first-boot mode, or no Internet for prebuilt mode.
@@ -138,7 +138,7 @@ Portable frontend behavior for dynamic mode:
 - Select individual items with checkboxes
 - Run preflight SD size estimation before the destructive write step
 - Embed the selected catalog profile during appliance construction before the SD card is written
-- Default the end-user wizard to fully prebuilt offline cards, with first-boot installation available as an advanced choice
+- Default the end-user creator to fully prebuilt offline cards, with first-boot installation available as an advanced choice
 
 Runtime UX behavior:
 

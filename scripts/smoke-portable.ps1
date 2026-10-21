@@ -18,6 +18,15 @@ $logDirectories = @(
   (Join-Path $bundlePath "logs"),
   (Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi")
 )
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$requiredCheckpoints = @("WPF assemblies loaded.", "Required builder scripts found.", "Opening the Emergency Web Pi creator.")
+if (-not $isAdmin) {
+  # Without administrator rights the correct startup behavior is the elevation
+  # handoff: the frontend boots, then asks Windows for permission. The creator
+  # window itself can only be validated from an administrator session.
+  $requiredCheckpoints = @("WPF assemblies loaded.", "requesting elevation via UAC")
+}
+
 $startedAfter = Get-Date
 $process = Start-Process -FilePath "powershell.exe" -ArgumentList @(
   "-STA",
@@ -39,11 +48,11 @@ try {
 
     if ($null -ne $startupLog) {
       $content = Get-Content -Path $startupLog.FullName -Raw
-      if ($content -match "WinForms assemblies loaded\." -and
-          $content -match "Required builder scripts found\." -and
-          $content -match "Opening end-user wizard\.") {
-        break
+      $reached = $true
+      foreach ($checkpoint in $requiredCheckpoints) {
+        if ($content -notmatch [regex]::Escape($checkpoint)) { $reached = $false; break }
       }
+      if ($reached) { break }
     }
     Start-Sleep -Milliseconds 200
   }
@@ -53,17 +62,22 @@ try {
   }
 
   $content = Get-Content -Path $startupLog.FullName -Raw
-  foreach ($checkpoint in @("WinForms assemblies loaded.", "Required builder scripts found.", "Opening end-user wizard.")) {
+  foreach ($checkpoint in $requiredCheckpoints) {
     if ($content -notmatch [regex]::Escape($checkpoint)) {
       throw "Portable frontend did not reach startup checkpoint: $checkpoint"
     }
+  }
+
+  if (-not $isAdmin) {
+    Write-Output "Portable frontend smoke test passed (limited): the bundle boots and requests administrator permission. The creator window itself requires an administrator session."
+    return
   }
 
   if ($process.HasExited) {
     throw "Portable frontend exited during startup with code $($process.ExitCode)."
   }
 
-  Write-Output "Portable frontend smoke test passed: wizard process is alive and startup checkpoints were logged."
+  Write-Output "Portable frontend smoke test passed: creator process is alive and startup checkpoints were logged."
 } finally {
   if (-not $process.HasExited) {
     $process.Kill()

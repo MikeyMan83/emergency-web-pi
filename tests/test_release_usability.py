@@ -24,9 +24,12 @@ class ReleaseUsabilityTests(unittest.TestCase):
 
     def test_frontend_shows_and_saves_wifi_credentials(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
+        creator_xaml = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
         self.assertIn("dynamic-appliance-config.json", frontend)
         self.assertIn("EmergencyWebPi-WiFi-Label.html", frontend)
-        self.assertIn("Emergency Wi-Fi name", frontend)
+        self.assertIn("Emergency Wi-Fi name", creator_xaml)
+        self.assertIn("WifiSsidText", creator_xaml)
+        self.assertIn("WifiPasswordText", creator_xaml)
 
     def test_packaging_bundles_verified_aria2(self) -> None:
         packaging = (REPO_ROOT / "scripts" / "package-portable.ps1").read_text(encoding="utf-8")
@@ -77,7 +80,7 @@ class ReleaseUsabilityTests(unittest.TestCase):
         self.assertIn("function Test-WslReady", frontend)
         self.assertIn("Show-WslSetupGuidance", frontend)
         self.assertIn("wsl --install -d Ubuntu", frontend)
-        end_user_flow = frontend.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
+        end_user_flow = frontend.split("function Start-EndUserFlow", 1)[1].split("\nStart-EndUserFlow", 1)[0]
         self.assertNotIn("Test-WslReady", end_user_flow)
         self.assertNotIn("Show-WslSetupGuidance", end_user_flow)
         self.assertIn("if (-not $script:prebuiltFlow -and -not (Test-WslReady))", frontend)

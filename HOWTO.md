@@ -5,14 +5,14 @@ For the Windows appliance-builder contract and offline acceptance target, see [d
 
 ## End-user flow
 
-For normal deployment, use the portable app wizard:
+For normal deployment, use the portable app creator:
 
 1. Go to https://github.com/MikeyMan83/emergency-web-pi/releases/latest.
 2. Download `EmergencyWebPi-<version>-windows.zip`.
 3. Extract it fully to a regular folder (do not run from within the ZIP viewer).
 4. Start `EmergencyWebPi.exe` from the extracted root folder.
-5. Click **Start End-User Wizard**, choose what you want on the card, and choose the SD card to erase.
-6. Leave **Recommended: prebuild content now** selected. The app downloads the library before writing, so the finished card works without Internet.
+5. The app opens directly into the creator. Choose the information you want on the card (the recommended profile is preselected), then choose the SD card you want to erase.
+6. Leave **Prepare everything now** selected. The app downloads the library before writing, so the finished card works without Internet.
 7. Insert the card in the Pi and turn it on. If you selected the advanced first-boot option, connect the Pi to the Internet first with an Ethernet cable in the larger network socket beside the USB sockets.
 8. Connect your phone or laptop to the emergency Wi-Fi. Use the Wi-Fi name and password supplied by the person who prepared the card; they should be written on the card or its label.
 9. Open a browser and visit any ordinary website. The local status page should appear automatically.
@@ -22,13 +22,13 @@ For normal deployment, use the portable app wizard:
 
 ## Advanced/operator flow
 
-The rest of this guide is for testing, recovery, and direct maintenance. Normal card recipients do not need it. End users never need WSL, `create-sd-dynamic.ps1`, or any script below: the wizard uses the native `scripts/create-sd-prebuilt.ps1`.
+The rest of this guide is for testing, recovery, and direct maintenance. Normal card recipients do not need it. End users never need WSL, `create-sd-dynamic.ps1`, or any script below: the creator uses the native `scripts/create-sd-prebuilt.ps1`.
 
 Fallback when no bundle asset is attached yet: download `Source code (zip)` and run `Launch-EmergencyWebPi.cmd` from the extracted root.
 
-The EXE and CMD launcher open the same wizard. CMD starts the bundled PowerShell frontend directly, which is useful when Windows SmartScreen blocks the unsigned EXE.
+The EXE and CMD launcher open the same creator. CMD starts the bundled PowerShell frontend directly, which is useful when Windows SmartScreen blocks the unsigned EXE.
 
-For testing or recovery, select `Developer Tools` in the wizard to open direct build inputs, prepared-image writing, diagnostics, logs, and artifacts. Normal users do not need this workspace.
+For testing or recovery, select `Developer Tools` in the creator window to open direct build inputs, prepared-image writing, diagnostics, logs, and artifacts. Normal users do not need this workspace.
 
 If you get a missing-file error under `AppData\\Local\\Temp`, close the app, extract the ZIP fully, and start again from the extracted folder.
 
@@ -48,7 +48,7 @@ If the frontend does not appear, inspect the newest log in `%LOCALAPPDATA%\Emerg
 This project is a Windows-first appliance builder. The guided build creates a complete appliance image and writes it to SD; content is downloaded either on first boot or during the Windows build. Prebuilt mode works without Internet immediately. First-boot mode needs temporary Internet access until selected content is installed. Both modes need no manual runtime configuration and work offline after installation completes.
 
 Three modes are supported:
-- Guided appliance-build mode: the portable wizard or `scripts/create-sd-dynamic.ps1` builds and writes an appliance with first-boot or prebuilt content installation.
+- Guided appliance-build mode: the portable creator or `scripts/create-sd-dynamic.ps1` builds and writes an appliance with first-boot or prebuilt content installation.
 - Prepared-image mode: `scripts/create-sd.ps1` writes an image previously built by `scripts/build-appliance-image.ps1`.
 - Legacy first-boot mode: `firstrun.sh` + `bootstrap-pi.sh` + `install.sh` provision on first boot.
 
@@ -84,10 +84,10 @@ To build a card with the latest profile content at creation time:
 
 This mode defaults to first-boot content installation. It builds an appliance image with
 the selected profile in its ext4 `zimdata` partition, then writes that final image to SD.
-The wizard defaults to offline-ready prebuilt content, while direct PowerShell use defaults
+The creator defaults to offline-ready prebuilt content, while direct PowerShell use defaults
 to first-boot mode. Add `-ContentMode Prebuilt` when the Windows PC should download content before writing.
-In the portable app, use Dynamic SD with the item picker to choose profile entries,
-then review the preflight size estimate before confirming the write.
+In the portable app, open **Developer Tools**, use the **Content** tab to choose profile entries,
+then use **SD & Output** to review the capacity estimate before confirming the write.
 
 ## Verify health
 

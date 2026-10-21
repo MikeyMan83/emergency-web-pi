@@ -48,17 +48,23 @@ class Release053Tests(unittest.TestCase):
             "contentProgressPercent": 0,
         }
 
-    def test_prebuilt_is_selected_by_default_in_wizard_source(self) -> None:
+    def test_prebuilt_is_selected_by_default_in_creator_source(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('$chkDownloadOnPi.Checked = $false', frontend)
-        self.assertIn('$optPrebuilt.Checked = $true', frontend)
-        self.assertIn('Advanced: download selected content on first boot', frontend)
+        creator_xaml = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
+        self.assertIn("ContentMode = 'Prebuilt'", frontend)
+        self.assertIn("$optPrebuilt.IsChecked = ($script:app.ContentMode -eq 'Prebuilt')", frontend)
+        self.assertIn('x:Name="OptPrebuilt"', creator_xaml)
+        self.assertIn('x:Name="OptFirstBoot"', creator_xaml)
+        self.assertIn("Prepare everything now", creator_xaml)
+        self.assertIn("Download content on first boot", creator_xaml)
 
-    def test_wizard_shows_library_descriptions_inline(self) -> None:
+    def test_creator_shows_library_descriptions_inline(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('New-Object System.Windows.Forms.ListView', frontend)
-        self.assertIn('Columns.Add("Description"', frontend)
-        self.assertNotIn('$btnLearnMore.Text = "Learn More"', frontend)
+        creator_xaml = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
+        self.assertIn('x:Key="LibraryCheck"', creator_xaml)
+        self.assertIn("New-UiText $item.Description", frontend)
+        self.assertIn("New-UiText $item.Name", frontend)
+        self.assertNotIn("System.Windows.Forms.ListView", frontend)
 
     def test_home_wifi_option_is_removed_from_wizard(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
@@ -74,16 +80,22 @@ class Release053Tests(unittest.TestCase):
         self.assertNotIn("UpstreamSsid", prebuilt)
         self.assertNotIn("UpstreamPassword", prebuilt)
 
-    def test_wizard_displays_app_and_raspberry_pi_os_versions(self) -> None:
+    def test_creator_displays_app_and_raspberry_pi_os_versions(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('Emergency Web Pi v$appVersion', frontend)
-        self.assertIn('Raspberry Pi OS: $($baseInfo.codename)', frontend)
-        self.assertIn('$appVersion = "unknown"', frontend)
+        creator_xaml = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
+        dev_xaml = (REPO_ROOT / "portable" / "ui" / "DeveloperTools.xaml").read_text(encoding="utf-8")
+        self.assertIn("'Version ' + $script:appVersion", frontend)
+        self.assertIn("$script:appVersion = 'dev'", frontend)
+        self.assertIn('x:Name="VersionText"', creator_xaml)
+        self.assertIn('x:Name="DevBaseInfo"', dev_xaml)
+        self.assertIn("$base.Codename", frontend)
 
-    def test_primary_wizard_button_has_room_for_its_label(self) -> None:
+    def test_primary_creator_button_carries_the_create_action(self) -> None:
         frontend = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="utf-8")
-        self.assertIn('$btnStartWizard.Text = "Estimate + Build"', frontend)
-        self.assertIn('$btnStartWizard.Width = 120', frontend)
+        creator_xaml = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
+        self.assertIn("'Create Emergency Web Pi'", frontend)
+        self.assertIn('x:Name="BtnContinue"', creator_xaml)
+        self.assertIn('Style="{StaticResource PrimaryButton}"', creator_xaml)
 
     def test_all_services_use_dedicated_non_root_account(self) -> None:
         # The first-boot credential oneshot writes root-only NetworkManager profiles, so it is the sole root unit.

@@ -39,6 +39,10 @@ def main() -> int:
     setup_ap_path = repo_root / "scripts" / "setup-ap.sh"
     switch_to_ap_path = repo_root / "scripts" / "switch-to-ap.sh"
     portable_ps1_path = repo_root / "portable" / "EmergencyWebPi.ps1"
+    portable_core_path = repo_root / "portable" / "EmergencyWebPi-Core.ps1"
+    main_window_xaml_path = repo_root / "portable" / "ui" / "MainWindow.xaml"
+    developer_tools_xaml_path = repo_root / "portable" / "ui" / "DeveloperTools.xaml"
+    confirm_erase_xaml_path = repo_root / "portable" / "ui" / "ConfirmErase.xaml"
     root_cmd_path = repo_root / "Launch-EmergencyWebPi.cmd"
     kiwix_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-serve.service"
     status_service_path = repo_root / "scripts" / "systemd" / "pi-kiwix-status.service"
@@ -77,6 +81,10 @@ def main() -> int:
     release_status = release_status_path.read_text(encoding="utf-8")
     portable_smoke = portable_smoke_path.read_text(encoding="utf-8")
     root_cmd = root_cmd_path.read_text(encoding="utf-8")
+    portable_core = portable_core_path.read_text(encoding="utf-8")
+    main_window_xaml = main_window_xaml_path.read_text(encoding="utf-8")
+    developer_tools_xaml = developer_tools_xaml_path.read_text(encoding="utf-8")
+    confirm_erase_xaml = confirm_erase_xaml_path.read_text(encoding="utf-8")
 
     # Runtime architecture checks.
     require(kiwix_service_path.exists(), "scripts/systemd/pi-kiwix-serve.service must exist")
@@ -192,28 +200,53 @@ def main() -> int:
     require("pi-kiwix-serve.service" in hardware_acceptance, "hardware acceptance must verify the library service")
     require("SetWindowDisplayAffinity" not in portable_ps1_path.read_text(encoding="utf-8"), "portable frontend must not block screenshot capture")
     portable_frontend = portable_ps1_path.read_text(encoding="utf-8")
+    frontend_blob = portable_frontend + "\n" + portable_core
+    require(portable_core_path.exists(), "portable/EmergencyWebPi-Core.ps1 must exist")
+    require(main_window_xaml_path.exists() and developer_tools_xaml_path.exists() and confirm_erase_xaml_path.exists(), "portable/ui must contain the creator, developer tools and erase-confirmation windows")
     require("function Start-EndUserFlow" in portable_frontend, "portable frontend must define an explicit end-user startup flow")
-    require(re.search(r'Write-AppLog "Starting end-user wizard as the visible frontend\."\nStart-EndUserFlow', portable_frontend) is not None, "normal startup must invoke the end-user flow directly")
+    require("Write-AppLog 'Starting the Emergency Web Pi creator.'" in portable_frontend, "normal startup must log the creator flow")
+    require(portable_frontend.rstrip().endswith("Start-EndUserFlow"), "normal startup must invoke the end-user flow directly")
     require("$btnWizard.PerformClick()" not in portable_frontend, "normal startup must not depend on simulated button clicks")
-    require("WinForms assemblies loaded." in portable_frontend, "portable frontend must log successful WinForms initialization")
+    require("WPF assemblies loaded." in portable_frontend, "portable frontend must log successful WPF initialization")
     require("Resolving extracted bundle location." in portable_frontend, "portable frontend must log bundle discovery")
-    require("$workspaceDirectory = Join-Path $localDataDirectory \"workspace\"" in portable_frontend, "portable frontend must use an app-data workspace")
-    require("-WorkspaceDir" in portable_frontend, "portable frontend must pass its workspace to dynamic builds")
+    require("(Test-Path (Join-Path $candidate 'scripts\\create-sd-prebuilt.ps1'))" in portable_frontend, "portable frontend must locate the bundle root by probing for the writer script")
+    require("Split-Path -Parent (Split-Path -Parent $PSScriptRoot)" not in portable_frontend, "portable frontend must not resolve the bundle root as the grandparent of the script directory")
+    require("Write-AppLog 'Running elevated.'" in portable_frontend, "portable frontend must log the elevated start")
+    require("requesting elevation via UAC" in portable_frontend, "portable frontend must log the elevation handoff before relaunching")
+    required_scripts_block = re.search(r"\$requiredScripts = @\((.*?)\)", portable_frontend, re.DOTALL)
+    require(required_scripts_block is not None, "portable frontend must declare the builder scripts it requires")
+    required_scripts = re.findall(r"'([^']+)'", required_scripts_block.group(1)) if required_scripts_block else []
+    require(len(required_scripts) >= 3, "portable frontend must require the prebuilt, dynamic and image-build scripts")
+    for required_script in required_scripts:
+        require((repo_root / required_script.replace("\\", "/")).is_file(), f"required builder script must exist in the bundle: {required_script}")
+    require("$script:workspaceDirectory = Join-Path $script:localDataDirectory 'workspace'" in portable_frontend, "portable frontend must use an app-data workspace")
+    require("-WorkspaceDir" in portable_frontend, "portable frontend must pass its workspace to builds")
     require("$_.Size -gt 0" in portable_frontend, "portable frontend must filter zero-capacity disks")
     require("return @($all)" in portable_frontend, "portable frontend must return an empty disk array when no disk is available")
-    require("$disks = @(Get-SelectableDisks)" in portable_frontend, "wizard startup must normalize no-disk enumeration")
-    require("[AllowEmptyCollection()]$Disks = @()" in portable_frontend, "wizard must accept an empty disk collection")
-    require("function Get-RemoteContentLength" not in portable_frontend, "preflight estimation must not make blocking per-library network requests")
-    require("Content catalog is missing a verified size" in portable_frontend, "preflight estimation must use the bundled catalog")
-    require("function Get-ApplianceRequiredBytes" in portable_frontend, "UI capacity estimate must use the appliance partition formula")
+    require("$disks = @(Get-SelectableDisks)" in portable_frontend, "creator must normalize no-disk enumeration")
+    require("function Get-SelectableDisks" in portable_frontend, "creator must enumerate selectable disks through a dedicated helper")
+    require("function Get-RemoteContentLength" not in frontend_blob, "preflight estimation must not make blocking per-library network requests")
+    require("Content catalog is missing a verified size" in frontend_blob, "preflight estimation must use the bundled catalog")
+    require("function Get-ApplianceRequiredBytes" in frontend_blob, "UI capacity estimate must use the appliance partition formula")
     require("function Open-LearnMoreUrl" in portable_frontend, "portable frontend must provide an explicit Learn More link opener")
     require("Start-Process -FilePath $uri.AbsoluteUri -ErrorAction Stop" in portable_frontend, "Learn More links must report browser launch errors")
-    require("System.Windows.Forms.ListView" in portable_frontend and "Columns.Add(\"Description\"" in portable_frontend, "wizard libraries must show descriptions inline")
-    require("CheckedItems" in portable_frontend, "wizard library selection must use checked ListView rows")
-    require("$lblSelection.Top = $wy" in portable_frontend, "wizard selection summary must occupy its own row")
-    require("$lblSelection.Top = $wy - 32" not in portable_frontend, "wizard selection summary must not overlap Select All or Select None")
+    require("Test-IsAdministrator" in portable_frontend and "-Verb RunAs" in portable_frontend, "portable frontend must relaunch elevated through an explicit administrator check")
+    require("function Get-DriveCardInfo" in frontend_blob, "SD step must classify disks through the shared core helper")
+    require("function Get-CreatorStages" in frontend_blob and "function Get-StageForWriterLine" in frontend_blob, "progress view must map real writer output to creator stages")
+    require("$_.CheckBox.IsChecked" in portable_frontend, "library selection must be read from checkbox rows")
+    require("x:Class" not in main_window_xaml and "x:Class" not in developer_tools_xaml and "x:Class" not in confirm_erase_xaml, "UI windows must be loadable without a compiled code-behind")
+    require("System.Windows.Forms" not in main_window_xaml and "System.Windows.Forms" not in developer_tools_xaml and "System.Windows.Forms" not in confirm_erase_xaml, "UI windows must be WPF, not WinForms")
+    for page_name in ("PageContent", "PageInstall", "PageSd", "PageReview", "PageProgress", "PageDone", "PageError"):
+        require(f'x:Name="{page_name}"' in main_window_xaml, f"creator window must contain {page_name}")
+    for control_name in ("ProfileCardHost", "LibraryListHost", "DiskListHost", "StageListHost", "CapacityFill", "BuildBarFill", "BtnContinue", "BtnDeveloperTools", "CustomizeSummary", "SdEmptyState", "RevContent", "RevInstall", "RevCard", "RevSize", "ProgressStatus", "BtnCancel", "LogTail", "WifiSsidText", "WifiPasswordText", "ErrorMessage", "ErrorHint", "VersionText"):
+        require(f'x:Name="{control_name}"' in main_window_xaml, f"creator window must define {control_name}")
+    for control_name in ("DevBaseInfo", "BtnCheckPrereqs", "BtnBuildImage", "CmbDevProfiles", "CmbDevDisks", "BtnDevEstimate", "BtnDevDynamicBuild", "BtnDevWriteImage", "DevLog", "DevAdvVersion", "BtnDevClose"):
+        require(f'x:Name="{control_name}"' in developer_tools_xaml, f"developer tools window must define {control_name}")
+    for control_name in ("ConfirmTitle", "ConfirmDevice", "ConfirmBody", "BtnConfirmCancel", "BtnConfirmErase"):
+        require(f'x:Name="{control_name}"' in confirm_erase_xaml, f"erase confirmation window must define {control_name}")
+    require("BtnConfirmErase" in portable_frontend and "Test-SelectedDiskStillValid" in portable_frontend, "destructive write must be confirmed against a revalidated disk")
     require("portable\\EmergencyWebPi.ps1" in root_cmd and "powershell.exe" in root_cmd, "root CMD launcher must run the bundled PowerShell frontend")
-    require("-STA" in root_cmd, "root CMD launcher must start the WinForms frontend in STA mode")
+    require("-STA" in root_cmd, "root CMD launcher must start the WPF frontend in STA mode")
     require("--draft" in release_workflow, "release workflow must create a draft before uploading assets")
     require("--draft=false" in release_workflow, "release workflow must publish only after asset upload")
     require("--latest" in release_workflow, "release workflow must explicitly mark the published release as latest")
@@ -223,12 +256,12 @@ def main() -> int:
     require("PUBLISHED:" in release_status and "PENDING:" in release_status, "release status command must distinguish pending and published releases")
     require("[string]$Token" in release_status, "release status must accept an auth token for private repositories")
     require(portable_smoke_path.exists(), "scripts/smoke-portable.ps1 must exist")
-    require("Opening end-user wizard." in portable_smoke, "portable smoke test must verify the wizard startup checkpoint")
+    require("Opening the Emergency Web Pi creator." in portable_smoke, "portable smoke test must verify the creator startup checkpoint")
     require("temporary extraction path" in portable_frontend, "portable frontend must reject temporary extraction paths")
     require("Use home Wi-Fi for the FirstBoot download" not in portable_frontend, "wizard must not expose the removed home Wi-Fi option")
     require("$chkUpstream" not in portable_frontend, "wizard must not define the removed home Wi-Fi checkbox")
     require("function Test-WslReady" in portable_frontend, "portable frontend must keep the WSL preflight for the developer (dynamic builder) path")
-    end_user_flow = portable_frontend.split("function Start-EndUserFlow", 1)[1].split("$btnWizard.Add_Click", 1)[0]
+    end_user_flow = portable_frontend.split("function Start-EndUserFlow", 1)[1].split("\nStart-EndUserFlow", 1)[0]
     require("Test-WslReady" not in end_user_flow and "Show-WslSetupGuidance" not in end_user_flow, "end-user flow must not require WSL")
     require("$scriptToRun = $prebuiltScript" in portable_frontend, "end-user flow must run the native prebuilt writer")
     create_sd_prebuilt = create_sd_prebuilt_path.read_text(encoding="utf-8")
@@ -247,7 +280,8 @@ def main() -> int:
     ):
         require(needle in create_sd_prebuilt, message)
     require("wsl" not in create_sd_prebuilt.lower(), "prebuilt writer must not depend on WSL")
-    require("Emergency Web Pi v$appVersion" in portable_frontend and "Raspberry Pi OS: $($baseInfo.codename)" in portable_frontend, "wizard must display app and Raspberry Pi OS versions")
+    require("'Version ' + $script:appVersion" in portable_frontend, "creator window must display the app version")
+    require("DevBaseInfo" in developer_tools_xaml and "$base.Codename" in portable_frontend, "developer tools must display the Raspberry Pi OS version")
     require("UpstreamSsid" in create_sd_dynamic and "UpstreamPassword" in create_sd_dynamic, "dynamic builder must accept upstream Wi-Fi credentials")
     require("generate_204" in status_web and "hotspot-detect.html" in status_web and "connecttest.txt" in status_web, "status page must answer common captive portal probes")
     require('href=\\\"http://10.42.0.1:{kiwix_port}\\\"' not in status_web, "status page must not hardcode the AP address")

@@ -102,9 +102,9 @@ $startNote = @(
   "Quick start:",
   "1. Double-click EmergencyWebPi.exe and click Yes when Windows asks for permission. The app needs this to write the SD card.",
   "   If Windows first shows a blue box saying 'Windows protected your PC', click 'More info' and then 'Run anyway'. The app is not code-signed yet, so this warning is expected; the .sha256.txt file next to the download lets you verify it.",
-  "2. Click Start End-User Wizard. Emergency Web Pi downloads and verifies the required Raspberry Pi OS image automatically.",
-  "3. Select catalogs, target SD card, and content mode.",
-  "4. Recommended prebuilt mode downloads content now, so the card works offline immediately; first-boot mode downloads on the Pi with temporary Internet.",
+  "2. The creator opens automatically. Emergency Web Pi downloads and verifies the required Raspberry Pi OS image automatically.",
+  "3. Choose a content profile, the SD card to erase, and an installation method.",
+  "4. Recommended: Prepare everything now. This downloads content now, so the card works offline immediately; the first-boot option downloads on the Pi with temporary Internet.",
   "5. Wait for completion. The app shows the emergency Wi-Fi name and password and saves a printable label on your Desktop.",
   "6. Safely eject the SD card, insert it in the Pi, and power it on.",
   ""

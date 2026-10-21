@@ -1,2437 +1,1905 @@
-$ErrorActionPreference = "Stop"
-$appDisplayName = "Emergency Web Pi"
-$localDataDirectory = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "EmergencyWebPi"
-$workspaceDirectory = Join-Path $localDataDirectory "workspace"
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Emergency Web Pi - one-button SD card creator (WPF).
+.DESCRIPTION
+    Presents a guided creator that prepares a Raspberry Pi SD card with an
+    offline Kiwix library. All imaging, downloading and writing is performed
+    by the existing PowerShell appliance engine; this file is presentation
+    and orchestration only.
+#>
+[CmdletBinding()]
+param()
 
-# Logs live next to the app when that folder is writable; otherwise fall back to AppData.
-$appRootDirectory = $null
-if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
-  $appRootDirectory = if ((Split-Path -Leaf $PSScriptRoot) -ieq "portable") { Split-Path -Parent $PSScriptRoot } else { $PSScriptRoot }
-}
-$logDirectory = $localDataDirectory
-if ($appRootDirectory) {
-  try {
-    $candidateLogDirectory = Join-Path $appRootDirectory "logs"
-    New-Item -ItemType Directory -Path $candidateLogDirectory -Force | Out-Null
-    $probePath = Join-Path $candidateLogDirectory (".probe-{0}" -f [guid]::NewGuid().ToString("N"))
-    Set-Content -Path $probePath -Value "ok"
-    Remove-Item -Path $probePath -Force
-    $logDirectory = $candidateLogDirectory
-  } catch {
-  }
-}
-$logPath = Join-Path $logDirectory ("startup-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+$ErrorActionPreference = 'Stop'
+$script:logTargets = New-Object System.Collections.Generic.List[object]
+$script:buildJob = $null
+$script:buildCancelled = $false
+$script:prebuiltFlow = $false
+$script:baseImageRetryDone = $false
+$script:logFile = $null
 
 function Write-AppLog {
-  param([Parameter(Mandatory = $true)][string]$Message)
-
-  try {
-    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
-    Add-Content -Path $logPath -Value ("[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $Message) -Encoding utf8
-  } catch {
-  }
+    param([Parameter(Mandatory)][string]$Message)
+    $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    $line = "[$stamp] $Message"
+    foreach ($target in $script:logTargets) {
+        try {
+            $target.Dispatcher.Invoke([action] {
+                $target.AppendText($line + [Environment]::NewLine)
+                $target.ScrollToEnd()
+                if ($target.Text.Length -gt 120000) {
+                    $target.Text = $target.Text.Substring($target.Text.Length - 100000)
+                    $target.ScrollToEnd()
+                }
+            }, [System.Threading.DispatcherPriority]::Background)
+        } catch { }
+    }
+    if (-not $script:logFile) {
+        $logDir = Join-Path $script:repoRoot 'logs'
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        $script:logFile = Join-Path $logDir ("startup-" + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.log')
+    }
+    try { Add-Content -Path $script:logFile -Value $line -Encoding UTF8 } catch { }
 }
 
-Write-AppLog "Frontend startup requested."
-Write-AppLog "Log directory resolved: $logDirectory"
-try {
-  Get-ChildItem -Path $logDirectory -Filter "startup-*.log" -File |
+function Add-Log {
+    param([Parameter(Mandatory)][string]$Message)
+    Write-AppLog $Message
+}
+
+function Install-UnhandledExceptionHandlers {
+    [System.AppDomain]::CurrentDomain.add_UnhandledException({ param($sender, $eventArgs)
+        try { Write-AppLog ("Unhandled error: " + $eventArgs.ExceptionObject.ToString()) } catch { }
+    })
+    if ($script:window -and $script:window.Dispatcher) {
+        $script:window.Dispatcher.add_UnhandledException({ param($sender, $eventArgs)
+            try {
+                Write-AppLog ("UI thread exception: " + $eventArgs.Exception.ToString())
+                $eventArgs.Handled = $true
+            } catch { }
+        })
+    }
+}
+
+$script:repoRoot = ''
+foreach ($candidate in @((Split-Path -Parent $PSScriptRoot), $PSScriptRoot, (Get-Location).Path)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path (Join-Path $candidate 'scripts\create-sd-prebuilt.ps1'))) {
+        $script:repoRoot = [System.IO.Path]::GetFullPath($candidate)
+        break
+    }
+}
+if ([string]::IsNullOrWhiteSpace($script:repoRoot)) {
+    $script:repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+}
+$logDirectory = Join-Path $script:repoRoot 'logs'
+if (-not (Test-Path $logDirectory)) { New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null }
+Get-ChildItem -Path $logDirectory -Filter 'startup-*.log' -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -Skip 10 |
-    Remove-Item -Force
-} catch {
-}
-
-$script:startupStage = "Loading WinForms assemblies"
-try {
-  Add-Type -AssemblyName System.Windows.Forms
-  Add-Type -AssemblyName System.Drawing
-  [System.Windows.Forms.Application]::EnableVisualStyles()
-  Write-AppLog "WinForms assemblies loaded."
-} catch {
-  Write-AppLog ("Failed during $script:startupStage: {0}" -f $_.Exception.ToString())
-  exit 1
+    Remove-Item -Force -ErrorAction SilentlyContinue
+$script:uiDirectory = Join-Path $PSScriptRoot 'ui'
+$script:localDataDirectory = Join-Path $env:LOCALAPPDATA 'EmergencyWebPi'
+$script:workspaceDirectory = Join-Path $script:localDataDirectory 'workspace'
+$script:cacheDirectory = Join-Path $script:localDataDirectory 'cache'
+foreach ($dir in @($script:localDataDirectory, $script:workspaceDirectory, $script:cacheDirectory)) {
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 }
 
 try {
-  [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
-  [System.Windows.Forms.Application]::add_ThreadException({
-    param($sender, $eventArgs)
-    Write-AppLog ("UI thread exception: {0}" -f $eventArgs.Exception.ToString())
-    [System.Windows.Forms.MessageBox]::Show(
-      "$($eventArgs.Exception.Message)`n`nDiagnostic log:`n$logPath",
-      $appDisplayName,
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Error
-    ) | Out-Null
-  })
+    Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+    Add-Type -AssemblyName PresentationCore -ErrorAction Stop
+    Add-Type -AssemblyName WindowsBase -ErrorAction Stop
+    Add-Type -AssemblyName System.Xaml -ErrorAction Stop
+    Write-AppLog 'WPF assemblies loaded.'
 } catch {
-  Write-AppLog ("Could not install the UI exception handler: {0}" -f $_.Exception.Message)
-}
-
-trap {
-  Write-AppLog ("Unhandled error: {0}" -f $_.Exception.ToString())
-  [System.Windows.Forms.MessageBox]::Show(
-    "$($_.Exception.Message)`n`nDiagnostic log:`n$logPath",
-    $appDisplayName,
-    [System.Windows.Forms.MessageBoxButtons]::OK,
-    [System.Windows.Forms.MessageBoxIcon]::Error
-  ) | Out-Null
-  exit 1
+    [System.Windows.MessageBox]::Show(
+        'Emergency Web Pi needs the Windows desktop components (WPF) that ship with Windows 10 and 11. Please run this application on a normal Windows desktop installation.',
+        'Emergency Web Pi', 'OK', 'Error') | Out-Null
+    exit 1
 }
 
 function Test-IsAdministrator {
-  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-  return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 if (-not (Test-IsAdministrator)) {
-  if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
-    Write-AppLog "Not elevated; requesting elevation via UAC."
-    $relaunchArgs = ('-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath)
-    try {
-      Start-Process -FilePath "powershell.exe" -ArgumentList $relaunchArgs -Verb RunAs -WindowStyle Hidden | Out-Null
-      exit 0
-    } catch {
-      Write-AppLog "Elevation was declined or failed: $($_.Exception.Message)"
+    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        Write-AppLog 'Not elevated; requesting elevation via UAC.'
+        $relaunchArgs = ('-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath)
+        try {
+            Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $relaunchArgs -Verb RunAs -WindowStyle Hidden | Out-Null
+            exit 0
+        } catch {
+            Write-AppLog ('Elevation was declined or failed: ' + $_.Exception.Message)
+        }
+    } else {
+        Write-AppLog 'Not elevated and no script path available for relaunch.'
     }
-  } else {
-    Write-AppLog "Not elevated and no script path available for relaunch."
-  }
-  [System.Windows.Forms.MessageBox]::Show(
-    "Emergency Web Pi needs administrator permission to write the SD card.`n`nStart EmergencyWebPi.exe again and click Yes when Windows asks for permission.",
-    $appDisplayName,
-    [System.Windows.Forms.MessageBoxButtons]::OK,
-    [System.Windows.Forms.MessageBoxIcon]::Warning
-  ) | Out-Null
-  exit 1
-}
-Write-AppLog "Running elevated."
-
-$candidateDirs = @()
-if ($PSScriptRoot) {
-  $candidateDirs += $PSScriptRoot
-}
-if ($MyInvocation.MyCommand.Path) {
-  $candidateDirs += (Split-Path -Parent $MyInvocation.MyCommand.Path)
-}
-if ($PSCommandPath) {
-  $candidateDirs += (Split-Path -Parent $PSCommandPath)
-}
-if ([System.AppDomain]::CurrentDomain.BaseDirectory) {
-  $candidateDirs += ([System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\\'))
-}
-try {
-  $procPath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
-  if ($procPath) {
-    $candidateDirs += (Split-Path -Parent $procPath)
-  }
-} catch {
-}
-$candidateDirs += (Get-Location).Path
-Write-AppLog "Resolving extracted bundle location."
-
-$repoRoot = ""
-foreach ($dir in ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
-  $direct = Join-Path $dir "scripts/create-sd-dynamic.ps1"
-  if (Test-Path $direct) {
-    $repoRoot = [System.IO.Path]::GetFullPath($dir)
-    break
-  }
-
-  $parent = [System.IO.Path]::GetFullPath((Join-Path $dir ".."))
-  $parentDirect = Join-Path $parent "scripts/create-sd-dynamic.ps1"
-  if (Test-Path $parentDirect) {
-    $repoRoot = $parent
-    break
-  }
-}
-
-if ([string]::IsNullOrWhiteSpace($repoRoot)) {
-  Write-AppLog "Bundled script discovery failed. Checked: $($candidateDirs -join '; ')"
-  $checked = ($candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join "`n"
-  [System.Windows.Forms.MessageBox]::Show(
-    "Unable to locate bundled scripts.`n`nExtract the full release ZIP first, then run EmergencyWebPi.exe from the extracted folder.`n`nChecked paths:`n$checked",
-    $appDisplayName,
-    [System.Windows.Forms.MessageBoxButtons]::OK,
-    [System.Windows.Forms.MessageBoxIcon]::Error
-  ) | Out-Null
-  exit 1
-}
-
-$temporaryRoots = @($env:TEMP, $env:TMP) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') }
-foreach ($temporaryRoot in $temporaryRoots) {
-  if ($repoRoot.StartsWith($temporaryRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
-    Write-AppLog "Refusing to run from temporary extraction path: $repoRoot"
-    [System.Windows.Forms.MessageBox]::Show(
-      "This release is running from a temporary extraction folder. Extract the complete ZIP to a normal folder such as Downloads, then run the app again.",
-      $appDisplayName,
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Warning
-    ) | Out-Null
+    try {
+        [System.Windows.MessageBox]::Show('Emergency Web Pi needs administrator permission to write the SD card. Start EmergencyWebPi.exe again and click Yes when Windows asks for permission.', 'Emergency Web Pi', 'OK', 'Warning') | Out-Null
+    } catch { }
     exit 1
-  }
+}
+Write-AppLog 'Running elevated.'
+
+if ($env:TEMP -and $PSScriptRoot.StartsWith($env:TEMP, [StringComparison]::OrdinalIgnoreCase)) {
+    Write-AppLog 'Refusing to run from a temporary extraction path.'
+    [System.Windows.MessageBox]::Show(
+        'Please extract the Emergency Web Pi folder to a permanent location (for example Documents) before running it. Windows sometimes unpacks ZIP files into a temporary folder.',
+        'Emergency Web Pi', 'OK', 'Warning') | Out-Null
+    exit 1
 }
 
-Write-AppLog "Repository root resolved: $repoRoot"
-
-$appVersion = "unknown"
-$versionPath = Join-Path $repoRoot "docs/VERSION"
-if (Test-Path $versionPath) {
-  $candidateVersion = (Get-Content $versionPath -Raw).Trim()
-  if (-not [string]::IsNullOrWhiteSpace($candidateVersion)) {
-    $appVersion = $candidateVersion
-  }
-}
-Write-AppLog "Application version resolved: $appVersion"
-
-$buildScript = Join-Path $repoRoot "scripts/build-appliance-image.ps1"
-$writeScript = Join-Path $repoRoot "scripts/create-sd.ps1"
-$dynamicScript = Join-Path $repoRoot "scripts/create-sd-dynamic.ps1"
-$prebuiltScript = Join-Path $repoRoot "scripts/create-sd-prebuilt.ps1"
-$script:prebuiltFlow = $false
-
-if (-not (Test-Path $buildScript) -or -not (Test-Path $writeScript) -or -not (Test-Path $dynamicScript) -or -not (Test-Path $prebuiltScript)) {
-  Write-AppLog "Required build scripts are missing from the resolved repository root."
-  [System.Windows.Forms.MessageBox]::Show(
-    "Required scripts are missing. Ensure this portable folder is inside the repository root.",
-    $appDisplayName,
-    [System.Windows.Forms.MessageBoxButtons]::OK,
-    [System.Windows.Forms.MessageBoxIcon]::Error
-  ) | Out-Null
-  exit 1
+Write-AppLog 'Resolving extracted bundle location.'
+$versionFile = Join-Path $script:repoRoot 'docs\VERSION'
+if (Test-Path $versionFile) {
+    $script:appVersion = (Get-Content $versionFile -Raw).Trim()
+} else {
+    $script:appVersion = 'dev'
 }
 
-Write-AppLog "Required builder scripts found."
+$requiredScripts = @(
+    'scripts\create-sd-prebuilt.ps1',
+    'scripts\create-sd-dynamic.ps1',
+    'scripts\build-appliance-image.ps1'
+)
+$missingScripts = @($requiredScripts | Where-Object { -not (Test-Path (Join-Path $script:repoRoot $_)) })
+if ($missingScripts.Count -gt 0) {
+    Write-AppLog ('Required builder scripts found: missing ' + ($missingScripts -join ', '))
+    [System.Windows.MessageBox]::Show(
+        'The Emergency Web Pi bundle is incomplete. Please extract the full ZIP again.',
+        'Emergency Web Pi', 'OK', 'Error') | Out-Null
+    exit 1
+}
+Write-AppLog 'Required builder scripts found.'
+$script:prebuiltScript = Join-Path $script:repoRoot 'scripts\create-sd-prebuilt.ps1'
+$script:dynamicScript = Join-Path $script:repoRoot 'scripts\create-sd-dynamic.ps1'
+$script:buildImageScript = Join-Path $script:repoRoot 'scripts\build-appliance-image.ps1'
 
 function Get-BundledAria2Directory {
-  $candidates = @(
-    (Join-Path $repoRoot "tools\aria2"),
-    (Join-Path $repoRoot "portable\tools\aria2"),
-    (Join-Path $repoRoot "tools")
-  )
-  foreach ($candidate in $candidates) {
-    if (Test-Path (Join-Path $candidate "aria2c.exe")) {
-      return $candidate
+    $candidates = @(
+        (Join-Path $script:repoRoot 'tools\aria2'),
+        (Join-Path $PSScriptRoot 'tools\aria2')
+    )
+    foreach ($candidate in $candidates) {
+        if ((Test-Path (Join-Path $candidate 'aria2c.exe'))) { return $candidate }
     }
-  }
-  return ""
+    return $null
 }
 
-$bundledAria2Dir = Get-BundledAria2Directory
-if (-not [string]::IsNullOrWhiteSpace($bundledAria2Dir)) {
-  if ((($env:PATH -split ";") -notcontains $bundledAria2Dir)) {
-    $env:PATH = "$bundledAria2Dir;" + $env:PATH
-  }
-  Write-AppLog "Using bundled aria2c from: $bundledAria2Dir"
+$aria2Dir = Get-BundledAria2Directory
+if ($aria2Dir) {
+    if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $aria2Dir })) {
+        $env:PATH = $aria2Dir + ';' + $env:PATH
+    }
+    Write-AppLog ('Bundled aria2 found at ' + $aria2Dir)
+} else {
+    Write-AppLog 'Bundled aria2 not found; downloads will use the system fallback.'
 }
 
-function Quote-Arg {
-  param([Parameter(Mandatory = $true)][string]$Value)
-  return '"' + $Value.Replace('"', '""') + '"'
-}
-
-function New-ProcessResult {
-  param(
-    [int]$ExitCode,
-    [string]$Output
-  )
-
-  return [PSCustomObject]@{
-    ExitCode = $ExitCode
-    Output = $Output
-  }
-}
-
-function Invoke-PowerShellScript {
-  param(
-    [Parameter(Mandatory = $true)][string]$ScriptPath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [System.Windows.Forms.Label]$StatusLabel = $null
-  )
-
-  $quotedScript = Quote-Arg -Value $ScriptPath
-  $argLine = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $quotedScript)
-  foreach ($arg in $Arguments) {
-    $argLine += $arg
-  }
-
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = "powershell.exe"
-  $psi.Arguments = ($argLine -join " ")
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.UseShellExecute = $false
-  $psi.CreateNoWindow = $true
-  $psi.WorkingDirectory = $repoRoot
-
-  $proc = New-Object System.Diagnostics.Process
-  $proc.StartInfo = $psi
-
-  [void]$proc.Start()
-  $pendingOut = $proc.StandardOutput.ReadLineAsync()
-  $pendingErr = $proc.StandardError.ReadLineAsync()
-  $combined = New-Object System.Text.StringBuilder
-  $tail = New-Object System.Collections.Generic.List[string]
-  while ($true) {
-    $tasks = @($pendingOut, $pendingErr) | Where-Object { $null -ne $_ }
-    if ($tasks.Count -eq 0 -and $proc.HasExited) { break }
-    if ($tasks.Count -gt 0) {
-      [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$tasks, 150)
-    } else {
-      Start-Sleep -Milliseconds 150
-    }
-    if ($null -ne $pendingOut -and $pendingOut.IsCompleted) {
-      $line = $pendingOut.Result
-      if ($null -ne $line) { [void]$combined.AppendLine($line); $tail.Add($line) } else { $pendingOut = $null }
-      if ($null -ne $pendingOut) { $pendingOut = $proc.StandardOutput.ReadLineAsync() }
-    }
-    if ($null -ne $pendingErr -and $pendingErr.IsCompleted) {
-      $line = $pendingErr.Result
-      if ($null -ne $line) { [void]$combined.AppendLine($line); $tail.Add($line) } else { $pendingErr = $null }
-      if ($null -ne $pendingErr) { $pendingErr = $proc.StandardError.ReadLineAsync() }
-    }
-    if ($null -ne $StatusLabel -and $tail.Count -gt 0) {
-      while ($tail.Count -gt 4) { $tail.RemoveAt(0) }
-      $StatusLabel.Text = ($tail -join "`r`n")
-    }
-    [System.Windows.Forms.Application]::DoEvents()
-  }
-  $proc.WaitForExit()
-
-  return New-ProcessResult -ExitCode $proc.ExitCode -Output $combined.ToString().Trim()
-}
+. (Join-Path $PSScriptRoot 'EmergencyWebPi-Core.ps1')
 
 function To-Absolute {
-  param([string]$PathValue)
-
-  if ([string]::IsNullOrWhiteSpace($PathValue)) {
-    return ""
-  }
-
-  if ([System.IO.Path]::IsPathRooted($PathValue)) {
-    return [System.IO.Path]::GetFullPath($PathValue)
-  }
-
-  return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
+    param([Parameter(Mandatory)][string]$Path)
+    if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
+    return (Join-Path $script:repoRoot $Path)
 }
 
-function Get-PinnedBaseImageInfo {
-  $manifestPath = Join-Path $repoRoot "config/base-image.json"
-  try {
-    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-    if ([string]::IsNullOrWhiteSpace($manifest.name) -or $manifest.installedSizeBytes -le 0) {
-      throw "Pinned base-image manifest is incomplete."
+function Read-XamlWindow {
+    param([Parameter(Mandatory)][string]$RelativePath)
+    $xamlPath = Join-Path $script:uiDirectory $RelativePath
+    $xaml = Get-Content $xamlPath -Raw -Encoding UTF8
+    $reader = New-Object System.Xml.XmlTextReader(New-Object System.IO.StringReader($xaml))
+    try {
+        return [System.Windows.Markup.XamlReader]::Load($reader)
+    } finally {
+        $reader.Close()
     }
-    return $manifest
-  } catch {
-    throw "Unable to read pinned Raspberry Pi OS base-image manifest: $($_.Exception.Message)"
-  }
 }
 
-function Get-ApplianceRequiredBytes {
-  param([Parameter(Mandatory = $true)][Int64]$ContentBytes)
-
-  $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
-  [int64]$oneGiB = 1GB
-  [int64]$minimumZimPartitionBytes = 8GB
-  [int64]$zimPartitionBytes = [Math]::Max(
-    $minimumZimPartitionBytes,
-    [Math]::Ceiling(($ContentBytes + $oneGiB) / $oneGiB) * $oneGiB
-  )
-
-  return $baseBytes + $zimPartitionBytes
-}
-
-function Resolve-ZimFileName {
-  param([Parameter(Mandatory = $true)][string]$Url)
-
-  $name = [System.IO.Path]::GetFileName($Url)
-  if ($name.EndsWith(".torrent", [System.StringComparison]::OrdinalIgnoreCase)) {
-    return $name.Substring(0, $name.Length - 8)
-  }
-
-  return $name
-}
-
-function Get-CatalogItem {
-  param([Parameter(Mandatory = $true)][string]$Url)
-
-  $catalogPath = Join-Path $repoRoot "config/content-catalog.json"
-  try {
-    $catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
-    $fileName = Resolve-ZimFileName -Url $Url
-    $metadata = $catalog.PSObject.Properties[$fileName].Value
-    if ($null -ne $metadata) {
-      $size = [int64]$metadata.estimatedBytes
-      return [PSCustomObject]@{
-        Url = $Url
-        Name = $metadata.name
-        Description = $metadata.description
-        EstimatedBytes = $size
-        LearnMoreUrl = $metadata.learnMoreUrl
-        Display = "{0} - {1}" -f $metadata.name, (Format-Bytes -Bytes $size)
-      }
+function New-MessageDialog {
+    param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error')][string]$Kind = 'Info',
+        [switch]$ShowCancel
+    )
+    $accent = '#0F6B9D'
+    if ($Kind -eq 'Warning') { $accent = '#B45309' }
+    if ($Kind -eq 'Error') { $accent = '#B3261E' }
+    $escapedTitle = [System.Security.SecurityElement]::Escape($Title)
+    $escapedMessage = [System.Security.SecurityElement]::Escape($Message)
+    $cancelButton = ''
+    if ($ShowCancel) {
+        $cancelButton = '<Button x:Name="DlgCancel" Content="Cancel" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" IsCancel="True"/>'
     }
-  } catch {
-  }
+    $xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="$escapedTitle" Height="240" Width="460"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="#FFFFFF" FontFamily="Segoe UI" FontSize="14">
+    <Window.Resources>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="$accent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#1F2933"/>
+            <Setter Property="BorderBrush" Value="#C9D2DC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F4F6F9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Border Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Width="4" Height="28" CornerRadius="2" Background="$accent" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+            <TextBlock Grid.Row="0" Text="$escapedTitle" FontSize="18" FontWeight="SemiBold" Foreground="#1F2933" Margin="12,0,0,12" VerticalAlignment="Center"/>
+            <TextBlock Grid.Row="1" Text="$escapedMessage" TextWrapping="Wrap" Foreground="#3E4C59" VerticalAlignment="Top"/>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                $cancelButton
+                <Button x:Name="DlgOk" Content="OK" Style="{StaticResource PrimaryButton}" IsDefault="True"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
+"@
+    $reader = New-Object System.Xml.XmlTextReader(New-Object System.IO.StringReader($xaml))
+    try {
+        $dialog = [System.Windows.Markup.XamlReader]::Load($reader)
+    } finally {
+        $reader.Close()
+    }
+    $okButton = $dialog.FindName('DlgOk')
+    $script:activeDialog = $dialog
+    $okButton.Add_Click({ $script:activeDialog.Tag = 'OK'; $script:activeDialog.Close() })
+    $cancelButtonControl = $dialog.FindName('DlgCancel')
+    if ($cancelButtonControl) {
+        $cancelButtonControl.Add_Click({ $script:activeDialog.Tag = 'Cancel'; $script:activeDialog.Close() })
+    }
+    $dialog.Tag = $null
+    return $dialog
+}
 
-  return [PSCustomObject]@{
-    Url = $Url
-    Name = Resolve-ZimFileName -Url $Url
-    Description = "Offline library content"
-    EstimatedBytes = [int64]0
-    LearnMoreUrl = "https://kiwix.org/en/catalog/"
-    Display = Resolve-ZimFileName -Url $Url
-  }
+function Show-AppMessage {
+    param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error')][string]$Kind = 'Info'
+    )
+    $dialog = New-MessageDialog -Title $Title -Message $Message -Kind $Kind
+    [void]$dialog.ShowDialog()
+}
+
+function Show-AppConfirm {
+    param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error')][string]$Kind = 'Warning'
+    )
+    $dialog = New-MessageDialog -Title $Title -Message $Message -Kind $Kind -ShowCancel
+    [void]$dialog.ShowDialog()
+    return ($dialog.Tag -eq 'OK')
 }
 
 function Open-LearnMoreUrl {
-  param(
-    [Parameter(Mandatory = $true)][string]$Url,
-    [System.Windows.Forms.IWin32Window]$Owner = $null
-  )
-
-  $uri = $null
-  $validUrl = [System.Uri]::TryCreate($Url, [System.UriKind]::Absolute, [ref]$uri) -and
-    $uri.Scheme -in @("http", "https")
-  if (-not $validUrl) {
-    [System.Windows.Forms.MessageBox]::Show(
-      $Owner,
-      "This library does not have a valid Learn More link.",
-      "Emergency Web Pi",
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Warning
-    ) | Out-Null
-    return
-  }
-
-  try {
-    Start-Process -FilePath $uri.AbsoluteUri -ErrorAction Stop
-  } catch {
-    [System.Windows.Forms.MessageBox]::Show(
-      $Owner,
-      "Could not open the Learn More link: $($_.Exception.Message)",
-      "Emergency Web Pi",
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Error
-    ) | Out-Null
-  }
-}
-
-function Get-ProfileLabel {
-  param([Parameter(Mandatory = $true)][string]$Path)
-
-  switch ([System.IO.Path]::GetFileNameWithoutExtension($Path)) {
-    "emergency-medical-zimlist" { return "Emergency & Medical" }
-    "essential-web-zimlist" { return "Essential Web" }
-    "practical-repair-zimlist" { return "Practical & Repair" }
-    "medical-survival-zimlist" { return "Everything - Complete library" }
-    default { return [System.IO.Path]::GetFileNameWithoutExtension($Path) }
-  }
-}
-
-function Get-ProfileDescription {
-  param([Parameter(Mandatory = $true)][string]$Path)
-
-  switch ([System.IO.Path]::GetFileNameWithoutExtension($Path)) {
-    "emergency-medical-zimlist" { return "First aid, emergency medicine, disaster response, and recovery guidance." }
-    "essential-web-zimlist" { return "English and Dutch Wikipedia for broad everyday reference." }
-    "practical-repair-zimlist" { return "Repair manuals, DIY, mechanics, woodworking, and Raspberry Pi help." }
-    "medical-survival-zimlist" { return "All available emergency, medical, reference, repair, and practical knowledge libraries." }
-    default { return "Offline library collection." }
-  }
-}
-
-function Read-ProfileEntriesFromFile {
-  param([Parameter(Mandatory = $true)][string]$ProfileFile)
-
-  if (-not (Test-Path $ProfileFile)) {
-    throw "Profile file not found: $ProfileFile"
-  }
-
-  $items = @()
-  foreach ($line in Get-Content $ProfileFile) {
-    $trimmed = $line.Trim()
-    if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) {
-      continue
-    }
-    $items += $trimmed
-  }
-
-  if ($items.Count -eq 0) {
-    throw "Profile has no usable entries: $ProfileFile"
-  }
-
-  return $items
-}
-
-function Format-Bytes {
-  param([double]$Bytes)
-
-  if ($Bytes -lt 1KB) { return "{0:N0} B" -f $Bytes }
-  if ($Bytes -lt 1MB) { return "{0:N2} KB" -f ($Bytes / 1KB) }
-  if ($Bytes -lt 1GB) { return "{0:N2} MB" -f ($Bytes / 1MB) }
-  if ($Bytes -lt 1TB) { return "{0:N2} GB" -f ($Bytes / 1GB) }
-  return "{0:N2} TB" -f ($Bytes / 1TB)
-}
-
-function Get-PreflightEstimate {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$Entries,
-    [Parameter(Mandatory = $true)][string]$CacheDir,
-    [string]$BaseImagePath,
-    [bool]$AutoFetch,
-    [string]$ReleaseRepo,
-    [int]$DiskNumber = -1
-  )
-
-  $knownContentBytes = [int64]0
-  $unknownCount = 0
-  $downloadBytes = [int64]0
-  $cachedCount = 0
-  $catalogPath = Join-Path $repoRoot "config/content-catalog.json"
-  $catalog = Get-Content $catalogPath -Raw | ConvertFrom-Json
-
-  $resolvedCache = To-Absolute -PathValue $CacheDir
-  if (-not (Test-Path $resolvedCache)) {
-    New-Item -ItemType Directory -Path $resolvedCache | Out-Null
-  }
-
-  foreach ($url in $Entries) {
-    $name = Resolve-ZimFileName -Url $url
-    $catalogItem = $catalog.PSObject.Properties[$name].Value
-    if ($null -eq $catalogItem -or $catalogItem.estimatedBytes -le 0) {
-      throw "Content catalog is missing a verified size for: $name"
-    }
-    [int64]$estimatedSize = $catalogItem.estimatedBytes
-    $cachePath = Join-Path $resolvedCache $name
-
-    if (Test-Path $cachePath -PathType Leaf) {
-      $size = (Get-Item $cachePath).Length
-      if ($size -gt 0) {
-        $knownContentBytes += $estimatedSize
-        $cachedCount += 1
-        continue
-      }
-    }
-
-    $knownContentBytes += $estimatedSize
-    $downloadBytes += $estimatedSize
-  }
-
-  $baseBytes = [int64]0
-  $resolvedBase = To-Absolute -PathValue $BaseImagePath
-  if (-not [string]::IsNullOrWhiteSpace($resolvedBase) -and (Test-Path $resolvedBase -PathType Leaf)) {
-    $baseBytes = (Get-Item $resolvedBase).Length
-  } else {
-    $baseBytes = [int64](Get-PinnedBaseImageInfo).installedSizeBytes
-  }
-
-  $requiredBytes = Get-ApplianceRequiredBytes -ContentBytes $knownContentBytes
-
-  $diskBytes = $null
-  $fits = $null
-  if ($DiskNumber -ge 0) {
+    param([Parameter(Mandatory)][string]$Url)
     try {
-      $disk = Get-Disk -Number $DiskNumber -ErrorAction Stop
-      $diskBytes = [int64]$disk.Size
-      $fits = ($requiredBytes -le $diskBytes)
+        $uri = [Uri]$Url
+        if ($uri.Scheme -ne 'http' -and $uri.Scheme -ne 'https') { return }
+        Start-Process -FilePath $uri.AbsoluteUri -ErrorAction Stop
     } catch {
-      $diskBytes = $null
-      $fits = $null
+        Write-AppLog ('Could not open link: ' + $_.Exception.Message)
     }
-  }
-
-  return [PSCustomObject]@{
-    BaseBytes = $baseBytes
-    KnownContentBytes = $knownContentBytes
-    DownloadBytes = $downloadBytes
-    UnknownCount = $unknownCount
-    CachedCount = $cachedCount
-    RequiredBytes = $requiredBytes
-    DiskBytes = $diskBytes
-    Fits = $fits
-  }
 }
 
-function Get-WizardRequiredBytes {
-  param([Parameter(Mandatory = $true)]$Items)
-
-  [int64]$contentBytes = 0
-  foreach ($item in $Items) {
-    $contentBytes += [int64]$item.EstimatedBytes
-  }
-
-  return Get-ApplianceRequiredBytes -ContentBytes $contentBytes
+function Select-FilePath {
+    param([string]$Filter = 'All files (*.*)|*.*', [string]$Title = 'Select a file')
+    $dialog = New-Object Microsoft.Win32.OpenFileDialog
+    $dialog.Filter = $Filter
+    $dialog.Title = $Title
+    $dialog.Multiselect = $false
+    if ($dialog.ShowDialog()) { return $dialog.FileName }
+    return $null
 }
 
-$form = New-Object System.Windows.Forms.Form
-$form.Text = $appDisplayName
-$form.Size = New-Object System.Drawing.Size(1080, 920)
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
-$form.MaximizeBox = $false
-$script:normalLaunch = $false
-
-$font = New-Object System.Drawing.Font("Segoe UI", 9)
-$form.Font = $font
-$script:uiSurface = [System.Drawing.Color]::FromArgb(248, 250, 252)
-$script:uiBorder = [System.Drawing.Color]::FromArgb(203, 213, 225)
-$script:uiPrimary = [System.Drawing.Color]::FromArgb(15, 107, 157)
-$script:uiText = [System.Drawing.Color]::FromArgb(31, 41, 55)
-
-function Set-PrimaryButtonStyle {
-  param([Parameter(Mandatory = $true)][System.Windows.Forms.Button]$Button)
-
-  $Button.FlatStyle = "Flat"
-  $Button.FlatAppearance.BorderSize = 0
-  $Button.BackColor = $script:uiPrimary
-  $Button.ForeColor = [System.Drawing.Color]::White
-  $Button.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+function Select-FolderPath {
+    param([string]$Description = 'Select a folder')
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $Description
+    $dialog.ShowNewFolderButton = $true
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dialog.SelectedPath }
+    return $null
 }
 
-function Set-SecondaryButtonStyle {
-  param([Parameter(Mandatory = $true)][System.Windows.Forms.Button]$Button)
-
-  $Button.FlatStyle = "Flat"
-  $Button.FlatAppearance.BorderColor = $script:uiBorder
-  $Button.BackColor = [System.Drawing.Color]::White
-  $Button.ForeColor = $script:uiText
-}
-
-$y = 20
-
-function Add-Label {
-  param([string]$Text, [int]$Top)
-  $label = New-Object System.Windows.Forms.Label
-  $label.Text = $Text
-  $label.Left = 20
-  $label.Top = $Top
-  $label.Width = 220
-  $form.Controls.Add($label)
-  return $label
-}
-
-function Add-TextBox {
-  param([string]$DefaultText, [int]$Top)
-  $tb = New-Object System.Windows.Forms.TextBox
-  $tb.Left = 240
-  $tb.Top = $Top - 3
-  $tb.Width = 700
-  $tb.Text = $DefaultText
-  $form.Controls.Add($tb)
-  return $tb
-}
-
-function Add-BrowseButton {
-  param([int]$Top)
-  $btn = New-Object System.Windows.Forms.Button
-  $btn.Text = "Browse"
-  $btn.Left = 950
-  $btn.Top = $Top - 4
-  $btn.Width = 90
-  $form.Controls.Add($btn)
-  return $btn
-}
-
-$lblBaseImage = Add-Label -Text "Raspberry Pi OS Base Image" -Top $y
-$txtBase = Add-TextBox -DefaultText "" -Top $y
-$btnBase = Add-BrowseButton -Top $y
-$y += 40
-
-$lblManifestPath = Add-Label -Text "Manifest Path" -Top $y
-$txtManifestPath = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "appliance.img.manifest.json") -Top $y
-$btnManifest = Add-BrowseButton -Top $y
-$y += 40
-
-$lblConfig = Add-Label -Text "Config JSON" -Top $y
-$txtConfig = Add-TextBox -DefaultText "config/appliance.example.json" -Top $y
-$btnConfig = Add-BrowseButton -Top $y
-$y += 40
-
-$lblZimDir = Add-Label -Text "ZIM Source Dir" -Top $y
-$txtZimDir = Add-TextBox -DefaultText "" -Top $y
-$btnZimDir = Add-BrowseButton -Top $y
-$y += 40
-
-$lblOutputImage = Add-Label -Text "Output Image Path" -Top $y
-$txtImagePath = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "appliance.img") -Top $y
-$y += 40
-
-$lblProfilePath = Add-Label -Text "Dynamic Profile List (file)" -Top $y
-$txtProfilePath = Add-TextBox -DefaultText "profiles/medical-survival-zimlist.txt" -Top $y
-$btnProfile = Add-BrowseButton -Top $y
-$y += 40
-
-$lblProfilePreset = Add-Label -Text "Profile Preset" -Top $y
-$cmbProfiles = New-Object System.Windows.Forms.ComboBox
-$cmbProfiles.Left = 240
-$cmbProfiles.Top = $y - 3
-$cmbProfiles.Width = 540
-$cmbProfiles.DropDownStyle = "DropDownList"
-$form.Controls.Add($cmbProfiles)
-
-$btnRefreshProfiles = New-Object System.Windows.Forms.Button
-$btnRefreshProfiles.Text = "Refresh"
-$btnRefreshProfiles.Left = 790
-$btnRefreshProfiles.Top = $y - 4
-$btnRefreshProfiles.Width = 70
-$form.Controls.Add($btnRefreshProfiles)
-
-$btnLoadProfile = New-Object System.Windows.Forms.Button
-$btnLoadProfile.Text = "Load Items"
-$btnLoadProfile.Left = 870
-$btnLoadProfile.Top = $y - 4
-$btnLoadProfile.Width = 170
-$form.Controls.Add($btnLoadProfile)
-$y += 40
-
-$lblProfileItems = Add-Label -Text "Profile Items (checked = include)" -Top $y
-$y += 22
-
-$lstProfileItems = New-Object System.Windows.Forms.CheckedListBox
-$lstProfileItems.Left = 240
-$lstProfileItems.Top = $y
-$lstProfileItems.Width = 800
-$lstProfileItems.Height = 130
-$lstProfileItems.CheckOnClick = $false
-$lstProfileItems.DisplayMember = "Display"
-$form.Controls.Add($lstProfileItems)
-$y += 140
-
-$chkUsePicker = New-Object System.Windows.Forms.CheckBox
-$chkUsePicker.Text = "Use checked profile items for dynamic build"
-$chkUsePicker.Left = 240
-$chkUsePicker.Top = $y
-$chkUsePicker.Width = 330
-$chkUsePicker.Checked = $true
-$form.Controls.Add($chkUsePicker)
-
-$lblMainContentInfo = New-Object System.Windows.Forms.Label
-$lblMainContentInfo.Left = 240
-$lblMainContentInfo.Top = $chkUsePicker.Top + 2
-$lblMainContentInfo.Width = 800
-$lblMainContentInfo.Height = 22
-$form.Controls.Add($lblMainContentInfo)
-$y += 30
-
-$lblCacheDir = Add-Label -Text "Dynamic Cache Dir" -Top $y
-$txtCacheDir = Add-TextBox -DefaultText (Join-Path $workspaceDirectory "zim-cache") -Top $y
-$y += 40
-
-$lblDisk = Add-Label -Text "Target Disk Number" -Top $y
-$txtDisk = Add-TextBox -DefaultText "" -Top $y
-$y += 40
-
-$chkAutoFetchBase = New-Object System.Windows.Forms.CheckBox
-$chkAutoFetchBase.Text = "Offline appliance mode requires a local Raspberry Pi OS base image"
-$chkAutoFetchBase.Left = 240
-$chkAutoFetchBase.Top = $y
-$chkAutoFetchBase.Width = 620
-$chkAutoFetchBase.Checked = $false
-$chkAutoFetchBase.Enabled = $false
-$form.Controls.Add($chkAutoFetchBase)
-
-$y += 30
-
-$chkDownloadOnPi = New-Object System.Windows.Forms.CheckBox
-$chkDownloadOnPi.Text = "Recommended: download selected catalogs on first boot"
-$chkDownloadOnPi.Left = 240
-$chkDownloadOnPi.Top = $y
-$chkDownloadOnPi.Width = 700
-$chkDownloadOnPi.Checked = $true
-$chkDownloadOnPi.Enabled = $false
-$form.Controls.Add($chkDownloadOnPi)
-
-$y += 30
-
-$lblReleaseRepo = Add-Label -Text "Release Repo" -Top $y
-$txtReleaseRepo = Add-TextBox -DefaultText "MikeyMan83/emergency-web-pi" -Top $y
-$y += 40
-
-$btnToggleAdvanced = New-Object System.Windows.Forms.Button
-$btnToggleAdvanced.Text = "Show Advanced Settings"
-$btnToggleAdvanced.Left = 20
-$btnToggleAdvanced.Top = $y - 32
-$btnToggleAdvanced.Width = 220
-$form.Controls.Add($btnToggleAdvanced)
-
-$btnCheck = New-Object System.Windows.Forms.Button
-$btnCheck.Text = "Check Prereqs"
-$btnCheck.Left = 20
-$btnCheck.Top = $y
-$btnCheck.Width = 120
-$form.Controls.Add($btnCheck)
-
-$btnWizard = New-Object System.Windows.Forms.Button
-$btnWizard.Text = "Start End-User Wizard"
-$btnWizard.Left = 250
-$btnWizard.Top = $y - 32
-$btnWizard.Width = 160
-$form.Controls.Add($btnWizard)
-
-$btnBuild = New-Object System.Windows.Forms.Button
-$btnBuild.Text = "Build Image"
-$btnBuild.Left = 150
-$btnBuild.Top = $y
-$btnBuild.Width = 120
-$form.Controls.Add($btnBuild)
-
-$btnWrite = New-Object System.Windows.Forms.Button
-$btnWrite.Text = "Write SD"
-$btnWrite.Left = 280
-$btnWrite.Top = $y
-$btnWrite.Width = 120
-$form.Controls.Add($btnWrite)
-
-$btnEstimate = New-Object System.Windows.Forms.Button
-$btnEstimate.Text = "Estimate Size"
-$btnEstimate.Left = 410
-$btnEstimate.Top = $y
-$btnEstimate.Width = 120
-$form.Controls.Add($btnEstimate)
-
-$btnDynamic = New-Object System.Windows.Forms.Button
-$btnDynamic.Text = "Step 3: Build && Flash SD Card"
-$btnDynamic.Left = 540
-$btnDynamic.Top = $y
-$btnDynamic.Width = 240
-$form.Controls.Add($btnDynamic)
-
-$btnDisks = New-Object System.Windows.Forms.Button
-$btnDisks.Text = "Refresh SD Cards"
-$btnDisks.Left = 790
-$btnDisks.Top = $y
-$btnDisks.Width = 130
-$form.Controls.Add($btnDisks)
-
-$btnArtifacts = New-Object System.Windows.Forms.Button
-$btnArtifacts.Text = "Open Workspace"
-$btnArtifacts.Left = 930
-$btnArtifacts.Top = $y
-$btnArtifacts.Width = 110
-$form.Controls.Add($btnArtifacts)
-
-$btnAbout = New-Object System.Windows.Forms.Button
-$btnAbout.Text = "About && Licenses"
-$btnAbout.Left = 150
-$btnAbout.Top = $y
-$btnAbout.Width = 140
-$form.Controls.Add($btnAbout)
-
-$btnExit = New-Object System.Windows.Forms.Button
-$btnExit.Text = "Exit"
-$btnExit.Left = 20
-$btnExit.Top = $y
-$btnExit.Width = 120
-$form.Controls.Add($btnExit)
-
-$y += 50
-
-$lblIntro = New-Object System.Windows.Forms.Label
-$lblIntro.Left = 20
-$lblIntro.Top = 12
-$lblIntro.Width = 1020
-$lblIntro.Height = 32
-$lblIntro.Text = "Pick survival content, pick SD card, then build. Advanced internals are hidden by default."
-$form.Controls.Add($lblIntro)
-
-$lblStep1 = New-Object System.Windows.Forms.Label
-$lblStep1.Left = 20
-$lblStep1.Top = $lblProfilePreset.Top
-$lblStep1.Width = 220
-$lblStep1.Text = "Step 1: Select Content"
-$form.Controls.Add($lblStep1)
-
-$lblStep2 = New-Object System.Windows.Forms.Label
-$lblStep2.Left = 20
-$lblStep2.Top = $lblDisk.Top
-$lblStep2.Width = 220
-$lblStep2.Text = "Step 2: Select SD Card"
-$form.Controls.Add($lblStep2)
-
-$cmbDisks = New-Object System.Windows.Forms.ComboBox
-$cmbDisks.Left = 240
-$cmbDisks.Top = $lblDisk.Top - 3
-$cmbDisks.Width = 540
-$cmbDisks.DropDownStyle = "DropDownList"
-$cmbDisks.DisplayMember = "Label"
-$form.Controls.Add($cmbDisks)
-
-$btnDiskRefreshInline = New-Object System.Windows.Forms.Button
-$btnDiskRefreshInline.Text = "Refresh"
-$btnDiskRefreshInline.Left = 790
-$btnDiskRefreshInline.Top = $lblDisk.Top - 4
-$btnDiskRefreshInline.Width = 90
-$form.Controls.Add($btnDiskRefreshInline)
-
-$lblProfilePreset.Text = "Step 1: Select Content Profile"
-$lblProfileItems.Text = "Catalog Items (checked = include)"
-$lblDisk.Visible = $false
-$txtDisk.Visible = $false
-$lblStep2.Text = "Step 2: Select SD Card"
-$btnEstimate.Text = "Estimate Required SD Size"
-$btnDynamic.Text = "Step 3: Build && Flash SD Card"
-$btnWizard.Text = "Quick Wizard"
-$chkUsePicker.Checked = $true
-$chkUsePicker.Visible = $false
-
-# Default to offline-ready prebuilt content; first-boot download remains available as an advanced option.
-$chkDownloadOnPi.Checked = $false
-
-$advancedControls = @(
-  $lblBaseImage, $txtBase, $btnBase,
-  $lblManifestPath, $txtManifestPath, $btnManifest,
-  $lblConfig, $txtConfig, $btnConfig,
-  $lblZimDir, $txtZimDir, $btnZimDir,
-  $lblOutputImage, $txtImagePath,
-  $lblProfilePath, $txtProfilePath, $btnProfile,
-  $lblCacheDir, $txtCacheDir,
-  $chkAutoFetchBase,
-  $chkDownloadOnPi,
-  $lblReleaseRepo, $txtReleaseRepo,
-  $btnBuild, $btnWrite, $btnCheck
-)
-
-$showAdvanced = $false
-foreach ($ctrl in $advancedControls) {
-  $ctrl.Visible = $showAdvanced
-}
-
-function Set-AdvancedVisibility {
-  param([bool]$Visible)
-
-  $script:showAdvanced = $Visible
-  foreach ($ctrl in $advancedControls) {
-    $ctrl.Visible = $Visible
-  }
-
-  if ($Visible) {
-    $btnToggleAdvanced.Text = "Hide Advanced Settings"
-    Add-Log "Advanced settings shown."
-  } else {
-    $btnToggleAdvanced.Text = "Show Advanced Settings"
-    Add-Log "Advanced settings hidden."
-  }
-}
-
-$txtLog = New-Object System.Windows.Forms.TextBox
-$txtLog.Multiline = $true
-$txtLog.ScrollBars = "Vertical"
-$txtLog.ReadOnly = $true
-$txtLog.Left = 20
-$txtLog.Top = $y
-$txtLog.Width = 1020
-$txtLog.Height = 300
-$form.Controls.Add($txtLog)
-
-function Add-Log {
-  param([string]$Text)
-  $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-  $txtLog.AppendText("[$stamp] $Text`r`n")
-  Write-AppLog $Text
-}
-
-function Move-DeveloperControl {
-  param(
-    [Parameter(Mandatory = $true)][System.Windows.Forms.Control]$Control,
-    [Parameter(Mandatory = $true)][System.Windows.Forms.Control]$Parent,
-    [int]$Left,
-    [int]$Top,
-    [int]$Width = 0
-  )
-
-  $Parent.Controls.Add($Control)
-  $Control.Left = $Left
-  $Control.Top = $Top
-  if ($Width -gt 0) {
-    $Control.Width = $Width
-  }
-  $Control.Visible = $true
-}
-
-function Show-DeveloperTools {
-  Write-AppLog "Opening Developer Tools workspace."
-
-  $developer = New-Object System.Windows.Forms.Form
-  $developer.Text = "$appDisplayName - Developer Tools"
-  $developer.ClientSize = New-Object System.Drawing.Size(1040, 700)
-  $developer.StartPosition = "CenterScreen"
-  $developer.Font = $font
-  $developer.MinimizeBox = $false
-  $developer.BackColor = $script:uiSurface
-  $developer.ForeColor = $script:uiText
-
-  $heading = New-Object System.Windows.Forms.Label
-  $heading.Text = "Developer Tools"
-  $heading.Left = 20
-  $heading.Top = 16
-  $heading.AutoSize = $true
-  $heading.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
-  $developer.Controls.Add($heading)
-
-  $subheading = New-Object System.Windows.Forms.Label
-  $subheading.Text = "Advanced appliance builder, diagnostics, and direct recovery workflows."
-  $subheading.Left = 22
-  $subheading.Top = 48
-  $subheading.AutoSize = $true
-  $developer.Controls.Add($subheading)
-
-  $tabs = New-Object System.Windows.Forms.TabControl
-  $tabs.Left = 20
-  $tabs.Top = 78
-  $tabs.Width = 1000
-  $tabs.Height = 560
-  $tabs.Appearance = "Buttons"
-  $tabs.SizeMode = "Fixed"
-  $tabs.ItemSize = New-Object System.Drawing.Size(120, 30)
-  $developer.Controls.Add($tabs)
-
-  $buildTab = New-Object System.Windows.Forms.TabPage
-  $buildTab.Text = "Build"
-  $contentTab = New-Object System.Windows.Forms.TabPage
-  $contentTab.Text = "Content"
-  $outputTab = New-Object System.Windows.Forms.TabPage
-  $outputTab.Text = "SD & Output"
-  $diagnosticsTab = New-Object System.Windows.Forms.TabPage
-  $diagnosticsTab.Text = "Diagnostics"
-  [void]$tabs.TabPages.AddRange(@($buildTab, $contentTab, $outputTab, $diagnosticsTab))
-
-  $systemLabel = New-Object System.Windows.Forms.Label
-  $systemLabel.Text = "Base system"
-  $systemLabel.Left = 24
-  $systemLabel.Top = 24
-  $systemLabel.AutoSize = $true
-  $systemLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-  $buildTab.Controls.Add($systemLabel)
-
-  $baseInfo = Get-PinnedBaseImageInfo
-  $systemDetail = New-Object System.Windows.Forms.Label
-  $systemDetail.Text = "$($baseInfo.name) ($($baseInfo.architecture), $($baseInfo.releaseDate))`r`nAutomatically managed and SHA-256 verified."
-  $systemDetail.Left = 24
-  $systemDetail.Top = 52
-  $systemDetail.Width = 650
-  $systemDetail.Height = 42
-  $buildTab.Controls.Add($systemDetail)
-
-  Move-DeveloperControl -Control $btnCheck -Parent $buildTab -Left 24 -Top 120 -Width 150
-  $btnCheck.Text = "Check prerequisites"
-  Set-SecondaryButtonStyle -Button $btnCheck
-  Move-DeveloperControl -Control $btnBuild -Parent $buildTab -Left 184 -Top 120 -Width 130
-  $btnBuild.Text = "Build image"
-  Set-PrimaryButtonStyle -Button $btnBuild
-
-  $script:developerStatus = New-Object System.Windows.Forms.Label
-  $script:developerStatus.Left = 24
-  $script:developerStatus.Top = 158
-  $script:developerStatus.Width = 900
-  $script:developerStatus.Height = 26
-  $script:developerStatus.Text = "Prerequisites have not been checked."
-  $buildTab.Controls.Add($script:developerStatus)
-
-  $advancedConfig = New-Object System.Windows.Forms.CheckBox
-  $advancedConfig.Text = "Show raw build configuration"
-  $advancedConfig.Left = 24
-  $advancedConfig.Top = 194
-  $advancedConfig.AutoSize = $true
-  $buildTab.Controls.Add($advancedConfig)
-
-  $buildRawControls = @($lblBaseImage, $txtBase, $btnBase, $lblConfig, $txtConfig, $btnConfig, $lblZimDir, $txtZimDir, $btnZimDir)
-  Move-DeveloperControl -Control $lblBaseImage -Parent $buildTab -Left 24 -Top 230 -Width 180
-  Move-DeveloperControl -Control $txtBase -Parent $buildTab -Left 220 -Top 227 -Width 600
-  Move-DeveloperControl -Control $btnBase -Parent $buildTab -Left 832 -Top 227 -Width 110
-  Move-DeveloperControl -Control $lblConfig -Parent $buildTab -Left 24 -Top 270 -Width 180
-  Move-DeveloperControl -Control $txtConfig -Parent $buildTab -Left 220 -Top 267 -Width 600
-  Move-DeveloperControl -Control $btnConfig -Parent $buildTab -Left 832 -Top 267 -Width 110
-  Move-DeveloperControl -Control $lblZimDir -Parent $buildTab -Left 24 -Top 310 -Width 180
-  Move-DeveloperControl -Control $txtZimDir -Parent $buildTab -Left 220 -Top 307 -Width 600
-  Move-DeveloperControl -Control $btnZimDir -Parent $buildTab -Left 832 -Top 307 -Width 110
-  foreach ($control in $buildRawControls) { $control.Visible = $false }
-  $advancedConfig.Add_CheckedChanged({ foreach ($control in $buildRawControls) { $control.Visible = $advancedConfig.Checked } })
-
-  Move-DeveloperControl -Control $lblProfilePreset -Parent $contentTab -Left 24 -Top 24 -Width 180
-  $lblProfilePreset.Text = "Profile"
-  Move-DeveloperControl -Control $cmbProfiles -Parent $contentTab -Left 220 -Top 21 -Width 520
-  Move-DeveloperControl -Control $btnRefreshProfiles -Parent $contentTab -Left 750 -Top 21 -Width 85
-  Move-DeveloperControl -Control $btnLoadProfile -Parent $contentTab -Left 845 -Top 21 -Width 110
-  Set-SecondaryButtonStyle -Button $btnRefreshProfiles
-  Set-SecondaryButtonStyle -Button $btnLoadProfile
-  Move-DeveloperControl -Control $lblMainContentInfo -Parent $contentTab -Left 220 -Top 60 -Width 720
-  $lblMainContentInfo.AutoSize = $false
-  $lblMainContentInfo.Height = 42
-  Move-DeveloperControl -Control $lstProfileItems -Parent $contentTab -Left 220 -Top 112 -Width 720
-  $lstProfileItems.Height = 270
-  Move-DeveloperControl -Control $lblProfileItems -Parent $contentTab -Left 24 -Top 112 -Width 180
-  $lblProfileItems.Text = "Libraries"
-
-  $contentAdvanced = New-Object System.Windows.Forms.CheckBox
-  $contentAdvanced.Text = "Show profile and cache paths"
-  $contentAdvanced.Left = 220
-  $contentAdvanced.Top = 402
-  $contentAdvanced.AutoSize = $true
-  $contentTab.Controls.Add($contentAdvanced)
-  $contentRawControls = @($lblProfilePath, $txtProfilePath, $btnProfile, $lblCacheDir, $txtCacheDir)
-  Move-DeveloperControl -Control $lblProfilePath -Parent $contentTab -Left 24 -Top 438 -Width 180
-  Move-DeveloperControl -Control $txtProfilePath -Parent $contentTab -Left 220 -Top 435 -Width 720
-  Move-DeveloperControl -Control $btnProfile -Parent $contentTab -Left 220 -Top 472 -Width 110
-  Move-DeveloperControl -Control $lblCacheDir -Parent $contentTab -Left 24 -Top 510 -Width 180
-  Move-DeveloperControl -Control $txtCacheDir -Parent $contentTab -Left 220 -Top 507 -Width 720
-  foreach ($control in $contentRawControls) { $control.Visible = $false }
-  $contentAdvanced.Add_CheckedChanged({ foreach ($control in $contentRawControls) { $control.Visible = $contentAdvanced.Checked } })
-
-  $sdLabel = New-Object System.Windows.Forms.Label
-  $sdLabel.Text = "Target SD card"
-  $sdLabel.Left = 24
-  $sdLabel.Top = 24
-  $sdLabel.AutoSize = $true
-  $sdLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-  $outputTab.Controls.Add($sdLabel)
-  Move-DeveloperControl -Control $cmbDisks -Parent $outputTab -Left 24 -Top 58 -Width 700
-  Move-DeveloperControl -Control $btnDiskRefreshInline -Parent $outputTab -Left 736 -Top 58 -Width 120
-  Set-SecondaryButtonStyle -Button $btnDiskRefreshInline
-  Move-DeveloperControl -Control $btnEstimate -Parent $outputTab -Left 24 -Top 112 -Width 160
-  $btnEstimate.Text = "Estimate capacity"
-  Set-SecondaryButtonStyle -Button $btnEstimate
-  Move-DeveloperControl -Control $btnDynamic -Parent $outputTab -Left 196 -Top 112 -Width 220
-  $btnDynamic.Text = "Build & flash selected SD"
-  Set-PrimaryButtonStyle -Button $btnDynamic
-  Move-DeveloperControl -Control $btnWrite -Parent $outputTab -Left 428 -Top 112 -Width 180
-  $btnWrite.Text = "Write prepared image"
-  Set-SecondaryButtonStyle -Button $btnWrite
-
-  $outputAdvanced = New-Object System.Windows.Forms.CheckBox
-  $outputAdvanced.Text = "Show output and manifest paths"
-  $outputAdvanced.Left = 24
-  $outputAdvanced.Top = 172
-  $outputAdvanced.AutoSize = $true
-  $outputTab.Controls.Add($outputAdvanced)
-  $outputRawControls = @($lblOutputImage, $txtImagePath, $lblManifestPath, $txtManifestPath, $btnManifest)
-  Move-DeveloperControl -Control $lblOutputImage -Parent $outputTab -Left 24 -Top 210 -Width 180
-  Move-DeveloperControl -Control $txtImagePath -Parent $outputTab -Left 220 -Top 207 -Width 720
-  Move-DeveloperControl -Control $lblManifestPath -Parent $outputTab -Left 24 -Top 250 -Width 180
-  Move-DeveloperControl -Control $txtManifestPath -Parent $outputTab -Left 220 -Top 247 -Width 600
-  Move-DeveloperControl -Control $btnManifest -Parent $outputTab -Left 832 -Top 247 -Width 110
-  foreach ($control in $outputRawControls) { $control.Visible = $false }
-  $outputAdvanced.Add_CheckedChanged({ foreach ($control in $outputRawControls) { $control.Visible = $outputAdvanced.Checked } })
-
-  $diagnosticActions = New-Object System.Windows.Forms.Panel
-  $diagnosticActions.Dock = "Bottom"
-  $diagnosticActions.Height = 58
-  $diagnosticsTab.Controls.Add($diagnosticActions)
-  $txtLog.Parent = $diagnosticsTab
-  $txtLog.Dock = "Fill"
-  $txtLog.Visible = $true
-  Move-DeveloperControl -Control $btnArtifacts -Parent $diagnosticActions -Left 16 -Top 14 -Width 150
-  Move-DeveloperControl -Control $btnAbout -Parent $diagnosticActions -Left 176 -Top 14 -Width 150
-  $btnOpenLogs = New-Object System.Windows.Forms.Button
-  $btnOpenLogs.Text = "Open logs"
-  Move-DeveloperControl -Control $btnOpenLogs -Parent $diagnosticActions -Left 336 -Top 14 -Width 150
-  Set-SecondaryButtonStyle -Button $btnOpenLogs
-  $btnOpenLogs.Add_Click({
-    try {
-      Start-Process -FilePath "explorer.exe" -ArgumentList ('"{0}"' -f $logDirectory) | Out-Null
-    } catch {
-      Write-AppLog ("Could not open the log directory: {0}" -f $_.Exception.Message)
-    }
-  })
-  Move-DeveloperControl -Control $btnExit -Parent $diagnosticActions -Left 830 -Top 14 -Width 110
-  $btnExit.Text = "Close tools"
-  $btnArtifacts.Text = "Open workspace"
-  Set-SecondaryButtonStyle -Button $btnArtifacts
-  Set-SecondaryButtonStyle -Button $btnAbout
-  Set-SecondaryButtonStyle -Button $btnExit
-  $btnExit.Add_Click({ $developer.Close() })
-  $diagnosticActions.BringToFront()
-
-  $btnToggleAdvanced.Visible = $false
-  $lblDisk.Visible = $false
-  $txtDisk.Visible = $false
-  $chkAutoFetchBase.Visible = $false
-  $chkDownloadOnPi.Visible = $false
-  $lblReleaseRepo.Visible = $false
-  $txtReleaseRepo.Visible = $false
-
-  [void]$developer.ShowDialog()
-}
-
-function Refresh-ProfilePicker {
-  $profilesDir = Join-Path $repoRoot "profiles"
-  $cmbProfiles.Items.Clear()
-
-  if (-not (Test-Path $profilesDir)) {
-    Add-Log "Profiles directory not found: $profilesDir"
-    return
-  }
-
-  $files = Get-ChildItem -Path $profilesDir -File -Filter "*.txt" | Sort-Object Name
-  foreach ($file in $files) {
-    $relative = $file.FullName.Substring($repoRoot.Length + 1)
-    [void]$cmbProfiles.Items.Add($relative)
-  }
-
-  if ($cmbProfiles.Items.Count -gt 0) {
-    $defaultProfile = "profiles\medical-survival-zimlist.txt"
-    $defaultIndex = $cmbProfiles.Items.IndexOf($defaultProfile)
-    $cmbProfiles.SelectedIndex = if ($defaultIndex -ge 0) { $defaultIndex } else { 0 }
-  }
-}
-
-function Load-SelectedPresetItems {
-  if ($cmbProfiles.SelectedItem -eq $null) {
-    Add-Log "Profile load skipped: no profile preset selected."
-    return
-  }
-
-  try {
-    $profilePath = To-Absolute -PathValue ([string]$cmbProfiles.SelectedItem)
-    $items = Read-ProfileEntriesFromFile -ProfileFile $profilePath
-
-    $lstProfileItems.Items.Clear()
-    foreach ($item in $items) {
-      [void]$lstProfileItems.Items.Add((Get-CatalogItem -Url $item), $true)
-    }
-
-    $txtProfilePath.Text = [string]$cmbProfiles.SelectedItem
-    Update-MainContentSummary
-    Add-Log "Loaded $($items.Count) catalog item(s) from $(Get-ProfileLabel -Path $cmbProfiles.SelectedItem)."
-  } catch {
-    Add-Log "Failed to load preset items: $($_.Exception.Message)"
-  }
-}
-
-function Update-MainContentSummary {
-  [int64]$contentBytes = 0
-  $selectedCount = 0
-  $selectedItems = @()
-  foreach ($checkedIndex in $lstProfileItems.CheckedIndices) {
-    $item = $lstProfileItems.Items[$checkedIndex]
-    $contentBytes += [int64]$item.EstimatedBytes
-    $selectedCount += 1
-    $selectedItems += $item
-  }
-
-  if ($selectedCount -eq 0) {
-    $lblMainContentInfo.Text = "Select at least one library to continue."
-    return
-  }
-
-  $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
-  $profileDescription = Get-ProfileDescription -Path $cmbProfiles.SelectedItem
-  $lblMainContentInfo.Text = "$profileDescription Selected: $selectedCount libraries, $(Format-Bytes -Bytes $contentBytes) content. Estimated minimum SD: $(Format-Bytes -Bytes $requiredBytes)."
-}
-
-function Resolve-EntriesForDynamicRun {
-  if ($chkUsePicker.Checked -and $lstProfileItems.Items.Count -gt 0) {
-    $selected = @()
-    for ($i = 0; $i -lt $lstProfileItems.Items.Count; $i++) {
-      if ($lstProfileItems.GetItemChecked($i)) {
-        $item = $lstProfileItems.Items[$i]
-        if ($item -is [string]) {
-          $selected += $item
-        } else {
-          $selected += [string]$item.Url
+function Start-BuildProcess {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$Arguments,
+        [Parameter(Mandatory)][scriptblock]$OnLine,
+        [Parameter(Mandatory)][scriptblock]$OnComplete
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $FilePath + '" ' + $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    $script:buildJob = $process
+    $script:buildCancelled = $false
+    $script:buildOutputLines = New-Object System.Collections.Generic.List[string]
+    $script:buildErrorLines = New-Object System.Collections.Generic.List[string]
+    $script:buildOnLine = $OnLine
+    $script:buildOnComplete = $OnComplete
+    $script:buildCompleted = @{ Done = $false }
+    $script:buildStdoutTask = $process.StandardOutput.ReadLineAsync()
+    $script:buildStderrTask = $process.StandardError.ReadLineAsync()
+
+    $lineTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $lineTimer.Interval = [TimeSpan]::FromMilliseconds(120)
+    $lineTimer.Add_Tick({
+        param($sender, $eventArgs)
+        $hasOutput = $false
+        while ($true) {
+            $task = $script:buildStdoutTask
+            if ($task -and $task.IsCompleted) {
+                $line = $task.Result
+                $script:buildStdoutTask = if ($null -ne $line) { $script:buildJob.StandardOutput.ReadLineAsync() } else { $null }
+                if ($null -ne $line) {
+                    $script:buildOutputLines.Add($line) | Out-Null
+                    if ($script:buildOnLine) { & $script:buildOnLine $line 'stdout' }
+                    $hasOutput = $true
+                    continue
+                }
+            }
+            break
         }
-      }
-    }
+        while ($true) {
+            $task = $script:buildStderrTask
+            if ($task -and $task.IsCompleted) {
+                $line = $task.Result
+                $script:buildStderrTask = if ($null -ne $line) { $script:buildJob.StandardError.ReadLineAsync() } else { $null }
+                if ($null -ne $line) {
+                    $script:buildErrorLines.Add($line) | Out-Null
+                    if ($script:buildOnLine) { & $script:buildOnLine $line 'stderr' }
+                    $hasOutput = $true
+                    continue
+                }
+            }
+            break
+        }
+        if (-not $hasOutput) {
+            $stdoutDone = ($null -eq $script:buildStdoutTask) -or $script:buildStdoutTask.IsCompleted
+            $stderrDone = ($null -eq $script:buildStderrTask) -or $script:buildStderrTask.IsCompleted
+            if (-not $script:buildCompleted.Done -and $stdoutDone -and $stderrDone -and $script:buildJob.HasExited) {
+                $script:buildCompleted.Done = $true
+                $output = @($script:buildOutputLines) + @($script:buildErrorLines)
+                $sender.Stop()
+                if ($script:buildOnComplete) { & $script:buildOnComplete $script:buildJob.ExitCode $output }
+            }
+        }
+    })
+    $lineTimer.Start()
 
-    if ($selected.Count -eq 0) {
-      throw "No profile items selected in picker."
-    }
-
-    return $selected
-  }
-
-  $profilePath = To-Absolute -PathValue $txtProfilePath.Text
-  return Read-ProfileEntriesFromFile -ProfileFile $profilePath
+    [void]$process.Start()
+    return $process
 }
 
-function Write-GeneratedProfileFile {
-  param([Parameter(Mandatory = $true)][string[]]$Entries)
-
-  $generatedDir = Join-Path $workspaceDirectory "generated-profiles"
-  if (-not (Test-Path $generatedDir)) {
-    New-Item -ItemType Directory -Path $generatedDir | Out-Null
-  }
-
-  $filename = "dynamic-profile-{0}.txt" -f (Get-Date -Format "yyyyMMdd-HHmmss")
-  $outPath = Join-Path $generatedDir $filename
-  Set-Content -Path $outPath -Value $Entries -Encoding utf8
-  return $outPath
+function Stop-BuildProcess {
+    $script:buildCancelled = $true
+    if ($script:buildJob -and -not $script:buildJob.HasExited) {
+        try { $script:buildJob.Kill() } catch { }
+    }
 }
 
-function Log-PreflightEstimate {
-  param([Parameter(Mandatory = $true)]$Estimate)
+$script:app = [PSCustomObject]@{
+    Catalog = $null
+    BaseManifest = $null
+    ProfilePaths = @()
+    SelectedProfilePath = $null
+    ContentMode = 'Prebuilt'
+    RequiredBytes = 0
+    RequiredBytesKnown = $false
+    DiskInventory = @()
+    SelectedDiskNumber = -1
+    SelectedDiskSnapshot = $null
+    Step = 1
+}
+$script:window = $null
+$script:ui = @{}
+$script:profileCards = @{}
+$script:profileIndicators = @{}
+$script:libraryRows = @()
+$script:diskCards = @{}
+$script:stageRows = @{}
+$script:stageOrder = @()
+$script:activeStageId = $null
+$script:marqueeTimer = $null
+$script:elapsedTimer = $null
+$script:buildStartTime = $null
 
-  Add-Log "Preflight estimate:"
-  Add-Log "  Base image:        $(Format-Bytes -Bytes $Estimate.BaseBytes)"
-  Add-Log "  Known content:     $(Format-Bytes -Bytes $Estimate.KnownContentBytes)"
-  Add-Log "  Estimated download:$(Format-Bytes -Bytes $Estimate.DownloadBytes)"
-  Add-Log "  Cached items:      $($Estimate.CachedCount)"
-  Add-Log "  Unknown-size items:$($Estimate.UnknownCount)"
-  Add-Log "  Required SD size:  $(Format-Bytes -Bytes $Estimate.RequiredBytes)"
+function Find-Control {
+    param([Parameter(Mandatory)][string]$Name)
+    if ($script:ui.Contains($Name)) { return $script:ui[$Name] }
+    $control = $script:window.FindName($Name)
+    if ($control) { $script:ui[$Name] = $control }
+    return $control
+}
 
-  if ($null -ne $Estimate.DiskBytes) {
-    Add-Log "  Disk size:         $(Format-Bytes -Bytes $Estimate.DiskBytes)"
-    if ($Estimate.Fits -eq $true) {
-      Add-Log "  Capacity check:    OK"
-    } elseif ($Estimate.Fits -eq $false) {
-      Add-Log "  Capacity check:    TOO SMALL"
+function New-UiText {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [string]$Style = 'BodyText',
+        [string]$Foreground = $null,
+        [double]$FontSize = 0,
+        [double]$Width = 0
+    )
+    $textBlock = New-Object System.Windows.Controls.TextBlock
+    $textBlock.Style = $script:window.FindResource($Style)
+    $textBlock.Text = $Text
+    $textBlock.TextWrapping = 'Wrap'
+    if ($Foreground) { $textBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Foreground)) }
+    if ($FontSize -gt 0) { $textBlock.FontSize = $FontSize }
+    if ($Width -gt 0) { $textBlock.Width = $Width }
+    return $textBlock
+}
+
+function New-Badge {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][string]$Background,
+        [Parameter(Mandatory)][string]$Foreground
+    )
+    $border = New-Object System.Windows.Controls.Border
+    $border.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Background))
+    $border.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $border.Padding = New-Object System.Windows.Thickness(6, 2, 6, 2)
+    $border.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = $Text
+    $label.FontSize = 11
+    $label.FontWeight = 'SemiBold'
+    $label.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Foreground))
+    $border.Child = $label
+    return $border
+}
+
+function Update-StepIndicator {
+    param([Parameter(Mandatory)][int]$Step)
+    $script:app.Step = $Step
+    for ($i = 1; $i -le 4; $i++) {
+        $dot = Find-Control ("StepDot" + $i)
+        $dotText = Find-Control ("StepDotText" + $i)
+        $line = Find-Control ("StepLine" + $i)
+        if ($i -eq $Step) {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0F6B9D'))
+            $dotText.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#FFFFFF'))
+            $dotText.FontWeight = 'Bold'
+        } elseif ($i -lt $Step) {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#1E9E5A'))
+            $dotText.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#FFFFFF'))
+            $dotText.FontWeight = 'Bold'
+        } else {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#FFFFFF'))
+            $dotText.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#5B6B7A'))
+            $dotText.FontWeight = 'Normal'
+        }
+        if ($line -and $i -lt 4) {
+            if ($i -lt $Step) {
+                $line.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#1E9E5A'))
+            } else {
+                $line.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#D5DDE5'))
+            }
+        }
     }
-  }
+}
+
+function Show-Step {
+    param([Parameter(Mandatory)][int]$Step)
+    $pages = @{
+        1 = 'PageContent'
+        2 = 'PageInstall'
+        3 = 'PageSd'
+        4 = 'PageReview'
+        5 = 'PageProgress'
+        6 = 'PageDone'
+        7 = 'PageError'
+    }
+    foreach ($entry in $pages.GetEnumerator()) {
+        $page = Find-Control $entry.Value
+        if ($page) { $page.Visibility = if ([int]$entry.Key -eq $Step) { 'Visible' } else { 'Collapsed' } }
+    }
+    $footer = Find-Control 'FooterBar'
+    if ($footer) { $footer.Visibility = if ($Step -le 4) { 'Visible' } else { 'Collapsed' } }
+    $devButton = Find-Control 'BtnDeveloperTools'
+    if ($devButton) { $devButton.Visibility = if ($Step -le 4) { 'Visible' } else { 'Collapsed' } }
+    if ($Step -le 4) {
+        Update-StepIndicator -Step $Step
+        $backButton = Find-Control 'BtnBack'
+        $continueButton = Find-Control 'BtnContinue'
+        if ($backButton) { $backButton.Visibility = if ($Step -gt 1) { 'Visible' } else { 'Collapsed' } }
+        if ($continueButton) {
+            $continueButton.Content = if ($Step -eq 4) { 'Create Emergency Web Pi' } else { 'Continue' }
+        }
+        Update-ContinueButton
+    }
+}
+
+function Test-ContentSelectionValid {
+    # The library rows mirror the selected profile and the build contains exactly the
+    # checked libraries, so "nothing checked" means nothing would be built.
+    $checkedCount = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked }).Count
+    return ($checkedCount -gt 0)
+}
+
+function Update-ContentSummary {
+    $summary = Find-Control 'CustomizeSummary'
+    if (-not $summary) { return }
+    $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
+    if ($checked.Count -eq 0) {
+        $summary.Text = 'No libraries selected yet.'
+        $script:app.RequiredBytes = 0
+        $script:app.RequiredBytesKnown = $true
+        Update-CapacityPanel
+        Update-ReviewSummary
+        Update-ContinueButton
+        return
+    }
+    $total = Get-SelectionTotals -Items @($checked | ForEach-Object { $_.Item })
+    if ($total.KnownSize) {
+        $summary.Text = ($checked.Count.ToString() + ' libraries selected - about ' + (Format-Bytes $total.TotalBytes) + ' to download')
+    } else {
+        $summary.Text = ($checked.Count.ToString() + ' libraries selected - total size cannot be estimated yet because some sizes are unknown')
+    }
+    $script:app.RequiredBytes = Get-RequiredBytesForLibraries -Items @($checked | ForEach-Object { $_.Item }) -BaseManifest $script:app.BaseManifest
+    $script:app.RequiredBytesKnown = $total.KnownSize
+    Update-CapacityPanel
+    Update-ReviewSummary
+    Update-ContinueButton
+}
+
+function Update-CapacityPanel {
+    $panel = Find-Control 'CapacityPanel'
+    $summary = Find-Control 'CapacitySummary'
+    $fill = Find-Control 'CapacityFill'
+    if (-not $panel -or -not $summary -or -not $fill) { return }
+    if ($script:app.SelectedDiskNumber -lt 0) {
+        $panel.Visibility = 'Collapsed'
+        return
+    }
+    $panel.Visibility = 'Visible'
+    $disk = $script:app.DiskInventory | Where-Object { $_.DiskNumber -eq $script:app.SelectedDiskNumber } | Select-Object -First 1
+    if (-not $disk) {
+        $panel.Visibility = 'Collapsed'
+        return
+    }
+    if (-not $script:app.RequiredBytesKnown) {
+        $summary.Text = 'Card: ' + (Format-Bytes $disk.Size) + '. Required size cannot be estimated yet - some library sizes are unknown.'
+        $fill.Width = 0
+        $fill.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#B45309'))
+        return
+    }
+    $required = $script:app.RequiredBytes
+    $percent = 0
+    if ($disk.Size -gt 0) { $percent = [Math]::Min(100, [Math]::Round(($required * 100.0) / $disk.Size)) }
+    if ($required -gt $disk.Size) {
+        $summary.Text = 'Needs about ' + (Format-Bytes $required) + ' but this card has ' + (Format-Bytes $disk.Size) + '. Choose a larger card.'
+        $fill.Width = 300
+        $fill.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#B3261E'))
+    } else {
+        $summary.Text = 'Needs about ' + (Format-Bytes $required) + ' of ' + (Format-Bytes $disk.Size) + ' on this card.'
+        $fill.Width = [Math]::Max(4, [Math]::Round(300.0 * $percent / 100.0))
+        $fill.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0F6B9D'))
+    }
+}
+
+function New-ProfileCard {
+    param(
+        [Parameter(Mandatory)][string]$ProfilePath,
+        [bool]$Recommended = $false
+    )
+    $name = Get-ProfileDisplayName -ProfilePath $ProfilePath
+    $description = Get-ProfileDescription -ProfilePath $ProfilePath
+    $libraries = @(Get-ProfileLibraries -ProfilePath $ProfilePath -Catalog $script:app.Catalog)
+    $totals = Get-SelectionTotals -Items $libraries
+    $tags = @(Get-ProfileCategoryTags -ProfilePath $ProfilePath)
+
+    $card = New-Object System.Windows.Controls.Primitives.ToggleButton
+    $card.Style = $script:window.FindResource('CardRadio')
+    $card.Width = 440
+    $card.Margin = New-Object System.Windows.Thickness(0, 0, 16, 16)
+    $card.Tag = $ProfilePath
+
+    $panel = New-Object System.Windows.Controls.StackPanel
+    $headerRow = New-Object System.Windows.Controls.DockPanel
+    $headerRow.Margin = New-Object System.Windows.Thickness(0, 0, 0, 8)
+    $titleText = New-UiText $name 'SectionLabel'
+    $titleText.FontSize = 17
+    $headerRow.Children.Add($titleText) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($titleText, 'Left')
+    $indicator = New-Object System.Windows.Controls.Border
+    $indicator.Width = 18
+    $indicator.Height = 18
+    $indicator.CornerRadius = New-Object System.Windows.CornerRadius(9)
+    $indicator.BorderBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#9AA7B4'))
+    $indicator.BorderThickness = New-Object System.Windows.Thickness(2)
+    $indicator.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#FFFFFF'))
+    $indicator.VerticalAlignment = 'Center'
+    $headerRow.Children.Add($indicator) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($indicator, 'Right')
+    $panel.Children.Add($headerRow) | Out-Null
+    if ($Recommended) {
+        $badgeRow = New-Object System.Windows.Controls.StackPanel
+        $badgeRow.Orientation = 'Horizontal'
+        $badgeRow.Margin = New-Object System.Windows.Thickness(0, 0, 0, 8)
+        $badgeRow.Children.Add((New-Badge 'Recommended' '#E3F2EA' '#1E7A46')) | Out-Null
+        $panel.Children.Add($badgeRow) | Out-Null
+    }
+    $descText = New-UiText $description 'BodyText'
+    $descText.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3E4C59'))
+    $panel.Children.Add($descText) | Out-Null
+    $metaText = New-UiText ((Format-Bytes $totals.TotalBytes) + ' - ' + $libraries.Count.ToString() + ' libraries') 'MetaText'
+    $panel.Children.Add($metaText) | Out-Null
+    if ($tags.Count -gt 0) {
+        $tagRow = New-Object System.Windows.Controls.WrapPanel
+        $tagRow.Margin = New-Object System.Windows.Thickness(0, 8, 0, 0)
+        foreach ($tag in $tags) {
+            $tagRow.Children.Add((New-Badge $tag '#EEF2F6' '#3E4C59')) | Out-Null
+        }
+        $panel.Children.Add($tagRow) | Out-Null
+    }
+    $card.Content = $panel
+
+    $script:profileIndicators[$ProfilePath] = $indicator
+    $script:profileCards[$ProfilePath] = $card
+
+    $card.Add_Checked({
+        param($sender, $eventArgs)
+        $path = $sender.Tag
+        $script:app.SelectedProfilePath = $path
+        foreach ($entry in $script:profileCards.GetEnumerator()) {
+            if ($entry.Key -ne $path) { $entry.Value.IsChecked = $false }
+        }
+        $indicator = $script:profileIndicators[$path]
+        if ($indicator) {
+            $indicator.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0F6B9D'))
+            $indicator.BorderBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0F6B9D'))
+        }
+        Rebuild-LibraryRows
+        Update-ContentSummary
+    })
+    $card.Add_Unchecked({
+        param($sender, $eventArgs)
+        $path = $sender.Tag
+        $indicator = $script:profileIndicators[$path]
+        if ($indicator) {
+            $indicator.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#FFFFFF'))
+            $indicator.BorderBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#9AA7B4'))
+        }
+        if ($script:app.SelectedProfilePath -eq $path) {
+            $script:app.SelectedProfilePath = $null
+            Rebuild-LibraryRows
+            Update-ContentSummary
+        }
+    })
+    return $card
+}
+
+function Rebuild-LibraryRows {
+    $listHost = Find-Control 'LibraryListHost'
+    if (-not $listHost) { return }
+    $listHost.Children.Clear()
+    $script:libraryRows = @()
+    $items = @()
+    if ($script:app.SelectedProfilePath) {
+        $items = @(Get-ProfileLibraries -ProfilePath $script:app.SelectedProfilePath -Catalog $script:app.Catalog)
+    }
+    foreach ($item in $items) {
+        $row = New-Object System.Windows.Controls.CheckBox
+        $row.Style = $script:window.FindResource('LibraryCheck')
+        $row.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
+        $row.IsChecked = $true
+
+        $rowPanel = New-Object System.Windows.Controls.StackPanel
+        $topRow = New-Object System.Windows.Controls.DockPanel
+        $topRow.Margin = New-Object System.Windows.Thickness(0, 0, 0, 2)
+        $nameText = New-UiText $item.Name 'BodyText'
+        $nameText.FontWeight = 'SemiBold'
+        $topRow.Children.Add($nameText) | Out-Null
+        [System.Windows.Controls.DockPanel]::SetDock($nameText, 'Left')
+        $sizeText = New-UiText (Format-Bytes $item.EstimatedBytes) 'MetaText'
+        $sizeText.VerticalAlignment = 'Center'
+        $topRow.Children.Add($sizeText) | Out-Null
+        [System.Windows.Controls.DockPanel]::SetDock($sizeText, 'Right')
+        $rowPanel.Children.Add($topRow) | Out-Null
+
+        $descText = New-UiText $item.Description 'MutedText'
+        $descText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 2)
+        $rowPanel.Children.Add($descText) | Out-Null
+
+        if ($item.LearnMoreUrl) {
+            $link = New-Object System.Windows.Controls.TextBlock
+            $hyperlink = New-Object System.Windows.Documents.Hyperlink
+            $hyperlink.NavigateUri = [Uri]$item.LearnMoreUrl
+            $hyperlink.Inlines.Add('Learn more') | Out-Null
+            $link.Inlines.Add($hyperlink) | Out-Null
+            $hyperlink.Style = $script:window.FindResource('LinkText')
+            $link.Tag = $item.LearnMoreUrl
+            $link.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Open-LearnMoreUrl -Url ([string]$sender.Tag) })
+            $rowPanel.Children.Add($link) | Out-Null
+        }
+
+        $row.Content = $rowPanel
+        $entry = [PSCustomObject]@{ CheckBox = $row; Item = $item }
+        $script:libraryRows += ,$entry
+        $row.Add_Checked({ Update-ContentSummary })
+        $row.Add_Unchecked({ Update-ContentSummary })
+        $listHost.Children.Add($row) | Out-Null
+    }
+    $expander = Find-Control 'CustomizeExpander'
+    if ($expander) {
+        $expander.IsExpanded = ($items.Count -gt 0)
+    }
+    Update-ContentSummary
+}
+
+function New-DiskCard {
+    param([Parameter(Mandatory)]$Disk)
+    $info = Get-DriveCardInfo -Disk $Disk
+    $card = New-Object System.Windows.Controls.Primitives.ToggleButton
+    $card.Style = $script:window.FindResource('CardRadio')
+    $card.Margin = New-Object System.Windows.Thickness(0, 0, 0, 12)
+    $card.Tag = $Disk.DiskNumber
+    $card.IsEnabled = $info.Eligible
+
+    $panel = New-Object System.Windows.Controls.StackPanel
+    $headerRow = New-Object System.Windows.Controls.DockPanel
+    $headerRow.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+    $titleText = New-UiText ($info.Title) 'SectionLabel'
+    $titleText.FontSize = 16
+    $headerRow.Children.Add($titleText) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($titleText, 'Left')
+    $pill = New-Badge $info.StatusText $(if ($info.StatusKind -eq 'Ready') { '#E3F2EA' } elseif ($info.StatusKind -eq 'TooSmall') { '#FDECEA' } else { '#FDF3E3' }) $(if ($info.StatusKind -eq 'Ready') { '#1E7A46' } elseif ($info.StatusKind -eq 'TooSmall') { '#B3261E' } else { '#B45309' })
+    $pill.VerticalAlignment = 'Center'
+    $headerRow.Children.Add($pill) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($pill, 'Right')
+    $panel.Children.Add($headerRow) | Out-Null
+
+    $kindText = New-UiText $info.DriveKind 'MutedText'
+    $panel.Children.Add($kindText) | Out-Null
+    $capacityText = New-UiText ('Capacity: ' + (Format-Bytes $Disk.Size)) 'MetaText'
+    $panel.Children.Add($capacityText) | Out-Null
+    if ($info.Detail) {
+        $detailText = New-UiText $info.Detail 'MetaText'
+        $panel.Children.Add($detailText) | Out-Null
+    }
+    $card.Content = $panel
+
+    $script:diskCards[$Disk.DiskNumber] = $card
+
+    $card.Add_Checked({
+        param($sender, $eventArgs)
+        $number = [int]$sender.Tag
+        $script:app.SelectedDiskNumber = $number
+        $script:app.SelectedDiskSnapshot = ($script:app.DiskInventory | Where-Object { $_.DiskNumber -eq $number } | Select-Object -First 1)
+        $warning = Find-Control 'SdWarning'
+        if ($warning) { $warning.Visibility = 'Collapsed' }
+        Update-CapacityPanel
+        Update-ReviewSummary
+        Update-ContinueButton
+    })
+    $card.Add_Unchecked({
+        param($sender, $eventArgs)
+        $number = [int]$sender.Tag
+        if ($script:app.SelectedDiskNumber -eq $number) {
+            $script:app.SelectedDiskNumber = -1
+            $script:app.SelectedDiskSnapshot = $null
+            Update-CapacityPanel
+            Update-ReviewSummary
+            Update-ContinueButton
+        }
+    })
+    return $card
+}
+
+function Refresh-DiskList {
+    $listHost = Find-Control 'DiskListHost'
+    $statusText = Find-Control 'SdStatusText'
+    $emptyState = Find-Control 'SdEmptyState'
+    if (-not $listHost) { return }
+    $listHost.Children.Clear()
+    $script:diskCards = @{}
+
+    $disks = @(Get-SelectableDisks)
+    $script:app.DiskInventory = @($disks)
+    $cards = @()
+    foreach ($disk in $disks) {
+        $cards += ,(New-DiskCard -Disk $disk)
+    }
+    foreach ($card in $cards) { $listHost.Children.Add($card) | Out-Null }
+
+    $selectedStillThere = $false
+    if ($script:app.SelectedDiskNumber -ge 0) {
+        $selected = $disks | Where-Object { $_.DiskNumber -eq $script:app.SelectedDiskNumber } | Select-Object -First 1
+        if ($selected -and $script:app.SelectedDiskSnapshot) {
+            $snapshot = $script:app.SelectedDiskSnapshot
+            if ($selected.Size -eq $snapshot.Size -and $selected.FriendlyName -eq $snapshot.FriendlyName -and $selected.BusType -eq $snapshot.BusType) {
+                $selectedStillThere = $true
+                $script:app.SelectedDiskSnapshot = $selected
+                $card = $script:diskCards[$script:app.SelectedDiskNumber]
+                if ($card) { $card.IsChecked = $true }
+            }
+        }
+    }
+    if (-not $selectedStillThere -and $script:app.SelectedDiskNumber -ge 0) {
+        $script:app.SelectedDiskNumber = -1
+        $script:app.SelectedDiskSnapshot = $null
+        $warning = Find-Control 'SdWarning'
+        if ($warning) {
+            $warning.Text = 'The previously selected card was removed or changed. Please select the SD card again.'
+            $warning.Visibility = 'Visible'
+        }
+    }
+
+    if ($disks.Count -eq 0) {
+        if ($statusText) { $statusText.Text = 'No removable drives were found.' }
+        if ($emptyState) { $emptyState.Visibility = 'Visible' }
+    } else {
+        $eligible = @($disks | Where-Object { (Get-DriveCardInfo -Disk $_).StatusKind -eq 'Ready' })
+        if ($statusText) {
+            if ($eligible.Count -gt 0) {
+                $statusText.Text = ($eligible.Count.ToString() + ' removable drive(s) ready. Select the SD card you want to erase.')
+            } else {
+                $statusText.Text = 'Removable drives were found, but none are ready yet. Check that an SD card is fully inserted.'
+            }
+        }
+        if ($emptyState) { $emptyState.Visibility = 'Collapsed' }
+    }
+    Update-CapacityPanel
+    Update-ReviewSummary
+    Update-ContinueButton
 }
 
 function Get-SelectableDisks {
-  $all = @(Get-Disk | Where-Object { -not $_.IsBoot -and -not $_.IsSystem -and $_.Size -gt 0 })
-  $preferred = @($all | Where-Object { $_.BusType -in @("USB", "SD") })
-  if ($preferred.Count -gt 0) {
-    return @($preferred)
-  }
-  return @($all)
+    $all = @(Get-Disk | Where-Object { $_.Size -gt 0 })
+    foreach ($disk in $all) {
+        $letters = @(Get-Partition -DiskNumber $disk.DiskNumber -ErrorAction SilentlyContinue |
+            Get-Volume -ErrorAction SilentlyContinue |
+            Where-Object { $_.DriveLetter } |
+            ForEach-Object { [string]$_.DriveLetter })
+        Add-Member -InputObject $disk -NotePropertyName DriveLetters -NotePropertyValue $letters -Force -ErrorAction SilentlyContinue
+    }
+    return @($all)
 }
 
-function Refresh-DiskPicker {
-  $cmbDisks.Items.Clear()
-  try {
-    $disks = @(Get-SelectableDisks)
-    foreach ($disk in $disks) {
-      $label = "Disk {0} - {1} - {2} - {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
-      [void]$cmbDisks.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number })
-    }
+function Update-ReviewSummary {
+    $contentControl = Find-Control 'RevContent'
+    $installControl = Find-Control 'RevInstall'
+    $cardControl = Find-Control 'RevCard'
+    $sizeControl = Find-Control 'RevSize'
+    $internetControl = Find-Control 'RevInternet'
+    if (-not $contentControl) { return }
 
-    if ($cmbDisks.Items.Count -gt 0) {
-      $cmbDisks.SelectedIndex = 0
-      $txtDisk.Text = [string]$cmbDisks.SelectedItem.Number
+    # The review must summarize exactly what will be built: the checked libraries.
+    $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
+    if ($checked.Count -gt 0) {
+        $totals = Get-SelectionTotals -Items @($checked | ForEach-Object { $_.Item })
+        if ($script:app.SelectedProfilePath) {
+            $name = Get-ProfileDisplayName -ProfilePath $script:app.SelectedProfilePath
+            $profileLibraries = @(Get-ProfileLibraries -ProfilePath $script:app.SelectedProfilePath -Catalog $script:app.Catalog)
+            $contentControl.Text = $name + ' - ' + $checked.Count.ToString() + ' of ' + $profileLibraries.Count.ToString() + ' libraries, about ' + (Format-Bytes $totals.TotalBytes)
+        } else {
+            $contentControl.Text = 'Custom selection (' + $checked.Count.ToString() + ' libraries, about ' + (Format-Bytes $totals.TotalBytes) + ')'
+        }
     } else {
-      $txtDisk.Text = ""
+        $contentControl.Text = 'No content selected'
     }
-  } catch {
-    $txtDisk.Text = ""
-    Add-Log "Failed to refresh disk picker: $($_.Exception.Message)"
-  }
-}
-
-function Get-SelectedDiskNumber {
-  if ($cmbDisks.SelectedItem -ne $null) {
-    return [int]$cmbDisks.SelectedItem.Number
-  }
-
-  [int]$diskNum = -1
-  if ([int]::TryParse($txtDisk.Text, [ref]$diskNum)) {
-    return $diskNum
-  }
-
-  return -1
-}
-
-function Show-EndUserWizard {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$ProfilePaths,
-    [Parameter(Mandatory = $true)][string]$DefaultProfile,
-    [AllowEmptyCollection()]$Disks = @(),
-    [System.Windows.Forms.IWin32Window]$Owner = $null
-  )
-
-  $Disks = @($Disks)
-  $wizard = New-Object System.Windows.Forms.Form
-  Write-AppLog "Opening end-user wizard."
-  $wizard.Text = "Emergency Web Pi Wizard"
-  $wizard.ClientSize = New-Object System.Drawing.Size(980, 740)
-  $wizard.StartPosition = "CenterParent"
-  $wizard.FormBorderStyle = "FixedDialog"
-  $wizard.MaximizeBox = $false
-  $wizard.MinimizeBox = $false
-  $wizard.Font = $font
-  $wizard.BackColor = $script:uiSurface
-  $wizard.ForeColor = $script:uiText
-
-  $versionLabel = New-Object System.Windows.Forms.Label
-  $versionLabel.Left = 760
-  $versionLabel.Top = 18
-  $versionLabel.Width = 190
-  $versionLabel.Height = 24
-  $versionLabel.Text = "Emergency Web Pi v$appVersion"
-  $versionLabel.TextAlign = [System.Drawing.ContentAlignment]::TopRight
-  $versionLabel.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
-  $wizard.Controls.Add($versionLabel)
-
-  $wy = 16
-
-  $lblIntro = New-Object System.Windows.Forms.Label
-  $lblIntro.Left = 16
-  $lblIntro.Top = $wy
-  $lblIntro.Width = 720
-  $lblIntro.Height = 44
-  $lblIntro.Text = "Choose what you want available offline, how to install it, and which SD card to erase."
-  $lblIntro.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-  $wizard.Controls.Add($lblIntro)
-  $wy += 50
-
-  $lblBase = New-Object System.Windows.Forms.Label
-  $lblBase.Left = 16
-  $lblBase.Top = $wy
-  $lblBase.Width = 850
-  $baseInfo = Get-PinnedBaseImageInfo
-  $lblBase.Text = "Raspberry Pi OS: $($baseInfo.codename) ($($baseInfo.architecture), $($baseInfo.releaseDate)) - automatically downloaded and verified"
-  $lblBase.ForeColor = [System.Drawing.Color]::FromArgb(71, 85, 105)
-  $wizard.Controls.Add($lblBase)
-  $wy += 38
-
-  $lblProfile = New-Object System.Windows.Forms.Label
-  $lblProfile.Left = 16
-  $lblProfile.Top = $wy
-  $lblProfile.Width = 180
-  $lblProfile.Text = "Choose a collection"
-  $wizard.Controls.Add($lblProfile)
-
-  $cmbWizardProfile = New-Object System.Windows.Forms.ComboBox
-  $cmbWizardProfile.Left = 210
-  $cmbWizardProfile.Top = $wy - 3
-  $cmbWizardProfile.Width = 660
-  $cmbWizardProfile.DropDownStyle = "DropDownList"
-  $cmbWizardProfile.DisplayMember = "Label"
-  foreach ($path in $ProfilePaths) {
-    [void]$cmbWizardProfile.Items.Add([PSCustomObject]@{ Label = Get-ProfileLabel -Path $path; Path = $path })
-  }
-  if ($cmbWizardProfile.Items.Count -gt 0) {
-    $defaultIndex = 0
-    for ($index = 0; $index -lt $cmbWizardProfile.Items.Count; $index++) {
-      if ($cmbWizardProfile.Items[$index].Path -eq $DefaultProfile) {
-        $defaultIndex = $index
-        break
-      }
-    }
-    $cmbWizardProfile.SelectedIndex = $defaultIndex
-  }
-  $wizard.Controls.Add($cmbWizardProfile)
-  $wy += 38
-
-  $lblProfileInfo = New-Object System.Windows.Forms.Label
-  $lblProfileInfo.Left = 210
-  $lblProfileInfo.Top = $wy - 2
-  $lblProfileInfo.Width = 740
-  $lblProfileInfo.Height = 42
-  $wizard.Controls.Add($lblProfileInfo)
-  $wy += 40
-
-  $lblItems = New-Object System.Windows.Forms.Label
-  $lblItems.Left = 16
-  $lblItems.Top = $wy
-  $lblItems.Width = 180
-  $lblItems.Text = "Fine-tune libraries"
-  $wizard.Controls.Add($lblItems)
-
-  $lstWizardItems = New-Object System.Windows.Forms.ListView
-  $lstWizardItems.Left = 210
-  $lstWizardItems.Top = $wy
-  $lstWizardItems.Width = 740
-  $lstWizardItems.Height = 210
-  $lstWizardItems.View = [System.Windows.Forms.View]::Details
-  $lstWizardItems.CheckBoxes = $true
-  $lstWizardItems.FullRowSelect = $true
-  $lstWizardItems.MultiSelect = $false
-  [void]$lstWizardItems.Columns.Add("Library", 185)
-  [void]$lstWizardItems.Columns.Add("Size", 100)
-  [void]$lstWizardItems.Columns.Add("Description", 430)
-  $wizard.Controls.Add($lstWizardItems)
-  $wy += 220
-
-  $btnAll = New-Object System.Windows.Forms.Button
-  $btnAll.Text = "Select All"
-  $btnAll.Left = 210
-  $btnAll.Top = $wy
-  $btnAll.Width = 100
-  Set-SecondaryButtonStyle -Button $btnAll
-  $wizard.Controls.Add($btnAll)
-
-  $btnNone = New-Object System.Windows.Forms.Button
-  $btnNone.Text = "Select None"
-  $btnNone.Left = 320
-  $btnNone.Top = $wy
-  $btnNone.Width = 100
-  Set-SecondaryButtonStyle -Button $btnNone
-  $wizard.Controls.Add($btnNone)
-  $wy += 36
-
-  $lblSelection = New-Object System.Windows.Forms.Label
-  $lblSelection.Left = 210
-  $lblSelection.Top = $wy
-  $lblSelection.Width = 740
-  $lblSelection.Height = 24
-  $wizard.Controls.Add($lblSelection)
-  $wy += 28
-
-  $wy += 42
-
-  $lblDisk = New-Object System.Windows.Forms.Label
-  $lblDisk.Left = 16
-  $lblDisk.Top = $wy
-  $lblDisk.Width = 180
-  $lblDisk.Text = "Target SD disk"
-  $wizard.Controls.Add($lblDisk)
-
-  $cmbWizardDisk = New-Object System.Windows.Forms.ComboBox
-  $cmbWizardDisk.Left = 210
-  $cmbWizardDisk.Top = $wy - 3
-  $cmbWizardDisk.Width = 740
-  $cmbWizardDisk.DropDownStyle = "DropDownList"
-  foreach ($disk in $Disks) {
-    $label = "Disk {0} | {1} | {2} | {3}" -f $disk.Number, $disk.FriendlyName, (Format-Bytes -Bytes $disk.Size), $disk.BusType
-    [void]$cmbWizardDisk.Items.Add([PSCustomObject]@{ Label = $label; Number = [int]$disk.Number; Size = [int64]$disk.Size })
-  }
-  if ($cmbWizardDisk.Items.Count -gt 0) {
-    $cmbWizardDisk.SelectedIndex = 0
-  }
-  $cmbWizardDisk.DisplayMember = "Label"
-  $wizard.Controls.Add($cmbWizardDisk)
-  $wy += 38
-
-  $lblMode = New-Object System.Windows.Forms.Label
-  $lblMode.Left = 16
-  $lblMode.Top = $wy
-  $lblMode.Width = 180
-  $lblMode.Text = "Content installation"
-  $wizard.Controls.Add($lblMode)
-
-  $optPrebuilt = New-Object System.Windows.Forms.RadioButton
-  $optPrebuilt.Left = 210
-  $optPrebuilt.Top = $wy
-  $optPrebuilt.Width = 740
-  $optPrebuilt.Checked = $true
-  $optPrebuilt.Text = "Recommended: prebuild content now for an offline-ready first boot"
-  $wizard.Controls.Add($optPrebuilt)
-  $wy += 24
-
-  $optFirstBoot = New-Object System.Windows.Forms.RadioButton
-  $optFirstBoot.Left = 210
-  $optFirstBoot.Top = $wy
-  $optFirstBoot.Width = 740
-  $optFirstBoot.Text = "Advanced: download selected content on first boot (Internet required once)"
-  $wizard.Controls.Add($optFirstBoot)
-  $wy += 28
-
-  $btnCancelWizard = New-Object System.Windows.Forms.Button
-  $btnCancelWizard.Text = "Cancel"
-  $btnCancelWizard.Left = 630
-  $btnCancelWizard.Top = $wy
-  $btnCancelWizard.Width = 100
-  Set-SecondaryButtonStyle -Button $btnCancelWizard
-  $wizard.Controls.Add($btnCancelWizard)
-
-    $btnDeveloperTools = New-Object System.Windows.Forms.Button
-    $btnDeveloperTools.Text = "Developer Tools"
-    $btnDeveloperTools.Left = 740
-    $btnDeveloperTools.Top = $wy
-    $btnDeveloperTools.Width = 110
-    Set-SecondaryButtonStyle -Button $btnDeveloperTools
-    $wizard.Controls.Add($btnDeveloperTools)
-
-  $btnStartWizard = New-Object System.Windows.Forms.Button
-  $btnStartWizard.Text = "Estimate + Build"
-  $btnStartWizard.Left = 830
-  $btnStartWizard.Top = $wy
-  $btnStartWizard.Width = 120
-  Set-PrimaryButtonStyle -Button $btnStartWizard
-  $wizard.Controls.Add($btnStartWizard)
-
-  $script:wizardResult = $null
-  $script:developerToolsRequested = $false
-  $script:wizardCancelClicked = $false
-
-  $loadItems = {
-    $lstWizardItems.Items.Clear()
-    if ($cmbWizardProfile.SelectedItem -eq $null) {
-      return
-    }
-
-    try {
-      $profileAbs = To-Absolute -PathValue ([string]$cmbWizardProfile.SelectedItem.Path)
-      $entries = Read-ProfileEntriesFromFile -ProfileFile $profileAbs
-      [int64]$profileBytes = 0
-      foreach ($entry in $entries) {
-        $item = Get-CatalogItem -Url $entry
-        $profileBytes += [int64]$item.EstimatedBytes
-        $row = New-Object System.Windows.Forms.ListViewItem
-        $row.Text = $item.Name
-        [void]$row.SubItems.Add((Format-Bytes -Bytes $item.EstimatedBytes))
-        [void]$row.SubItems.Add($item.Description)
-        $row.Tag = $item
-        $row.Checked = $true
-        [void]$lstWizardItems.Items.Add($row)
-      }
-      $lblProfileInfo.Text = "$(Get-ProfileDescription -Path $cmbWizardProfile.SelectedItem.Path) Includes $($entries.Count) libraries, about $(Format-Bytes -Bytes $profileBytes). Uncheck anything you do not need below."
-    } catch {
-      [System.Windows.Forms.MessageBox]::Show(
-        "Failed to load catalog preset: $($_.Exception.Message)",
-        "Wizard",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-      ) | Out-Null
-    }
-  }
-
-  $cmbWizardProfile.add_SelectedIndexChanged($loadItems)
-  & $loadItems
-
-  $updateSelection = {
-    [int64]$selectedBytes = 0
-    $selectedCount = 0
-    $selectedItems = @()
-    foreach ($row in $lstWizardItems.CheckedItems) {
-      $item = $row.Tag
-      $selectedBytes += [int64]$item.EstimatedBytes
-      $selectedCount += 1
-      $selectedItems += $item
-    }
-    $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
-    $capacityText = "Required SD: $(Format-Bytes -Bytes $requiredBytes)"
-    if ($cmbWizardDisk.SelectedItem -ne $null) {
-      $diskBytes = [int64]$cmbWizardDisk.SelectedItem.Size
-      $state = if ($diskBytes -ge $requiredBytes) { "enough space" } else { "too small" }
-      $capacityText += " | Selected card: $(Format-Bytes -Bytes $diskBytes) ($state)"
-    }
-    $lblSelection.Text = "Selected: $selectedCount items, $(Format-Bytes -Bytes $selectedBytes) | $capacityText"
-  }
-
-  $lstWizardItems.Add_ItemCheck({
-    if ($wizard.IsHandleCreated) {
-      $wizard.BeginInvoke([System.Action]$updateSelection) | Out-Null
+    if ($script:app.ContentMode -eq 'Prebuilt') {
+        $installControl.Text = 'Prepare everything now - the library is downloaded on this PC and stored on the card. No Internet is needed on first boot.'
+        $internetControl.Text = 'Internet on this PC: required to download the library now.'
     } else {
-      & $updateSelection
+        $installControl.Text = 'Download content on first boot - the Pi downloads the library when it has Internet, then keeps it offline.'
+        $internetControl.Text = 'Internet on the Raspberry Pi: required once, on first boot.'
     }
-  })
-  $cmbWizardDisk.Add_SelectedIndexChanged({ & $updateSelection })
-  & $updateSelection
-
-  $btnAll.Add_Click({
-    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
-      $lstWizardItems.Items[$i].Checked = $true
+    if ($script:app.SelectedDiskNumber -ge 0) {
+        $disk = $script:app.DiskInventory | Where-Object { $_.DiskNumber -eq $script:app.SelectedDiskNumber } | Select-Object -First 1
+        if ($disk) {
+            $cardControl.Text = $disk.FriendlyName + ' - disk ' + $disk.DiskNumber.ToString() + ' - ' + (Format-Bytes $disk.Size)
+        } else {
+            $cardControl.Text = 'No card selected'
+        }
+    } else {
+        $cardControl.Text = 'No card selected'
     }
-  })
-
-  $btnNone.Add_Click({
-    for ($i = 0; $i -lt $lstWizardItems.Items.Count; $i++) {
-      $lstWizardItems.Items[$i].Checked = $false
+    if ($script:app.RequiredBytesKnown) {
+        $sizeControl.Text = 'About ' + (Format-Bytes $script:app.RequiredBytes) + ' will be written to the card.'
+    } else {
+        $sizeControl.Text = 'The final size cannot be estimated yet because some library sizes are unknown.'
     }
-  })
-
-  $btnCancelWizard.Add_Click({
-    $script:wizardCancelClicked = $true
-    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $wizard.Close()
-  })
-
-  $btnDeveloperTools.Add_Click({
-    Write-AppLog "Developer Tools requested from wizard."
-    $script:developerToolsRequested = $true
-    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $wizard.Close()
-  })
-
-  $btnStartWizard.Add_Click({
-    Write-AppLog "Wizard build requested."
-    try {
-    if ($cmbWizardProfile.SelectedItem -eq $null) {
-      [System.Windows.Forms.MessageBox]::Show("Select a catalog preset.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-
-    if ($cmbWizardDisk.SelectedItem -eq $null) {
-      [System.Windows.Forms.MessageBox]::Show("No writable SD card is detected. Insert an SD card, then click Refresh SD Cards from Developer Tools or restart the wizard.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-
-    $entries = @()
-    foreach ($row in $lstWizardItems.CheckedItems) {
-      if ($null -ne $row.Tag) {
-        $entries += [string]$row.Tag.Url
-      }
-    }
-
-    if ($entries.Count -eq 0) {
-      [System.Windows.Forms.MessageBox]::Show("Select at least one catalog item.", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-
-    $selectedItems = @()
-    foreach ($row in $lstWizardItems.CheckedItems) {
-      $selectedItems += $row.Tag
-    }
-    $requiredBytes = Get-WizardRequiredBytes -Items $selectedItems
-    if ([int64]$cmbWizardDisk.SelectedItem.Size -lt $requiredBytes) {
-      [System.Windows.Forms.MessageBox]::Show("This SD card is too small. Choose a card with at least $(Format-Bytes -Bytes $requiredBytes).", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
-    }
-
-    $script:wizardResult = [PSCustomObject]@{
-      Profile = [string]$cmbWizardProfile.SelectedItem.Path
-      Entries = $entries
-      DiskNumber = [int]$cmbWizardDisk.SelectedItem.Number
-      ContentMode = if ($optPrebuilt.Checked) { "Prebuilt" } else { "FirstBoot" }
-    }
-
-    $wizard.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $wizard.Close()
-    } catch {
-      Write-AppLog ("Wizard build button threw: {0}" -f $_.Exception.ToString())
-      $script:wizardResult = $null
-      [System.Windows.Forms.MessageBox]::Show("Something went wrong starting the build: $($_.Exception.Message)`n`nDiagnostic log:`n$logPath", "Wizard", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-    }
-  })
-
-  $wizard.Add_FormClosing({
-    if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
-      $script:wizardCancelClicked = $true
-    }
-    Write-AppLog ("Wizard form closing: CloseReason={0}, DialogResult={1}" -f $_.CloseReason, $wizard.DialogResult)
-  })
-
-  $dialogResult = if ($null -eq $Owner) { $wizard.ShowDialog() } else { $wizard.ShowDialog($Owner) }
-  Write-AppLog ("End-user wizard closed with result: {0}" -f $dialogResult)
-  Write-AppLog ("End-user wizard result object present: {0}" -f ($null -ne $script:wizardResult))
-  if ($script:developerToolsRequested) {
-    return [PSCustomObject]@{ DeveloperTools = $true }
-  }
-  if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK) {
-    return $null
-  }
-
-  return $script:wizardResult
 }
 
-$btnBase.Add_Click({
-  $dlg = New-Object System.Windows.Forms.OpenFileDialog
-  $dlg.Filter = "Image Files (*.img)|*.img|All Files (*.*)|*.*"
-  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $txtBase.Text = $dlg.FileName
-  }
-})
+function Update-ContinueButton {
+    $button = Find-Control 'BtnContinue'
+    if (-not $button) { return }
+    $step = $script:app.Step
+    $enabled = $true
+    if ($step -eq 1) { $enabled = Test-ContentSelectionValid }
+    if ($step -eq 3) {
+        $enabled = ($script:app.SelectedDiskNumber -ge 0)
+        if ($enabled -and $script:app.SelectedDiskSnapshot) {
+            $disk = $script:app.DiskInventory | Where-Object { $_.DiskNumber -eq $script:app.SelectedDiskNumber } | Select-Object -First 1
+            if (-not $disk) { $enabled = $false }
+        }
+    }
+    if ($step -eq 4) {
+        $enabled = (Test-ContentSelectionValid) -and ($script:app.SelectedDiskNumber -ge 0)
+    }
+    $button.IsEnabled = $enabled
+}
 
-$btnManifest.Add_Click({
-  $dlg = New-Object System.Windows.Forms.OpenFileDialog
-  $dlg.Filter = "Manifest Files (*.json)|*.json|All Files (*.*)|*.*"
-  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $txtManifestPath.Text = $dlg.FileName
-  }
-})
+function Set-BuildBarPercent {
+    param([int]$Percent)
+    $fill = Find-Control 'BuildBarFill'
+    if (-not $fill) { return }
+    $track = Find-Control 'BuildBarTrack'
+    $trackWidth = 560
+    if ($track) { $trackWidth = [Math]::Max(100, $track.ActualWidth) }
+    $fill.Width = [Math]::Max(0, [Math]::Min($trackWidth, [Math]::Round($trackWidth * $Percent / 100.0)))
+    $fill.Visibility = 'Visible'
+}
 
-$btnConfig.Add_Click({
-  $dlg = New-Object System.Windows.Forms.OpenFileDialog
-  $dlg.Filter = "JSON Files (*.json)|*.json|All Files (*.*)|*.*"
-  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $txtConfig.Text = $dlg.FileName
-  }
-})
+function Start-Marquee {
+    $fill = Find-Control 'BuildBarFill'
+    if (-not $fill) { return }
+    if (-not $script:marqueeTimer) {
+        $script:marqueeTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:marqueeTimer.Interval = [TimeSpan]::FromMilliseconds(60)
+        $script:marqueeState = @{ Offset = 0.0; Direction = 1 }
+        $script:marqueeTimer.Add_Tick({
+            $track = Find-Control 'BuildBarTrack'
+            $trackWidth = 560
+            if ($track) { $trackWidth = [Math]::Max(100, $track.ActualWidth) }
+            $fill = Find-Control 'BuildBarFill'
+            if (-not $fill) { return }
+            $barWidth = [Math]::Max(60, [Math]::Round($trackWidth * 0.25))
+            $script:marqueeState.Offset = $script:marqueeState.Offset + 14 * $script:marqueeState.Direction
+            if ($script:marqueeState.Offset -ge ($trackWidth - $barWidth)) { $script:marqueeState.Offset = $trackWidth - $barWidth; $script:marqueeState.Direction = -1 }
+            if ($script:marqueeState.Offset -le 0) { $script:marqueeState.Offset = 0; $script:marqueeState.Direction = 1 }
+            $fill.Width = $barWidth
+            $fill.Visibility = 'Visible'
+            [System.Windows.Controls.Canvas]::SetLeft($fill, $script:marqueeState.Offset)
+        })
+    }
+    $fill.Visibility = 'Visible'
+    $script:marqueeTimer.Start()
+}
 
-$btnZimDir.Add_Click({
-  $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $txtZimDir.Text = $dlg.SelectedPath
-  }
-})
+function Stop-Marquee {
+    if ($script:marqueeTimer) { $script:marqueeTimer.Stop() }
+    $fill = Find-Control 'BuildBarFill'
+    if ($fill) { [System.Windows.Controls.Canvas]::SetLeft($fill, 0) }
+}
 
-$btnProfile.Add_Click({
-  $dlg = New-Object System.Windows.Forms.OpenFileDialog
-  $dlg.Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*"
-  if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $txtProfilePath.Text = $dlg.FileName
-  }
-})
+function Set-CurrentStage {
+    param([Parameter(Mandatory)][string]$StageId)
+    $script:activeStageId = $StageId
+    foreach ($entry in $script:stageRows.GetEnumerator()) {
+        $row = $entry.Value
+        $dot = $row.Dot
+        $label = $row.Label
+        if ($entry.Key -eq $StageId) {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0F6B9D'))
+            $label.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#1F2933'))
+            $label.FontWeight = 'SemiBold'
+        } elseif ($script:stageOrder.IndexOf($entry.Key) -lt $script:stageOrder.IndexOf($StageId)) {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#1E9E5A'))
+            $label.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#5B6B7A'))
+            $label.FontWeight = 'Normal'
+        } else {
+            $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#D5DDE5'))
+            $label.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#9AA7B4'))
+            $label.FontWeight = 'Normal'
+        }
+    }
+    $marqueeStages = @('write', 'partition', 'copy', 'verify')
+    if ($marqueeStages -contains $StageId) { Start-Marquee } else { Stop-Marquee }
+    $cancelButton = Find-Control 'BtnCancel'
+    if ($cancelButton) {
+        $safe = Test-WriterCancellationSafe -StageId $StageId
+        $cancelButton.IsEnabled = $safe
+        $cancelNote = Find-Control 'CancelNote'
+        if ($cancelNote) {
+            if ($safe) {
+                $cancelNote.Text = 'You can cancel now. The SD card will not be written.'
+                $cancelNote.Visibility = 'Visible'
+            } else {
+                $cancelNote.Text = 'The SD card is being written. Do not remove the card and do not close the application.'
+                $cancelNote.Visibility = 'Visible'
+            }
+        }
+    }
+}
 
-$btnRefreshProfiles.Add_Click({
-  Refresh-ProfilePicker
-  Add-Log "Profile preset list refreshed."
-})
+function Set-ProgressStatus {
+    param([string]$Text)
+    $status = Find-Control 'ProgressStatus'
+    if ($status -and $Text) { $status.Text = $Text }
+}
 
-$cmbDisks.Add_SelectedIndexChanged({
-  if ($cmbDisks.SelectedItem -ne $null) {
-    $txtDisk.Text = [string]$cmbDisks.SelectedItem.Number
-  }
-  Update-MainContentSummary
-})
+function Build-StageList {
+    $listHost = Find-Control 'StageListHost'
+    if (-not $listHost) { return }
+    $listHost.Children.Clear()
+    $script:stageRows = @{}
+    $script:stageOrder = @()
+    $stages = @(Get-CreatorStages -ContentMode $script:app.ContentMode)
+    foreach ($stage in $stages) {
+        $row = New-Object System.Windows.Controls.DockPanel
+        $row.Margin = New-Object System.Windows.Thickness(0, 0, 0, 10)
+        $dot = New-Object System.Windows.Controls.Border
+        $dot.Width = 12
+        $dot.Height = 12
+        $dot.CornerRadius = New-Object System.Windows.CornerRadius(6)
+        $dot.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#D5DDE5'))
+        $dot.VerticalAlignment = 'Top'
+        $dot.Margin = New-Object System.Windows.Thickness(0, 4, 10, 0)
+        $label = New-UiText $stage.Label 'BodyText'
+        $label.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#9AA7B4'))
+        $row.Children.Add($dot) | Out-Null
+        [System.Windows.Controls.DockPanel]::SetDock($dot, 'Left')
+        $row.Children.Add($label) | Out-Null
+        $entry = [PSCustomObject]@{ Dot = $dot; Label = $label }
+        $script:stageRows[$stage.Id] = $entry
+        $script:stageOrder += ,$stage.Id
+        $listHost.Children.Add($row) | Out-Null
+    }
+}
 
-$lstProfileItems.Add_ItemCheck({
-  if ($form.IsHandleCreated) {
-    $form.BeginInvoke([System.Action]{ Update-MainContentSummary }) | Out-Null
-  } else {
-    Update-MainContentSummary
-  }
-})
+function Write-GeneratedProfileFile {
+    param([Parameter(Mandatory)][string[]]$Entries)
+    $dir = Join-Path $script:workspaceDirectory 'generated-profiles'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $path = Join-Path $dir ('creator-profile-' + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.txt')
+    Set-Content -Path $path -Value $Entries -Encoding ASCII
+    return $path
+}
 
-$btnDiskRefreshInline.Add_Click({
-  Refresh-DiskPicker
-  Add-Log "SD card list refreshed."
-})
+function Test-SelectedDiskStillValid {
+    if ($script:app.SelectedDiskNumber -lt 0) { return $false }
+    $snapshot = $script:app.SelectedDiskSnapshot
+    if (-not $snapshot) { return $false }
+    $current = @(Get-SelectableDisks) | Where-Object { $_.DiskNumber -eq $script:app.SelectedDiskNumber } | Select-Object -First 1
+    if (-not $current) { return $false }
+    if ($current.Size -ne $snapshot.Size) { return $false }
+    if ($current.FriendlyName -ne $snapshot.FriendlyName) { return $false }
+    if ($current.BusType -ne $snapshot.BusType) { return $false }
+    $info = Get-DriveCardInfo -Disk $current
+    if ($info.StatusKind -ne 'Ready') { return $false }
+    $script:app.SelectedDiskSnapshot = $current
+    return $true
+}
 
-$btnToggleAdvanced.Add_Click({
-  Set-AdvancedVisibility -Visible (-not $showAdvanced)
-})
+function Start-CreatorBuild {
+    # The build contains exactly the checked libraries; the creator gates Continue on
+    # at least one checked library, so an empty selection is an error, not a fallback.
+    $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
+    if ($checked.Count -eq 0) {
+        Show-AppMessage -Kind Error -Title 'No content selected' -Message 'Please choose a content profile or select at least one library.'
+        return
+    }
+    $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
+    $profilePath = Write-GeneratedProfileFile -Entries $entries
+    Write-AppLog ('Creator build starting with ' + $entries.Count.ToString() + ' libraries.')
+
+    $estimate = Get-PreflightEstimate -Items @($checked | ForEach-Object { $_.Item }) -BaseManifest $script:app.BaseManifest
+    $script:app.RequiredBytes = $estimate.RequiredBytes
+    $script:app.RequiredBytesKnown = $true
+
+    $wifi = New-WifiCredentials
+    $configDir = Join-Path $script:workspaceDirectory 'config'
+    if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
+    $configPath = Join-Path $configDir 'dynamic-appliance-config.json'
+    Set-Content -Path $configPath -Value (New-ApplianceConfigJsonText -Wifi $wifi) -Encoding UTF8
+
+    $arguments = New-PrebuiltBuildArguments `
+        -DiskNumber $script:app.SelectedDiskNumber `
+        -ProfilePath $profilePath `
+        -DeviceConfigPath $configPath `
+        -ContentDir $script:cacheDirectory `
+        -WorkspaceDir $script:workspaceDirectory `
+        -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+        -ContentMode $script:app.ContentMode
+
+    $script:prebuiltFlow = $true
+    $scriptToRun = $prebuiltScript
+    $script:buildStartTime = Get-Date
+    Show-Step -Step 5
+    Build-StageList
+    Set-CurrentStage -StageId 'requirements'
+    Set-ProgressStatus -Text 'Checking requirements.'
+    $titleControl = Find-Control 'ProgressTitle'
+    if ($titleControl) { $titleControl.Text = 'Creating your Emergency Web Pi' }
+    $elapsedControl = Find-Control 'ProgressElapsed'
+    if ($elapsedControl) { $elapsedControl.Text = '' }
+    Start-ElapsedTimer
+
+    $onLine = {
+        param([string]$Line, [string]$Stream)
+        Add-Log $Line
+        $stage = Get-StageForWriterLine -Line $Line
+        if ($stage) { Set-CurrentStage -StageId $stage }
+        $percent = Get-DownloadPercentForLine -Line $Line
+        if ($null -ne $percent) {
+            Set-BuildBarPercent -Percent $percent
+            Set-ProgressStatus -Text ('Downloading content - ' + $percent.ToString() + '%')
+        } elseif ($stage -ne 'download') {
+            $statusMap = @{
+                'system' = 'Preparing system files.'
+                'write' = 'Writing the appliance to the SD card. Do not remove the card.'
+                'partition' = 'Preparing the SD card.'
+                'copy' = 'Copying files to the SD card.'
+                'verify' = 'Verifying the SD card.'
+                'done' = 'Finished.'
+            }
+            if ($statusMap.Contains($stage)) { Set-ProgressStatus -Text $statusMap[$stage] }
+        }
+    }
+    $onComplete = {
+        param([int]$ExitCode, [string[]]$Output)
+        Complete-CreatorBuild -ExitCode $ExitCode -Output $Output
+    }
+    Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+}
+
+function Start-ElapsedTimer {
+    if ($script:elapsedTimer) { $script:elapsedTimer.Stop() }
+    $script:elapsedTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $script:elapsedTimer.Interval = [TimeSpan]::FromSeconds(1)
+    $script:elapsedTimer.Add_Tick({
+        if (-not $script:buildStartTime) { return }
+        $elapsed = (Get-Date) - $script:buildStartTime
+        $text = 'Elapsed: '
+        if ($elapsed.TotalHours -ge 1) {
+            $text += ([int]$elapsed.TotalHours).ToString() + ' h ' + $elapsed.Minutes.ToString('00') + ' min'
+        } elseif ($elapsed.TotalMinutes -ge 1) {
+            $text += ([int]$elapsed.TotalMinutes).ToString() + ' min ' + $elapsed.Seconds.ToString('00') + ' s'
+        } else {
+            $text += $elapsed.Seconds.ToString() + ' s'
+        }
+        $control = Find-Control 'ProgressElapsed'
+        if ($control) { $control.Text = $text }
+    })
+    $script:elapsedTimer.Start()
+}
+
+function Complete-CreatorBuild {
+    param([int]$ExitCode, [string[]]$Output)
+    if ($script:elapsedTimer) { $script:elapsedTimer.Stop() }
+    Stop-Marquee
+    $outputText = @($Output) -join [Environment]::NewLine
+    if ($ExitCode -eq 0) {
+        Set-CurrentStage -StageId 'done'
+        Set-ProgressStatus -Text 'Finished.'
+        Set-BuildBarPercent -Percent 100
+        Show-Completion
+        return
+    }
+    if ($outputText.Contains('BASE_IMAGE_UNAVAILABLE') -and -not $script:baseImageRetryDone) {
+        $script:baseImageRetryDone = $true
+        Write-AppLog 'Base image download failed; asking the user for a local image.'
+        $imagePath = Select-FilePath -Filter 'Raspberry Pi image (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All files (*.*)|*.*' -Title 'Select the Raspberry Pi OS image'
+        if ($imagePath) {
+            Write-AppLog ('Retrying with local base image: ' + $imagePath)
+            $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
+            $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
+            $profilePath = Write-GeneratedProfileFile -Entries $entries
+            $wifiConfigPath = Join-Path $script:workspaceDirectory 'config\dynamic-appliance-config.json'
+            $arguments = New-PrebuiltBuildArguments `
+                -DiskNumber $script:app.SelectedDiskNumber `
+                -ProfilePath $profilePath `
+                -DeviceConfigPath $wifiConfigPath `
+                -ContentDir $script:cacheDirectory `
+                -WorkspaceDir $script:workspaceDirectory `
+                -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+                -ContentMode $script:app.ContentMode `
+                -ImagePathOverride $imagePath
+            $onLine = {
+                param([string]$Line, [string]$Stream)
+                Add-Log $Line
+                $stage = Get-StageForWriterLine -Line $Line
+                if ($stage) { Set-CurrentStage -StageId $stage }
+                $percent = Get-DownloadPercentForLine -Line $Line
+                if ($null -ne $percent) { Set-BuildBarPercent -Percent $percent }
+            }
+            $onComplete = {
+                param([int]$RetryExitCode, [string[]]$RetryOutput)
+                Complete-CreatorBuild -ExitCode $RetryExitCode -Output $RetryOutput
+            }
+            Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+            return
+        }
+    }
+    Show-BuildError -ExitCode $ExitCode -Output $outputText -Cancelled $script:buildCancelled
+}
+
+function Get-ApplianceWifiSsid {
+    $configPath = Join-Path $script:workspaceDirectory 'config\dynamic-appliance-config.json'
+    if (Test-Path $configPath) {
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($config.ap.ssid) { return [string]$config.ap.ssid }
+    }
+    return 'EmergencyWebPi'
+}
+
+function Get-ApplianceWifiPassword {
+    $configPath = Join-Path $script:workspaceDirectory 'config\dynamic-appliance-config.json'
+    if (Test-Path $configPath) {
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($config.ap.password) { return [string]$config.ap.password }
+    }
+    return ''
+}
+
+function Show-BuildError {
+    param(
+        [int]$ExitCode,
+        [string]$Output,
+        [bool]$Cancelled
+    )
+    Stop-Marquee
+    $titleControl = Find-Control 'ProgressTitle'
+    if ($titleControl) { $titleControl.Text = 'The Emergency Web Pi could not be created' }
+    $messageControl = Find-Control 'ErrorMessage'
+    $hintControl = Find-Control 'ErrorHint'
+    $detailsExpander = Find-Control 'ErrorDetailsExpander'
+    $logTail = Find-Control 'ErrorLogTail'
+    if ($detailsExpander) { $detailsExpander.IsExpanded = $false }
+    if ($logTail) {
+        $script:logTargets.Remove($logTail) | Out-Null
+        $script:logTargets.Add($logTail)
+    }
+
+    if ($Cancelled) {
+        if ($messageControl) { $messageControl.Text = 'The operation was cancelled.' }
+        if ($hintControl) { $hintControl.Text = 'No changes were made to the SD card. You can go back and try again.' }
+    } elseif ($Output.Contains('BASE_IMAGE_UNAVAILABLE')) {
+        if ($messageControl) { $messageControl.Text = 'The Raspberry Pi base image could not be downloaded.' }
+        if ($hintControl) { $hintControl.Text = 'Check the Internet connection on this PC, then try again. The SD card was not modified.' }
+    } elseif ($Output.Contains('Refusing to write')) {
+        if ($messageControl) { $messageControl.Text = 'The selected drive was rejected by the safety checks.' }
+        if ($hintControl) { $hintControl.Text = 'Make sure you selected a removable SD card, then try again.' }
+    } elseif ($Output -match 'not enough free space|insufficient') {
+        if ($messageControl) { $messageControl.Text = 'The SD card does not have enough free space.' }
+        if ($hintControl) { $hintControl.Text = 'Use a larger SD card, or choose a smaller content profile.' }
+    } elseif ($Output.Contains('aria2c.exe')) {
+        if ($messageControl) { $messageControl.Text = 'The download tool (aria2) is missing from the bundle.' }
+        if ($hintControl) { $hintControl.Text = 'Please extract the full Emergency Web Pi ZIP again and run it from the extracted folder.' }
+    } else {
+        if ($messageControl) { $messageControl.Text = 'Something went wrong while creating the Emergency Web Pi (exit code ' + $ExitCode.ToString() + ').' }
+        if ($hintControl) { $hintControl.Text = 'The SD card may be partially written - it is not safe to use. Review the log below, then try again with the same or a different card.' }
+    }
+    Show-Step -Step 7
+}
+
+function Show-Completion {
+    if ($script:elapsedTimer) { $script:elapsedTimer.Stop() }
+    $ssid = Get-ApplianceWifiSsid
+    $password = Get-ApplianceWifiPassword
+    $ssidControl = Find-Control 'WifiSsidText'
+    $passwordControl = Find-Control 'WifiPasswordText'
+    if ($ssidControl) { $ssidControl.Text = $ssid }
+    if ($passwordControl) { $passwordControl.Text = $password }
+    $labelPath = Join-Path $script:workspaceDirectory 'EmergencyWebPi-WiFi-Label.html'
+    try {
+        $html = New-WifiLabelHtml -Ssid $ssid -Password $password -Version $script:appVersion
+        Set-Content -Path $labelPath -Value $html -Encoding UTF8
+        $note = Find-Control 'WifiLabelNote'
+        if ($note) { $note.Text = 'A Wi-Fi label was saved to: ' + $labelPath }
+    } catch {
+        Write-AppLog ('Could not write the Wi-Fi label: ' + $_.Exception.Message)
+    }
+    Show-Step -Step 6
+}
+
+function New-CreatorWindow {
+    $window = Read-XamlWindow -RelativePath 'MainWindow.xaml'
+    $script:window = $window
+    Install-UnhandledExceptionHandlers
+
+    $versionText = Find-Control 'VersionText'
+    if ($versionText) { $versionText.Text = 'Version ' + $script:appVersion }
+
+    $profileHost = Find-Control 'ProfileCardHost'
+    if ($profileHost) {
+        $order = @('emergency-medical', 'essential-web', 'practical-repair', 'medical-survival')
+        $sortedPaths = @($script:app.ProfilePaths | Sort-Object {
+            $sortName = Get-ProfileKey -ProfilePath $_
+            $sortIndex = $order.IndexOf($sortName)
+            if ($sortIndex -lt 0) { 99 } else { $sortIndex }
+        })
+        foreach ($profilePath in $sortedPaths) {
+            $card = New-ProfileCard -ProfilePath $profilePath -Recommended ((Get-ProfileKey -ProfilePath $profilePath) -eq 'medical-survival')
+            $profileHost.Children.Add($card) | Out-Null
+        }
+    }
+
+    $optPrebuilt = Find-Control 'OptPrebuilt'
+    $optFirstBoot = Find-Control 'OptFirstBoot'
+    if ($optPrebuilt) {
+        $optPrebuilt.IsChecked = ($script:app.ContentMode -eq 'Prebuilt')
+        $optPrebuilt.Add_Checked({
+            $script:app.ContentMode = 'Prebuilt'
+            $peer = Find-Control 'OptFirstBoot'
+            if ($peer -and $peer.IsChecked) { $peer.IsChecked = $false }
+            Update-ReviewSummary
+        })
+    }
+    if ($optFirstBoot) {
+        $optFirstBoot.IsChecked = ($script:app.ContentMode -eq 'FirstBoot')
+        $optFirstBoot.Add_Checked({
+            $script:app.ContentMode = 'FirstBoot'
+            $peer = Find-Control 'OptPrebuilt'
+            if ($peer -and $peer.IsChecked) { $peer.IsChecked = $false }
+            Update-ReviewSummary
+        })
+    }
+    if ($optPrebuilt -and $optFirstBoot) {
+        $optPrebuilt.Add_Unchecked({
+            $peer = Find-Control 'OptFirstBoot'
+            if (-not $peer -or -not $peer.IsChecked) {
+                $self = Find-Control 'OptPrebuilt'
+                if ($self) { $self.IsChecked = $true }
+            }
+        })
+        $optFirstBoot.Add_Unchecked({
+            $peer = Find-Control 'OptPrebuilt'
+            if (-not $peer -or -not $peer.IsChecked) {
+                $fallback = Find-Control 'OptPrebuilt'
+                if ($fallback) { $fallback.IsChecked = $true }
+            }
+        })
+    }
+
+    $btnSelectAll = Find-Control 'BtnSelectAll'
+    $btnSelectNone = Find-Control 'BtnSelectNone'
+    if ($btnSelectAll) { $btnSelectAll.Add_Click({ foreach ($row in $script:libraryRows) { $row.CheckBox.IsChecked = $true } }) }
+    if ($btnSelectNone) { $btnSelectNone.Add_Click({ foreach ($row in $script:libraryRows) { $row.CheckBox.IsChecked = $false } }) }
+
+    $btnRefreshDisks = Find-Control 'BtnRefreshDisks'
+    if ($btnRefreshDisks) { $btnRefreshDisks.Add_Click({ Refresh-DiskList }) }
+    $sdEmptyRefresh = Find-Control 'SdEmptyRefresh'
+    if ($sdEmptyRefresh) { $sdEmptyRefresh.Add_Click({ Refresh-DiskList }) }
+
+    $btnBack = Find-Control 'BtnBack'
+    if ($btnBack) {
+        $btnBack.Add_Click({
+            if ($script:app.Step -gt 1 -and $script:app.Step -le 4) { Show-Step -Step ($script:app.Step - 1) }
+        })
+    }
+    $btnContinue = Find-Control 'BtnContinue'
+    if ($btnContinue) {
+        $btnContinue.Add_Click({
+            $step = $script:app.Step
+            if ($step -eq 1) {
+                if (-not (Test-ContentSelectionValid)) { return }
+                Show-Step -Step 2
+            } elseif ($step -eq 2) {
+                Show-Step -Step 3
+                Refresh-DiskList
+            } elseif ($step -eq 3) {
+                if ($script:app.SelectedDiskNumber -lt 0) { return }
+                Update-ReviewSummary
+                Show-Step -Step 4
+            } elseif ($step -eq 4) {
+                Invoke-ReviewConfirmed
+            }
+        })
+    }
+
+    $btnCancel = Find-Control 'BtnCancel'
+    if ($btnCancel) {
+        $btnCancel.Add_Click({
+            if (Test-WriterCancellationSafe -StageId $script:activeStageId) {
+                $confirmed = Show-AppConfirm -Kind Warning -Title 'Cancel the operation?' -Message 'The operation will stop. The SD card has not been written yet, so it is safe to cancel now.'
+                if ($confirmed) { Stop-BuildProcess }
+            }
+        })
+    }
+
+    $detailsExpander = Find-Control 'DetailsExpander'
+    if ($detailsExpander) {
+        $logTail = Find-Control 'LogTail'
+        if ($logTail) { $script:logTargets.Add($logTail) }
+    }
+
+    $btnShowInstructions = Find-Control 'BtnShowInstructions'
+    if ($btnShowInstructions) {
+        $btnShowInstructions.Add_Click({
+            Show-AppMessage -Kind Info -Title 'Set up your Emergency Web Pi' -Message ("1. Safely eject the SD card from this PC.`n2. Insert it into the Raspberry Pi.`n3. Power on the Pi.`n4. Connect to the Wi-Fi network named '" + (Get-ApplianceWifiSsid) + "'.`n5. Open a browser and go to the local offline library shown on the welcome page.")
+        })
+    }
+    $btnViewLog = Find-Control 'BtnViewLog'
+    if ($btnViewLog) {
+        $btnViewLog.Add_Click({
+            $expander = Find-Control 'DetailsExpander'
+            if ($expander) { $expander.IsExpanded = $true }
+        })
+    }
+    $btnFinish = Find-Control 'BtnFinish'
+    if ($btnFinish) { $btnFinish.Add_Click({ $script:window.Close() }) }
+    $btnBackToReview = Find-Control 'BtnBackToReview'
+    if ($btnBackToReview) {
+        $btnBackToReview.Add_Click({
+            $script:prebuiltFlow = $false
+            Refresh-DiskList
+            Show-Step -Step 4
+        })
+    }
+    $btnErrorFinish = Find-Control 'BtnErrorFinish'
+    if ($btnErrorFinish) { $btnErrorFinish.Add_Click({ $script:window.Close() }) }
+
+    $btnDeveloperTools = Find-Control 'BtnDeveloperTools'
+    if ($btnDeveloperTools) { $btnDeveloperTools.Add_Click({ Show-DeveloperTools }) }
+
+    $recommendedPath = $script:app.ProfilePaths | Where-Object { (Get-ProfileKey -ProfilePath $_) -eq 'medical-survival' } | Select-Object -First 1
+    if (-not $recommendedPath -and $script:app.ProfilePaths.Count -gt 0) { $recommendedPath = $script:app.ProfilePaths[0] }
+    if ($recommendedPath) {
+        $card = $script:profileCards[$recommendedPath]
+        if ($card) { $card.IsChecked = $true }
+    }
+
+    Show-Step -Step 1
+    Refresh-DiskList
+    return $window
+}
+
+function Invoke-ReviewConfirmed {
+    if (-not (Test-SelectedDiskStillValid)) {
+        Show-AppMessage -Kind Warning -Title 'SD card changed' -Message 'The selected SD card is no longer available or has changed. Please select it again.'
+        Refresh-DiskList
+        Show-Step -Step 3
+        return
+    }
+    $disk = $script:app.SelectedDiskSnapshot
+    $dialog = Read-XamlWindow -RelativePath 'ConfirmErase.xaml'
+    $title = $dialog.FindName('ConfirmTitle')
+    $device = $dialog.FindName('ConfirmDevice')
+    $body = $dialog.FindName('ConfirmBody')
+    if ($title) { $title.Text = 'Erase ' + $disk.FriendlyName + '?' }
+    if ($device) { $device.Text = $disk.FriendlyName + ' - disk ' + $disk.DiskNumber.ToString() + ' - ' + (Format-Bytes $disk.Size) }
+    if ($body) {
+        $body.Text = 'Creating the Emergency Web Pi will erase ALL existing data on this card. This cannot be undone. Make sure you selected the correct SD card.'
+    }
+    $cancelButton = $dialog.FindName('BtnConfirmCancel')
+    $eraseButton = $dialog.FindName('BtnConfirmErase')
+    $script:activeDialog = $dialog
+    $cancelButton.Add_Click({ $script:activeDialog.Tag = 'Cancel'; $script:activeDialog.Close() })
+    $eraseButton.Add_Click({ $script:activeDialog.Tag = 'Erase'; $script:activeDialog.Close() })
+    $dialog.Owner = $script:window
+    [void]$dialog.ShowDialog()
+    if ($dialog.Tag -ne 'Erase') { return }
+    if (-not (Test-SelectedDiskStillValid)) {
+        Show-AppMessage -Kind Warning -Title 'SD card changed' -Message 'The selected SD card changed again. Please select it once more.'
+        Refresh-DiskList
+        Show-Step -Step 3
+        return
+    }
+    Start-CreatorBuild
+}
 
 function Test-WslReady {
-  try {
-    $distros = & wsl -l -q 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      if (-not $distros -or [string]::IsNullOrWhiteSpace(($distros | Out-String))) {
+    try {
+        $wsl = Get-Command wsl -ErrorAction Stop
+        $status = & wsl --status 2>$null
+        if ($status -match 'Default Distribution:\s*Ubuntu') { return $true }
+        $list = & wsl --list --quiet 2>$null
+        if ($list -match 'Ubuntu') { return $true }
         return $false
-      }
-      return $true
+    } catch {
+        return $false
     }
-  } catch {
-  }
-  return $false
 }
 
 function Show-WslSetupGuidance {
-  Add-Log "WSL is not ready; showing setup guidance before anything is downloaded."
-  Write-AppLog "WSL preflight failed; showing setup guidance."
-  $choice = [System.Windows.Forms.MessageBox]::Show(
-    "Emergency Web Pi needs one extra Windows feature (Windows Subsystem for Linux) to prepare the SD card, and it is missing or not set up yet.`n`nClick OK to install it automatically now. This can take a few minutes, and Windows will ask you to restart your PC afterwards. After the restart, run Emergency Web Pi again.`n`nIf you prefer to install it yourself, open PowerShell as administrator and run: wsl --install -d Ubuntu",
-    $appDisplayName,
-    [System.Windows.Forms.MessageBoxButtons]::OKCancel,
-    [System.Windows.Forms.MessageBoxIcon]::Information
-  )
-  if ($choice -eq [System.Windows.Forms.DialogResult]::OK) {
-    try {
-      Start-Process -FilePath "wsl.exe" -ArgumentList "--install -d Ubuntu" | Out-Null
-      Write-AppLog "WSL installation started."
-    } catch {
-      Write-AppLog ("WSL installation could not start: {0}" -f $_.Exception.Message)
-      [System.Windows.Forms.MessageBox]::Show(
-        "Windows could not start the WSL installation automatically.`n`nOpen PowerShell as administrator and run: wsl --install -d Ubuntu`n`nThen restart your PC and run Emergency Web Pi again.",
-        $appDisplayName,
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Warning
-      ) | Out-Null
-    }
-  }
-  if ($script:normalLaunch) {
-    $form.Close()
-  }
+    Show-AppMessage -Kind Info -Title 'Set up WSL for the developer build' -Message ("The developer (dynamic) build runs inside WSL with Ubuntu. To set it up, open a Windows terminal as administrator and run:`n`n    wsl --install -d Ubuntu`n`nThen restart the PC and run this step again.")
 }
 
-function Start-EndUserFlow {
-  $script:prebuiltFlow = $true
-
-  try {
-    if ($cmbProfiles.Items.Count -eq 0) {
-      Refresh-ProfilePicker
+function Resolve-DevEntries {
+    $profilePath = $script:app.SelectedProfilePath
+    $items = @()
+    if ($profilePath) {
+        $items = @(Get-ProfileLibraries -ProfilePath $profilePath -Catalog $script:app.Catalog)
+    } else {
+        $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
+        $items = @($checked | ForEach-Object { $_.Item })
     }
-
-    $profilePaths = @()
-    foreach ($item in $cmbProfiles.Items) {
-      $profilePaths += [string]$item
-    }
-
-    if ($profilePaths.Count -eq 0) {
-      Add-Log "Wizard aborted: no profile presets found in profiles/*.txt"
-      if ($script:normalLaunch) {
-        [System.Windows.Forms.MessageBox]::Show("No content presets were found in the profiles folder. Re-extract the complete release ZIP and try again.`n`nDiagnostic log:`n$logPath", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      }
-      return
-    }
-
-    $disks = Get-SelectableDisks
-    if ($disks.Count -eq 0) {
-      Add-Log "No writable target disks found; opening wizard so the user can review content or open Developer Tools."
-    }
-
-    $defaultProfile = if ($cmbProfiles.SelectedItem) { [string]$cmbProfiles.SelectedItem } else { $profilePaths[0] }
-    $wizardOwner = if ($script:normalLaunch) { $null } else { $form }
-    $selection = Show-EndUserWizard -ProfilePaths $profilePaths -DefaultProfile $defaultProfile -Disks $disks -Owner $wizardOwner
-    if ($null -eq $selection) {
-      Add-Log "Wizard cancelled."
-      Write-AppLog "Wizard returned no selection. See previous lines for the dialog result and result-object state."
-      if ($script:normalLaunch) {
-        if (-not $script:wizardCancelClicked) {
-          [System.Windows.Forms.MessageBox]::Show("The setup window closed before the build could start. Nothing was written to the SD card.`n`nDiagnostic log:`n$logPath", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-                  }
-                  $form.Close()
-      }
-      return
-    }
-
-    if ($selection.DeveloperTools) {
-      $script:prebuiltFlow = $false
-      $script:normalLaunch = $false
-      Show-DeveloperTools
-      $form.Close()
-      return
-    }
-
-    $txtDisk.Text = [string]$selection.DiskNumber
-    for ($i = 0; $i -lt $cmbDisks.Items.Count; $i++) {
-      if ([int]$cmbDisks.Items[$i].Number -eq [int]$selection.DiskNumber) {
-        $cmbDisks.SelectedIndex = $i
-        break
-      }
-    }
-    $chkAutoFetchBase.Checked = $false
-    $chkDownloadOnPi.Checked = $selection.ContentMode -eq "FirstBoot"
-    $chkUsePicker.Checked = $true
-    $cmbProfiles.SelectedItem = $selection.Profile
-    $txtProfilePath.Text = $selection.Profile
-
-    $lstProfileItems.Items.Clear()
-    foreach ($entry in $selection.Entries) {
-      [void]$lstProfileItems.Items.Add((Get-CatalogItem -Url $entry), $true)
-    }
-
-    $estimate = Get-PreflightEstimate -Entries $selection.Entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $selection.DiskNumber
-    Log-PreflightEstimate -Estimate $estimate
-
-    Add-Log "Wizard selection applied. Continuing with the native prebuilt build."
-    Write-AppLog "Invoking the SD build directly."
-    Invoke-DynamicBuild
-    Write-AppLog "SD build handler returned."
-  } catch {
-    Add-Log "Wizard failed: $($_.Exception.Message)"
-    Write-AppLog ("Wizard failed: {0}" -f $_.Exception.ToString())
-    [System.Windows.Forms.MessageBox]::Show(
-      "Emergency Web Pi could not open the setup wizard.`n`n$($_.Exception.Message)`n`nDiagnostic log:`n$logPath",
-      $appDisplayName,
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Error
-    ) | Out-Null
-    if ($script:normalLaunch) {
-      $form.Close()
-    }
-  }
+    $entries = @($items | ForEach-Object { $_.SourceUrl })
+    $profileFile = Write-GeneratedProfileFile -Entries $entries
+    return $profileFile
 }
 
-$btnWizard.Add_Click({ Start-EndUserFlow })
-
-$btnLoadProfile.Add_Click({
-  Load-SelectedPresetItems
-})
-
-$btnCheck.Add_Click({
-  Add-Log "Checking prerequisites"
-
-  $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  $wslReady = $false
-  if ($isAdmin) {
-    Add-Log "PowerShell elevation: OK"
-  } else {
-    Add-Log "PowerShell elevation: REQUIRED for SD write"
-  }
-
-  try {
-    $null = & wsl --version 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      $wslReady = $true
-      Add-Log "WSL detected"
-    } else {
-      Add-Log "WSL not detected; install with: wsl --install -d Ubuntu"
+function Show-DeveloperTools {
+    $window = Read-XamlWindow -RelativePath 'DeveloperTools.xaml'
+    $window.Owner = $script:window
+    $script:devWindow = $window
+    $script:devUi = @{}
+    $script:devFind = { param([string]$Name)
+        if ($script:devUi.Contains($Name)) { return $script:devUi[$Name] }
+        $control = $script:devWindow.FindName($Name)
+        if ($control) { $script:devUi[$Name] = $control }
+        return $control
     }
-  } catch {
-    Add-Log "WSL not detected; install with: wsl --install -d Ubuntu"
-  }
+    $find = $script:devFind
 
-  $baseAbs = To-Absolute -PathValue $txtBase.Text
-  if ([string]::IsNullOrWhiteSpace($baseAbs) -or -not (Test-Path $baseAbs)) {
-    if ($chkAutoFetchBase.Checked) {
-      Add-Log "Base image: will auto-fetch in dynamic mode"
-    } else {
-      Add-Log "Base image: missing"
+    $baseInfo = & $find 'DevBaseInfo'
+    $base = Get-PinnedBaseImageInfo -RepoRoot $script:repoRoot
+    if ($base) {
+        $baseInfo.Text = $base.Name + ' (' + $base.Architecture + ', ' + $base.Codename + ') - about ' + (Format-Bytes $base.InstalledSizeBytes) + ' installed'
     }
-  } else {
-    Add-Log "Base image: OK"
-  }
 
-  $manifestAbs = To-Absolute -PathValue $txtManifestPath.Text
-  if ([string]::IsNullOrWhiteSpace($manifestAbs) -or -not (Test-Path $manifestAbs)) {
-    if ($chkAutoFetchBase.Checked) {
-      Add-Log "Base manifest: will auto-fetch in dynamic mode"
-    } else {
-      Add-Log "Base manifest: missing"
+    $logBox = & $find 'DevLog'
+    $devLogTargets = New-Object System.Collections.Generic.List[object]
+    $devLogTargets.Add($logBox)
+    $script:logTargets.Add($logBox)
+
+    $script:devSetStatus = { param([string]$Text)
+        $status = & $script:devFind 'DevBuildStatus'
+        if ($status) { $status.Text = $Text }
     }
-  } else {
-    Add-Log "Base manifest: OK"
-  }
 
-  $configAbs = To-Absolute -PathValue $txtConfig.Text
-  if (-not (Test-Path $configAbs)) {
-    Add-Log "Config path: missing"
-  } else {
-    Add-Log "Config path: OK"
-  }
+    $btnCheckPrereqs = & $find 'BtnCheckPrereqs'
+    $btnCheckPrereqs.Add_Click({
+        & $script:devSetStatus 'Checking prerequisites...'
+        $ok = $true
+        $messages = @()
+        if (Get-BundledAria2Directory) {
+            $messages += 'aria2: bundled'
+        } else {
+            $ok = $false
+            $messages += 'aria2: NOT found in tools\aria2'
+        }
+        if (Test-WslReady) {
+            $messages += 'WSL (Ubuntu): ready'
+        } else {
+            $messages += 'WSL (Ubuntu): not ready (needed only for the dynamic build)'
+        }
+        if ($ok) { & $script:devSetStatus 'Prerequisites OK' } else { & $script:devSetStatus 'Prerequisites missing' }
+        foreach ($message in $messages) { Write-AppLog ('[dev] ' + $message) }
+    })
 
-  if (Get-Command aria2c -ErrorAction SilentlyContinue) {
-    Add-Log "aria2c detected"
-  } else {
-    if ($chkDownloadOnPi.Checked) {
-      Add-Log "aria2c not detected on Windows: OK for Pi-side download mode"
-    } else {
-      Add-Log "aria2c not detected; Windows-side dynamic download mode will fail"
+    $btnBuildImage = & $find 'BtnBuildImage'
+    $btnBuildImage.Add_Click({
+        $find = $script:devFind
+        $chkRaw = & $find 'ChkDevRawBuild'
+        $baseImagePath = $null
+        $configPath = $null
+        if ($chkRaw.IsChecked) {
+            $baseImagePath = (& $find 'TxtDevBaseImage').Text
+            $configPath = (& $find 'TxtDevConfig').Text
+            if (-not $baseImagePath -or -not (Test-Path $baseImagePath)) {
+                & $script:devSetStatus 'Choose a valid base image file.'
+                return
+            }
+            if (-not $configPath -or -not (Test-Path $configPath)) {
+                & $script:devSetStatus 'Choose a valid base config file.'
+                return
+            }
+        }
+        $arguments = '-WorkspaceDir "' + $script:workspaceDirectory + '" -CacheDir "' + $script:cacheDirectory + '"'
+        if ($baseImagePath) {
+            $arguments += ' -BaseImagePath "' + $baseImagePath + '" -BaseConfigPath "' + $configPath + '"'
+        }
+        & $script:devSetStatus 'Building appliance image...'
+        $onLine = { param([string]$Line, [string]$Stream) Add-Log ('[dev-build] ' + $Line) }
+        $onComplete = {
+            param([int]$ExitCode, [string[]]$Output)
+            if ($ExitCode -eq 0) {
+                & $script:devSetStatus 'Appliance image build finished.'
+            } else {
+                & $script:devSetStatus 'Appliance image build failed (exit code ' + $ExitCode.ToString() + ').'
+            }
+        }
+        Start-BuildProcess -FilePath $script:buildImageScript -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+    })
+
+    $cmbProfiles = & $find 'CmbDevProfiles'
+    $btnRefreshProfiles = & $find 'BtnDevRefreshProfiles'
+    $refreshProfiles = {
+        $cmbProfiles = & $script:devFind 'CmbDevProfiles'
+        $cmbProfiles.Items.Clear()
+        foreach ($profilePath in $script:app.ProfilePaths) {
+            $cmbProfiles.Items.Add((Get-ProfileKey -ProfilePath $profilePath)) | Out-Null
+        }
+        if ($cmbProfiles.Items.Count -gt 0) { $cmbProfiles.SelectedIndex = 0 }
     }
-  }
+    $btnRefreshProfiles.Add_Click($refreshProfiles)
+    & $refreshProfiles
 
-  $baseStatus = if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) { "Local base override ready" } else { "Pinned base image will download automatically" }
-  $configStatus = if (Test-Path $configAbs) { "config ready" } else { "config missing" }
-  $summary = "Administrator: $(if ($isAdmin) { 'ready' } else { 'required' }) | WSL: $(if ($wslReady) { 'ready' } else { 'missing' }) | $baseStatus | $configStatus"
-  if ($null -ne $script:developerStatus) {
-    $script:developerStatus.Text = $summary
-  }
-  [System.Windows.Forms.MessageBox]::Show($summary, "Prerequisite check", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-})
+    $devContentInfo = & $find 'DevContentInfo'
+    $devLibraryHost = & $find 'DevLibraryHost'
+    $btnLoadProfile = & $find 'BtnDevLoadProfile'
+    $btnLoadProfile.Add_Click({
+        $cmbProfiles = & $script:devFind 'CmbDevProfiles'
+        $devContentInfo = & $script:devFind 'DevContentInfo'
+        $devLibraryHost = & $script:devFind 'DevLibraryHost'
+        $selected = $cmbProfiles.SelectedItem
+        if (-not $selected) { return }
+        $profilePath = $script:app.ProfilePaths | Where-Object { (Get-ProfileKey -ProfilePath $_) -eq $selected } | Select-Object -First 1
+        if (-not $profilePath) { return }
+        $items = @(Get-ProfileLibraries -ProfilePath $profilePath -Catalog $script:app.Catalog)
+        $totals = Get-SelectionTotals -Items $items
+        $devContentInfo.Text = (Get-ProfileDisplayName -ProfilePath $profilePath) + ': ' + $items.Count.ToString() + ' libraries, about ' + (Format-Bytes $totals.TotalBytes)
+        $devLibraryHost.Children.Clear()
+        foreach ($item in $items) {
+            $devLibraryHost.Children.Add((New-UiText ($item.Name + ' - ' + (Format-Bytes $item.EstimatedBytes) + ' - ' + $item.SourceUrl) 'MetaText')) | Out-Null
+        }
+    })
 
-$btnBuild.Add_Click({
-  $baseAbs = To-Absolute -PathValue $txtBase.Text
-  $configAbs = To-Absolute -PathValue $txtConfig.Text
+    $cmbDisks = & $find 'CmbDevDisks'
+    $btnRefreshDisks = & $find 'BtnDevRefreshDisks'
+    $refreshDisks = {
+        $cmbDisks = & $script:devFind 'CmbDevDisks'
+        $cmbDisks.Items.Clear()
+        foreach ($disk in @(Get-SelectableDisks)) {
+            $cmbDisks.Items.Add('Disk ' + $disk.DiskNumber.ToString() + ' - ' + $disk.FriendlyName + ' - ' + (Format-Bytes $disk.Size) + ' - ' + $disk.BusType) | Out-Null
+        }
+        if ($cmbDisks.Items.Count -gt 0) { $cmbDisks.SelectedIndex = 0 }
+    }
+    $btnRefreshDisks.Add_Click($refreshDisks)
+    & $refreshDisks
 
-  if (-not (Test-Path $configAbs)) {
-    Add-Log "Build aborted: config file not found."
-    return
-  }
+    $devSdStatus = & $find 'DevSdStatus'
+    $btnEstimate = & $find 'BtnDevEstimate'
+    $btnEstimate.Add_Click({
+        $devSdStatus = & $script:devFind 'DevSdStatus'
+        try {
+            $profileFile = Resolve-DevEntries
+            $estimate = Get-PreflightEstimate -ProfilePath $profileFile -Catalog $script:app.Catalog -BaseManifest $script:app.BaseManifest
+            $devSdStatus.Text = 'Estimated required space: ' + (Format-Bytes $estimate.RequiredBytes) + ' (content ' + (Format-Bytes $estimate.ContentBytes) + ' + base ' + (Format-Bytes $estimate.BaseBytes) + ')'
+        } catch {
+            $devSdStatus.Text = 'Estimate failed: ' + $_.Exception.Message
+        }
+    })
 
-  $args = @(
-    "-ConfigPath", (Quote-Arg -Value $configAbs),
-    "-ResolvedConfigPath", (Quote-Arg -Value (Join-Path $workspaceDirectory "appliance-config.json")),
-    "-BaseImageCacheDir", (Quote-Arg -Value (Join-Path $workspaceDirectory "base-image-cache")),
-    "-OutputImagePath", (Quote-Arg -Value $txtImagePath.Text),
-    "-ManifestPath", (Quote-Arg -Value $txtManifestPath.Text)
-  )
+    $btnWriteImage = & $find 'BtnDevWriteImage'
+    $btnWriteImage.Add_Click({
+        $find = $script:devFind
+        $cmbDisks = & $find 'CmbDevDisks'
+        $devSdStatus = & $find 'DevSdStatus'
+        $selectedDisk = $cmbDisks.SelectedItem
+        if (-not $selectedDisk) {
+            $devSdStatus.Text = 'Select a disk first.'
+            return
+        }
+        $diskNumber = [int](([regex]::Match($selectedDisk, 'Disk (\d+)')).Groups[1].Value)
+        $chkRawOutput = & $find 'ChkDevRawOutput'
+        $imagePath = $null
+        $manifestPath = $null
+        if ($chkRawOutput.IsChecked) {
+            $imagePath = (& $find 'TxtDevImagePath').Text
+            $manifestPath = (& $find 'TxtDevManifestPath').Text
+            if (-not $imagePath -or -not (Test-Path $imagePath)) {
+                $devSdStatus.Text = 'Choose a valid prepared image file.'
+                return
+            }
+        }
+        $profileFile = Resolve-DevEntries
+        $wifi = New-WifiCredentials
+        $configPath = Join-Path $script:workspaceDirectory 'config\dynamic-appliance-config.json'
+        Set-Content -Path $configPath -Value (New-ApplianceConfigJsonText -Wifi $wifi) -Encoding UTF8
+        $arguments = New-PrebuiltBuildArguments `
+            -DiskNumber $diskNumber `
+            -ProfilePath $profileFile `
+            -DeviceConfigPath $configPath `
+            -ContentDir $script:cacheDirectory `
+            -WorkspaceDir $script:workspaceDirectory `
+            -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+            -ContentMode $script:app.ContentMode
+        if ($imagePath) {
+            $arguments += ' -ImagePath "' + $imagePath + '"'
+            if ($manifestPath) { $arguments += ' -ManifestPath "' + $manifestPath + '"' }
+        }
+        $devSdStatus.Text = 'Writing to disk ' + $diskNumber.ToString() + '...'
+        $onLine = { param([string]$Line, [string]$Stream) Add-Log ('[dev-write] ' + $Line) }
+        $onComplete = {
+            param([int]$ExitCode, [string[]]$Output)
+            if ($ExitCode -eq 0) {
+                $devSdStatus.Text = 'Write finished.'
+            } else {
+                $devSdStatus.Text = 'Write failed (exit code ' + $ExitCode.ToString() + ').'
+            }
+        }
+        Start-BuildProcess -FilePath $script:prebuiltScript -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+    })
 
-  if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
-    $args += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
-    Add-Log "Using advanced local Raspberry Pi OS image override."
-  } else {
-    Add-Log "Using pinned, verified Raspberry Pi OS Lite image."
-  }
+    $btnDynamicBuild = & $find 'BtnDevDynamicBuild'
+    $btnDynamicBuild.Add_Click({
+        Invoke-DynamicBuild -Window $script:devWindow -Find $script:devFind -StatusControl (& $script:devFind 'DevSdStatus')
+    })
 
-  $zimAbs = To-Absolute -PathValue $txtZimDir.Text
-  if ([string]::IsNullOrWhiteSpace($zimAbs)) {
-    Add-Log "Build aborted: ZIM source directory is required for offline-ready images."
-    return
-  }
-  if (-not (Test-Path $zimAbs)) {
-    Add-Log "Build aborted: ZIM source directory not found."
-    return
-  }
-  $args += @("-ZimSourceDir", (Quote-Arg -Value $zimAbs))
+    $txtDevBaseImage = & $find 'TxtDevBaseImage'
+    $btnDevBaseImageBrowse = & $find 'BtnDevBaseImageBrowse'
+    $btnDevBaseImageBrowse.Add_Click({
+        $txtDevBaseImage = & $script:devFind 'TxtDevBaseImage'
+        $path = Select-FilePath -Filter 'Raspberry Pi image (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All files (*.*)|*.*' -Title 'Select the base image'
+        if ($path) { $txtDevBaseImage.Text = $path }
+    })
+    $txtDevConfig = & $find 'TxtDevConfig'
+    $btnDevConfigBrowse = & $find 'BtnDevConfigBrowse'
+    $btnDevConfigBrowse.Add_Click({
+        $txtDevConfig = & $script:devFind 'TxtDevConfig'
+        $path = Select-FilePath -Filter 'JSON config (*.json)|*.json|All files (*.*)|*.*' -Title 'Select the base config'
+        if ($path) { $txtDevConfig.Text = $path }
+    })
+    $txtDevZimDir = & $find 'TxtDevZimDir'
+    $btnDevZimDirBrowse = & $find 'BtnDevZimDirBrowse'
+    $btnDevZimDirBrowse.Add_Click({
+        $txtDevZimDir = & $script:devFind 'TxtDevZimDir'
+        $path = Select-FolderPath -Description 'Select the folder with ZIM files'
+        if ($path) { $txtDevZimDir.Text = $path }
+    })
+    $txtDevProfilePath = & $find 'TxtDevProfilePath'
+    $btnDevProfileBrowse = & $find 'BtnDevProfileBrowse'
+    $btnDevProfileBrowse.Add_Click({
+        $txtDevProfilePath = & $script:devFind 'TxtDevProfilePath'
+        $path = Select-FilePath -Filter 'Profile (*.txt)|*.txt|All files (*.*)|*.*' -Title 'Select a profile file'
+        if ($path) { $txtDevProfilePath.Text = $path }
+    })
+    $txtDevManifestPath = & $find 'TxtDevManifestPath'
+    $btnDevManifestBrowse = & $find 'BtnDevManifestBrowse'
+    $btnDevManifestBrowse.Add_Click({
+        $txtDevManifestPath = & $script:devFind 'TxtDevManifestPath'
+        $path = Select-FilePath -Filter 'Manifest (*.json)|*.json|All files (*.*)|*.*' -Title 'Select the manifest'
+        if ($path) { $txtDevManifestPath.Text = $path }
+    })
 
-  Add-Log "Building appliance image"
-  $result = Invoke-PowerShellScript -ScriptPath $buildScript -Arguments $args
-  if (-not [string]::IsNullOrWhiteSpace($result.Output)) {
-    Add-Log $result.Output
-  }
+    $btnOpenWorkspace = & $find 'BtnDevOpenWorkspace'
+    $btnOpenWorkspace.Add_Click({ Start-Process -FilePath $script:workspaceDirectory -ErrorAction SilentlyContinue })
+    $btnOpenLogs = & $find 'BtnDevOpenLogs'
+    $btnOpenLogs.Add_Click({ Start-Process -FilePath (Join-Path $script:repoRoot 'logs') -ErrorAction SilentlyContinue })
+    $btnAbout = & $find 'BtnDevAbout'
+    $btnAbout.Add_Click({
+        Show-AppMessage -Kind Info -Title 'About Emergency Web Pi' -Message ('Emergency Web Pi version ' + $script:appVersion + '.' + [Environment]::NewLine + 'Repository: ' + $script:repoRoot)
+    })
 
-  if ($result.ExitCode -eq 0) {
-    Add-Log "Build completed successfully."
-  } else {
-    Add-Log "Build failed with exit code $($result.ExitCode)."
-  }
-})
+    $devAdvVersion = & $find 'DevAdvVersion'
+    $devAdvVersion.Text = $script:appVersion
+    (& $find 'DevAdvRepoRoot').Text = $script:repoRoot
+    (& $find 'DevAdvWorkspace').Text = $script:workspaceDirectory
+    (& $find 'DevAdvCache').Text = $script:cacheDirectory
+    (& $find 'DevAdvBaseManifest').Text = (Join-Path $script:repoRoot 'config\base-image.json')
+    (& $find 'DevAdvGeneratedProfiles').Text = (Join-Path $script:workspaceDirectory 'generated-profiles')
+    (& $find 'DevAdvLogs').Text = (Join-Path $script:repoRoot 'logs')
+    (& $find 'TxtDevReleaseRepo').Text = 'MikeyMan83/emergency-web-pi'
 
-$btnWrite.Add_Click({
-  [int]$diskNum = Get-SelectedDiskNumber
-  if ($diskNum -lt 0) {
-    Add-Log "Write aborted: select an SD card in Step 2."
-    return
-  }
+    $btnClose = & $find 'BtnDevClose'
+    $btnClose.Add_Click({
+        $script:logTargets.Remove((& $script:devFind 'DevLog')) | Out-Null
+        $script:devWindow.Close()
+    })
 
-  $imgAbs = To-Absolute -PathValue $txtImagePath.Text
-  $manifestAbs = To-Absolute -PathValue $txtManifestPath.Text
-  $configAbs = To-Absolute -PathValue $txtConfig.Text
-
-  if (-not (Test-Path $imgAbs)) {
-    Add-Log "Write aborted: image file not found."
-    return
-  }
-  if (-not (Test-Path $manifestAbs)) {
-    Add-Log "Write aborted: manifest file not found."
-    return
-  }
-
-  $confirm = [System.Windows.Forms.MessageBox]::Show(
-    "This will erase disk #$diskNum. Continue?",
-    "Confirm SD Write",
-    [System.Windows.Forms.MessageBoxButtons]::YesNo,
-    [System.Windows.Forms.MessageBoxIcon]::Warning
-  )
-
-  if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
-    Add-Log "Write cancelled by user."
-    return
-  }
-
-  $args = @(
-    "-DiskNumber", $diskNum,
-    "-ConfirmDiskNumber", $diskNum,
-    "-ConfigPath", (Quote-Arg -Value $configAbs),
-    "-ImagePath", (Quote-Arg -Value $imgAbs),
-    "-ManifestPath", (Quote-Arg -Value $manifestAbs),
-    "-Force"
-  )
-
-  Add-Log "Writing appliance image to disk #$diskNum"
-  $result = Invoke-PowerShellScript -ScriptPath $writeScript -Arguments $args
-  if (-not [string]::IsNullOrWhiteSpace($result.Output)) {
-    Add-Log $result.Output
-  }
-
-  if ($result.ExitCode -eq 0) {
-    Add-Log "SD write completed successfully."
-  } else {
-    Add-Log "SD write failed with exit code $($result.ExitCode)."
-  }
-})
-
-$btnEstimate.Add_Click({
-  try {
-    $entries = Resolve-EntriesForDynamicRun
-    [int]$diskNum = Get-SelectedDiskNumber
-
-    $estimate = Get-PreflightEstimate -Entries $entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $chkAutoFetchBase.Checked -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $diskNum
-    Log-PreflightEstimate -Estimate $estimate
-  } catch {
-    Add-Log "Estimate failed: $($_.Exception.Message)"
-  }
-})
-
-# Recoverable abort: reopen the wizard (user-driven, one level per click) instead of quitting.
-function Exit-OrReturnToWizard {
-  if ($script:prebuiltFlow) {
-    Start-EndUserFlow
-  } else {
-    $form.Close()
-  }
+    [void]$window.ShowDialog()
+    $script:logTargets.Remove($logBox) | Out-Null
 }
 
 function Invoke-DynamicBuild {
-  if (-not $script:prebuiltFlow -and -not (Test-WslReady)) {
-    if ($env:CI -eq "true" -or -not [Environment]::UserInteractive) {
-      Write-AppLog "WSL is not ready; continuing without the setup dialog (non-interactive or CI session)."
-    } else {
-      Show-WslSetupGuidance
-      return
-    }
-  }
-
-  [int]$diskNum = Get-SelectedDiskNumber
-  if ($diskNum -lt 0) {
-    Add-Log "Dynamic build aborted: select an SD card in Step 2."
-    if ($script:normalLaunch) {
-      [System.Windows.Forms.MessageBox]::Show("Select an SD card and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      $form.Close()
-    }
-    return
-  }
-
-  $configAbs = To-Absolute -PathValue $txtConfig.Text
-  if (-not (Test-Path $configAbs)) {
-    Add-Log "Dynamic build aborted: config file not found."
-    if ($script:normalLaunch) {
-      [System.Windows.Forms.MessageBox]::Show("The application configuration is missing. Re-extract the complete release ZIP and try again.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-      $form.Close()
-    }
-    return
-  }
-
-  $baseAbs = To-Absolute -PathValue $txtBase.Text
-
-  $entries = $null
-  $generatedProfile = ""
-  $estimate = $null
-  try {
-    $entries = Resolve-EntriesForDynamicRun
-    $generatedProfile = Write-GeneratedProfileFile -Entries $entries
-    Add-Log "Using generated profile: $generatedProfile"
-
-    $estimate = Get-PreflightEstimate -Entries $entries -CacheDir $txtCacheDir.Text -BaseImagePath $txtBase.Text -AutoFetch $false -ReleaseRepo $txtReleaseRepo.Text -DiskNumber $diskNum
-    Log-PreflightEstimate -Estimate $estimate
-  } catch {
-    Add-Log "Dynamic preflight failed: $($_.Exception.Message)"
-    if ($script:normalLaunch) {
-      [System.Windows.Forms.MessageBox]::Show("The SD card could not be prepared: $($_.Exception.Message)", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-            Exit-OrReturnToWizard
-    }
-    return
-  }
-
-  $requiredText = Format-Bytes -Bytes $estimate.RequiredBytes
-  $unknownText = $estimate.UnknownCount
-  if ($estimate.Fits -eq $false) {
-    Add-Log "Dynamic build aborted: selected SD card is too small."
-    [System.Windows.Forms.MessageBox]::Show("The selected SD card is too small. Choose a card with at least $requiredText.", "SD Card Too Small", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-    if ($script:normalLaunch) {
-      Exit-OrReturnToWizard
-    }
-    return
-  }
-
-  try {
-    $disk = Get-Disk -Number $diskNum -ErrorAction Stop
-    $diskLabel = "$($disk.FriendlyName) - $(Format-Bytes -Bytes $disk.Size) - Disk $diskNum"
-  } catch {
-    $diskLabel = "Disk $diskNum"
-  }
-
-  $contentMode = if ($chkDownloadOnPi.Checked) { "FirstBoot" } else { "Prebuilt" }
-  $contentModeText = if ($contentMode -eq "FirstBoot") { "Selected catalogs download automatically on the Pi's first boot with Internet." } else { "Selected catalogs download now and the Pi is ready offline on first boot." }
-  $confirmText = "This will erase the selected SD card:`n$diskLabel`n`nEverything currently on this card will be deleted.`n`n$contentModeText`nRequired capacity: $requiredText`nUnknown-size entries: $unknownText`n`nCreate Emergency Web Pi?"
-
-  $confirm = [System.Windows.Forms.MessageBox]::Show(
-    $confirmText,
-    "Erase and Create Emergency Web Pi",
-    [System.Windows.Forms.MessageBoxButtons]::YesNo,
-    [System.Windows.Forms.MessageBoxIcon]::Warning
-  )
-
-  if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
-    Add-Log "Dynamic build cancelled by user."
-    if ($script:normalLaunch) {
-      Exit-OrReturnToWizard
-    }
-    return
-  }
-
-  $buildArgs = @(
-    "-DiskNumber", $diskNum,
-    "-ConfirmDiskNumber", $diskNum,
-    "-BaseConfigPath", (Quote-Arg -Value $configAbs),
-    "-ProfilePath", (Quote-Arg -Value $generatedProfile),
-    "-CacheDir", (Quote-Arg -Value $txtCacheDir.Text),
-    "-WorkspaceDir", (Quote-Arg -Value $workspaceDirectory),
-    "-BaseImageCacheDir", (Quote-Arg -Value (Join-Path $workspaceDirectory "base-image-cache")),
-    "-ContentMode", $contentMode
-  )
-
-  if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs)) {
-    $buildArgs += @("-BaseImagePath", (Quote-Arg -Value $baseAbs))
-    Add-Log "Using advanced local Raspberry Pi OS image override."
-  } else {
-    Add-Log "Using pinned, verified Raspberry Pi OS Lite image."
-  }
-
-  Add-Log "Dynamic mode content installation: $contentMode"
-
-  $scriptToRun = $dynamicScript
-  if ($script:prebuiltFlow) {
-    $scriptToRun = $prebuiltScript
-    $wifiAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    $pick = {
-      param([int]$Length)
-      $bytes = New-Object byte[] $Length
-      $rng.GetBytes($bytes)
-      $chars = for ($i = 0; $i -lt $Length; $i++) { $wifiAlphabet[$bytes[$i] % $wifiAlphabet.Length] }
-      return (-join $chars)
-    }
-    $generatedSsid = "EmergencyWebPi-" + (& $pick 4)
-    $generatedPassword = (& $pick 12)
-    $rng.Dispose()
-
-    New-Item -ItemType Directory -Path $workspaceDirectory -Force | Out-Null
-    [ordered]@{ network = [ordered]@{ ap = [ordered]@{ ssid = $generatedSsid; password = $generatedPassword } } } |
-      ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $workspaceDirectory "dynamic-appliance-config.json") -Encoding utf8
-
-    $buildArgs = @(
-      "-DiskNumber", $diskNum,
-      "-ConfirmDiskNumber", $diskNum,
-      "-Force",
-      "-Profile", (Quote-Arg -Value $generatedProfile),
-      "-ContentDir", (Quote-Arg -Value (To-Absolute -PathValue $txtCacheDir.Text)),
-      "-WorkspaceDir", (Quote-Arg -Value $workspaceDirectory),
-      "-ReleaseRepo", (Quote-Arg -Value $txtReleaseRepo.Text),
-      "-ApSsid", (Quote-Arg -Value $generatedSsid),
-      "-ApPassword", (Quote-Arg -Value $generatedPassword),
-      "-ContentMode", $contentMode
+    param(
+        [Parameter(Mandatory)]$Window,
+        [Parameter(Mandatory)][scriptblock]$Find,
+        [Parameter(Mandatory)]$StatusControl
     )
-    if (-not [string]::IsNullOrWhiteSpace($baseAbs) -and (Test-Path $baseAbs) -and $baseAbs.EndsWith(".gz", [System.StringComparison]::OrdinalIgnoreCase)) {
-      $buildArgs += @("-ImagePath", (Quote-Arg -Value $baseAbs))
+    if (-not $script:prebuiltFlow -and -not (Test-WslReady)) {
+        Show-WslSetupGuidance
+        return
     }
-    Add-Log "Running native prebuilt SD build on disk #$diskNum (no WSL needed)"
-  }
-
-  Add-Log "Running dynamic SD build on disk #$diskNum"
-  $progress = $null
-  $statusLabel = $null
-  if ($script:normalLaunch) {
-    $progress = New-Object System.Windows.Forms.Form
-    $progress.Text = $appDisplayName
-    $progress.ClientSize = New-Object System.Drawing.Size(520, 168)
-    $progress.StartPosition = "CenterScreen"
-    $progress.FormBorderStyle = "FixedDialog"
-    $progress.ControlBox = $false
-
-    $message = New-Object System.Windows.Forms.Label
-    $message.Left = 24
-    $message.Top = 28
-    $message.Width = 450
-    $message.Height = 56
-    $message.Text = "Creating your Emergency Web Pi SD card.`r`nKeep this window open. Large downloads can take a while."
-    $progress.Controls.Add($message)
-
-    $statusLabel = New-Object System.Windows.Forms.Label
-    $statusLabel.Left = 24
-    $statusLabel.Top = 88
-    $statusLabel.Width = 450
-    $statusLabel.Height = 64
-    $statusLabel.Text = "Starting..."
-    $progress.Controls.Add($statusLabel)
-
-    $progress.Show()
-    $progress.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-  }
-
-  try {
-    $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $buildArgs -StatusLabel $statusLabel
-    if ($script:prebuiltFlow -and $result.ExitCode -ne 0 -and $result.Output -match "BASE_IMAGE_UNAVAILABLE" -and $script:normalLaunch) {
-      Add-Log $result.Output
-      $progress.Hide()
-      [System.Windows.Forms.MessageBox]::Show(
-        "The base card image could not be downloaded automatically.`n`nDownload the ewp-base files (the .img.gz or its parts, plus the .manifest.json) from the Releases page into one folder:`nhttps://github.com/$($txtReleaseRepo.Text)/releases`n`nThen pick the .img.gz file on the next screen.",
-        $appDisplayName,
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Information
-      ) | Out-Null
-      $dialog = New-Object System.Windows.Forms.OpenFileDialog
-      $dialog.Filter = "Base image (*.img.gz;*.part-aa)|*.img.gz;*.part-aa|All files (*.*)|*.*"
-      if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $progress.Show()
-        $buildArgs += @("-ImagePath", (Quote-Arg -Value $dialog.FileName))
-        $result = Invoke-PowerShellScript -ScriptPath $scriptToRun -Arguments $buildArgs -StatusLabel $statusLabel
-      }
+    $cmbDisks = & $Find 'CmbDevDisks'
+    $selectedDisk = $cmbDisks.SelectedItem
+    if (-not $selectedDisk) {
+        $StatusControl.Text = 'Select a disk first.'
+        return
     }
-  } finally {
-    if ($null -ne $progress) {
-      $progress.Close()
-      $progress.Dispose()
-    }
-  }
-  if (-not [string]::IsNullOrWhiteSpace($result.Output)) {
-    Add-Log $result.Output
-  }
-
-  if ($result.ExitCode -eq 0) {
-    Add-Log "Dynamic SD build completed successfully."
-
-    $wifiSsid = ""
-    $wifiPassword = ""
-    $resolvedConfigPath = Join-Path $workspaceDirectory "dynamic-appliance-config.json"
-    try {
-      if (Test-Path $resolvedConfigPath) {
-        $resolvedConfig = Get-Content $resolvedConfigPath -Raw | ConvertFrom-Json
-        if ($null -ne $resolvedConfig.network -and $null -ne $resolvedConfig.network.ap) {
-          $wifiSsid = [string]$resolvedConfig.network.ap.ssid
-          $wifiPassword = [string]$resolvedConfig.network.ap.password
+    $diskNumber = [int](([regex]::Match($selectedDisk, 'Disk (\d+)')).Groups[1].Value)
+    $chkRawContent = & $Find 'ChkDevRawContent'
+    $profilePath = $null
+    $contentDir = $null
+    if ($chkRawContent.IsChecked) {
+        $profilePath = (& $Find 'TxtDevProfilePath').Text
+        $contentDir = (& $Find 'TxtDevCacheDir').Text
+        if (-not $profilePath -or -not (Test-Path $profilePath)) {
+            $StatusControl.Text = 'Choose a valid profile file.'
+            return
         }
-      }
-    } catch {
-      Write-AppLog ("Could not read the resolved appliance config for the Wi-Fi label: {0}" -f $_.Exception.Message)
+    } else {
+        $profilePath = Resolve-DevEntries
     }
-
-    $labelPath = ""
-    if (-not [string]::IsNullOrWhiteSpace($wifiSsid)) {
-      try {
-        $labelPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "EmergencyWebPi-WiFi-Label.html"
-        $labelHtml = @"
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Emergency Web Pi - Wi-Fi Label</title>
-<style>
-  body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #1f2a37; }
-  .card { border: 3px dashed #0b5cab; border-radius: 14px; padding: 28px 36px; max-width: 520px; }
-  h1 { font-size: 26px; margin: 0 0 6px; }
-  p.lead { margin: 0 0 18px; color: #4b5563; }
-  .row { font-size: 20px; margin: 10px 0; }
-  .row .value { font-weight: bold; letter-spacing: 1px; }
-  p.hint { font-size: 14px; color: #6b7280; margin-top: 18px; }
-</style>
-</head>
-<body>
-  <div class="card">
-    <h1>Emergency Web Pi</h1>
-    <p class="lead">Offline emergency library - insert the SD card in the Raspberry Pi and power it on.</p>
-    <div class="row">Wi-Fi name: <span class="value">$wifiSsid</span></div>
-    <div class="row">Wi-Fi password: <span class="value">$wifiPassword</span></div>
-    <p class="hint">Connect a phone or laptop to this Wi-Fi, open any website, and the library page appears. Print this label and keep it with the SD card.</p>
-  </div>
-</body>
-</html>
-"@
-        Set-Content -Path $labelPath -Value $labelHtml -Encoding utf8
-        Write-AppLog "Wi-Fi label saved: $labelPath"
-      } catch {
-        Write-AppLog ("Could not save the Wi-Fi label file: {0}" -f $_.Exception.Message)
-        $labelPath = ""
-      }
-    }
-
-    if ($script:normalLaunch) {
-      $successText = "Your SD card is ready. Insert it into the Raspberry Pi and power it on."
-      if (-not [string]::IsNullOrWhiteSpace($wifiSsid)) {
-        $successText += "`n`nEmergency Wi-Fi name:     $wifiSsid`nEmergency Wi-Fi password: $wifiPassword`n`nWrite these on the card or its box. Anyone who connects to this Wi-Fi can open the library."
-      }
-      if (-not [string]::IsNullOrWhiteSpace($labelPath)) {
-        $successText += "`n`nA printable label has been saved on your Desktop and opened in your browser: EmergencyWebPi-WiFi-Label.html"
-      }
-      [System.Windows.Forms.MessageBox]::Show($successText, $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-      if (-not [string]::IsNullOrWhiteSpace($labelPath)) {
-        try {
-          Start-Process -FilePath $labelPath | Out-Null
-        } catch {
-          Write-AppLog ("Could not open the Wi-Fi label in a browser: {0}" -f $_.Exception.Message)
+    $chkRawBuild = & $Find 'ChkDevRawBuild'
+    $baseConfigPath = $null
+    $baseImagePath = $null
+    if ($chkRawBuild.IsChecked) {
+        $baseConfigPath = (& $Find 'TxtDevConfig').Text
+        $baseImagePath = (& $Find 'TxtDevBaseImage').Text
+        if (-not $baseConfigPath -or -not (Test-Path $baseConfigPath)) {
+            $StatusControl.Text = 'Choose a valid base config file.'
+            return
         }
-      }
-      $form.Close()
     }
-  } else {
-    Add-Log "Dynamic SD build failed with exit code $($result.ExitCode)."
-    if ($script:normalLaunch) {
-      [System.Windows.Forms.MessageBox]::Show("Creating the SD card did not finish. Try again after reviewing the error details in Advanced Settings.", $appDisplayName, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-            Exit-OrReturnToWizard
+    $arguments = '-DiskNumber ' + $diskNumber.ToString() + ' -ConfirmDiskNumber ' + $diskNumber.ToString() + ' -Force'
+    $arguments += ' -ProfilePath "' + $profilePath + '"'
+    if ($contentDir) { $arguments += ' -ContentDir "' + $contentDir + '"' }
+    if ($baseConfigPath) { $arguments += ' -BaseConfigPath "' + $baseConfigPath + '"' }
+    if ($baseImagePath) { $arguments += ' -BaseImagePath "' + $baseImagePath + '"' }
+    $arguments += ' -WorkspaceDir "' + $script:workspaceDirectory + '"'
+    $arguments += ' -CacheDir "' + $script:cacheDirectory + '"'
+    $arguments += ' -ContentMode ' + $script:app.ContentMode
+    $StatusControl.Text = 'Starting the dynamic (WSL) build...'
+    $onLine = { param([string]$Line, [string]$Stream) Add-Log ('[dev-dynamic] ' + $Line) }
+    $onComplete = {
+        param([int]$ExitCode, [string[]]$Output)
+        if ($ExitCode -eq 0) {
+            $StatusControl.Text = 'Dynamic build finished.'
+        } else {
+            $StatusControl.Text = 'Dynamic build failed (exit code ' + $ExitCode.ToString() + ').'
+        }
     }
-  }
+    Start-BuildProcess -FilePath $script:dynamicScript -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
 }
 
-$btnDynamic.Add_Click({ Invoke-DynamicBuild })
+function Start-EndUserFlow {
+    Write-AppLog 'Starting the Emergency Web Pi creator.'
+    $script:app.Catalog = Get-ContentCatalog -RepoRoot $script:repoRoot
+    $script:app.BaseManifest = Get-PinnedBaseImageInfo -RepoRoot $script:repoRoot
+    $script:app.ProfilePaths = @(Get-ChildItem -Path (Join-Path $script:repoRoot 'profiles') -Filter '*.txt' | Sort-Object Name | ForEach-Object { $_.FullName })
+    $window = New-CreatorWindow
+    Write-AppLog 'Opening the Emergency Web Pi creator.'
+    [void]$window.ShowDialog()
+}
 
-$btnDisks.Add_Click({
-  Refresh-DiskPicker
-  Add-Log "SD card list refreshed."
-})
-
-$btnArtifacts.Add_Click({
-  if (-not (Test-Path $workspaceDirectory)) {
-    New-Item -ItemType Directory -Path $workspaceDirectory -Force | Out-Null
-  }
-  Start-Process explorer.exe $workspaceDirectory
-})
-
-$btnAbout.Add_Click({
-  $noticePath = Join-Path $repoRoot "docs/THIRD_PARTY_NOTICES.md"
-  if (Test-Path $noticePath) {
-    Start-Process $noticePath
-  } else {
-    [System.Windows.Forms.MessageBox]::Show(
-      "License notice file not found at docs/THIRD_PARTY_NOTICES.md",
-      $appDisplayName,
-      [System.Windows.Forms.MessageBoxButtons]::OK,
-      [System.Windows.Forms.MessageBoxIcon]::Information
-    ) | Out-Null
-  }
-})
-
-$btnExit.Add_Click({ $form.Close() })
-
-Refresh-ProfilePicker
-Load-SelectedPresetItems
-Refresh-DiskPicker
-Set-AdvancedVisibility -Visible $false
-
-Add-Log "Offline library builder ready"
-Add-Log "Repository root: $repoRoot"
-
-$script:normalLaunch = $true
-Write-AppLog "Starting end-user wizard as the visible frontend."
 Start-EndUserFlow
-
-if (-not $form.IsDisposed -and -not $script:normalLaunch) {
-  [void]$form.ShowDialog()
-}
