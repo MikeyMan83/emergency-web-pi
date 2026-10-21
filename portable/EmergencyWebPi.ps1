@@ -380,64 +380,110 @@ function Start-BuildProcess {
     $script:buildOnLine = $OnLine
     $script:buildOnComplete = $OnComplete
     $script:buildCompleted = @{ Done = $false }
-    $script:buildStdoutTask = $process.StandardOutput.ReadLineAsync()
-    $script:buildStderrTask = $process.StandardError.ReadLineAsync()
+    $script:buildStdoutTask = $null
+    $script:buildStderrTask = $null
 
     $lineTimer = New-Object System.Windows.Threading.DispatcherTimer
     $lineTimer.Interval = [TimeSpan]::FromMilliseconds(120)
     $lineTimer.Add_Tick({
         param($sender, $eventArgs)
-        $hasOutput = $false
-        while ($true) {
-            $task = $script:buildStdoutTask
-            if ($task -and $task.IsCompleted) {
-                $line = $task.Result
-                $script:buildStdoutTask = if ($null -ne $line) { $script:buildJob.StandardOutput.ReadLineAsync() } else { $null }
-                if ($null -ne $line) {
-                    $script:buildOutputLines.Add($line) | Out-Null
-                    if ($script:buildOnLine) { & $script:buildOnLine $line 'stdout' }
-                    $hasOutput = $true
-                    continue
+        try {
+            $hasOutput = $false
+            while ($true) {
+                $task = $script:buildStdoutTask
+                if ($task -and $task.IsCompleted) {
+                    if ($task.IsFaulted) {
+                        # A killed process can fault a pending read; treat it as end-of-stream.
+                        $script:buildStdoutTask = $null
+                        continue
+                    }
+                    $line = $task.Result
+                    $script:buildStdoutTask = if ($null -ne $line) { $script:buildJob.StandardOutput.ReadLineAsync() } else { $null }
+                    if ($null -ne $line) {
+                        $script:buildOutputLines.Add($line) | Out-Null
+                        if ($script:buildOnLine) {
+                            try { & $script:buildOnLine $line 'stdout' } catch { Write-AppLog ('Build output handler error: ' + $_.Exception.Message) }
+                        }
+                        $hasOutput = $true
+                        continue
+                    }
+                }
+                break
+            }
+            while ($true) {
+                $task = $script:buildStderrTask
+                if ($task -and $task.IsCompleted) {
+                    if ($task.IsFaulted) {
+                        $script:buildStderrTask = $null
+                        continue
+                    }
+                    $line = $task.Result
+                    $script:buildStderrTask = if ($null -ne $line) { $script:buildJob.StandardError.ReadLineAsync() } else { $null }
+                    if ($null -ne $line) {
+                        $script:buildErrorLines.Add($line) | Out-Null
+                        if ($script:buildOnLine) {
+                            try { & $script:buildOnLine $line 'stderr' } catch { Write-AppLog ('Build output handler error: ' + $_.Exception.Message) }
+                        }
+                        $hasOutput = $true
+                        continue
+                    }
+                }
+                break
+            }
+            if (-not $hasOutput) {
+                $stdoutDone = ($null -eq $script:buildStdoutTask)
+                $stderrDone = ($null -eq $script:buildStderrTask)
+                if (-not $script:buildCompleted.Done -and $stdoutDone -and $stderrDone -and (Test-BuildProcessExited)) {
+                    $script:buildCompleted.Done = $true
+                    $exitCode = -1
+                    try { $exitCode = $script:buildJob.ExitCode } catch { $exitCode = -1 }
+                    $output = @($script:buildOutputLines) + @($script:buildErrorLines)
+                    $sender.Stop()
+                    if ($script:buildOnComplete) { & $script:buildOnComplete $exitCode $output }
                 }
             }
-            break
-        }
-        while ($true) {
-            $task = $script:buildStderrTask
-            if ($task -and $task.IsCompleted) {
-                $line = $task.Result
-                $script:buildStderrTask = if ($null -ne $line) { $script:buildJob.StandardError.ReadLineAsync() } else { $null }
-                if ($null -ne $line) {
-                    $script:buildErrorLines.Add($line) | Out-Null
-                    if ($script:buildOnLine) { & $script:buildOnLine $line 'stderr' }
-                    $hasOutput = $true
-                    continue
-                }
-            }
-            break
-        }
-        if (-not $hasOutput) {
-            $stdoutDone = ($null -eq $script:buildStdoutTask) -or $script:buildStdoutTask.IsCompleted
-            $stderrDone = ($null -eq $script:buildStderrTask) -or $script:buildStderrTask.IsCompleted
-            if (-not $script:buildCompleted.Done -and $stdoutDone -and $stderrDone -and $script:buildJob.HasExited) {
-                $script:buildCompleted.Done = $true
-                $output = @($script:buildOutputLines) + @($script:buildErrorLines)
-                $sender.Stop()
-                if ($script:buildOnComplete) { & $script:buildOnComplete $script:buildJob.ExitCode $output }
-            }
+        } catch {
+            Write-AppLog ('Build pump error: ' + $_.Exception.Message)
         }
     })
     $lineTimer.Start()
 
+    # The output streams only exist once the process has started. Reading
+    # StandardOutput/StandardError before Start() returns null, which broke the
+    # pump and (with $ErrorActionPreference = 'Stop') prevented the build from
+    # ever launching.
     [void]$process.Start()
+    $script:buildStdoutTask = $process.StandardOutput.ReadLineAsync()
+    $script:buildStderrTask = $process.StandardError.ReadLineAsync()
+    $script:buildLastLineTime = Get-Date
     return $process
+}
+
+function Test-BuildProcessExited {
+    if (-not $script:buildJob) { return $true }
+    try { return $script:buildJob.HasExited } catch { return $true }
 }
 
 function Stop-BuildProcess {
     $script:buildCancelled = $true
-    if ($script:buildJob -and -not $script:buildJob.HasExited) {
-        try { $script:buildJob.Kill() } catch { }
-    }
+    $cancelButton = Find-Control 'BtnCancel'
+    if ($cancelButton) { $cancelButton.IsEnabled = $false }
+    Set-ProgressStatus -Text 'Cancelling...'
+    if (-not $script:buildJob) { return }
+    if (Test-BuildProcessExited) { return }
+    # Kill the whole tree so helper processes (for example aria2c) stop too.
+    try {
+        $killPsi = New-Object System.Diagnostics.ProcessStartInfo
+        $killPsi.FileName = 'taskkill'
+        $killPsi.Arguments = '/PID ' + $script:buildJob.Id.ToString() + ' /T /F'
+        $killPsi.UseShellExecute = $false
+        $killPsi.CreateNoWindow = $true
+        $killPsi.RedirectStandardOutput = $true
+        $killPsi.RedirectStandardError = $true
+        $killer = [System.Diagnostics.Process]::Start($killPsi)
+        [void]$killer.WaitForExit(5000)
+    } catch { }
+    try { if (-not $script:buildJob.HasExited) { $script:buildJob.Kill() } } catch { }
 }
 
 $script:app = [PSCustomObject]@{
@@ -465,6 +511,7 @@ $script:activeStageId = $null
 $script:marqueeTimer = $null
 $script:elapsedTimer = $null
 $script:buildStartTime = $null
+$script:buildLastLineTime = $null
 
 function Find-Control {
     param([Parameter(Mandatory)][string]$Name)
@@ -1030,6 +1077,10 @@ function Stop-Marquee {
 
 function Set-CurrentStage {
     param([Parameter(Mandatory)][string]$StageId)
+    if ($StageId -ne $script:activeStageId) {
+        # A new stage starts a new measurable operation; reset the progress bar.
+        Set-BuildBarPercent -Percent 0
+    }
     $script:activeStageId = $StageId
     foreach ($entry in $script:stageRows.GetEnumerator()) {
         $row = $entry.Value
@@ -1049,7 +1100,9 @@ function Set-CurrentStage {
             $label.FontWeight = 'Normal'
         }
     }
-    $marqueeStages = @('write', 'partition', 'copy', 'verify')
+    # Only genuinely unmeasurable stages use the marquee; the write reports a
+    # real percentage now.
+    $marqueeStages = @('partition', 'copy', 'verify')
     if ($marqueeStages -contains $StageId) { Start-Marquee } else { Stop-Marquee }
     $cancelButton = Find-Control 'BtnCancel'
     if ($cancelButton) {
@@ -1072,6 +1125,43 @@ function Set-ProgressStatus {
     param([string]$Text)
     $status = Find-Control 'ProgressStatus'
     if ($status -and $Text) { $status.Text = $Text }
+}
+
+function Invoke-BuildLine {
+    param([Parameter(Mandatory)][string]$Line, [Parameter(Mandatory)][string]$Stream)
+    Add-Log $Line
+    $script:buildLastLineTime = Get-Date
+    $stage = Get-StageForWriterLine -Line $Line
+    if ($stage) { Set-CurrentStage -StageId $stage }
+    $writePercent = Get-WritePercentForLine -Line $Line
+    if ($null -ne $writePercent) {
+        Set-BuildBarPercent -Percent $writePercent
+        Set-ProgressStatus -Text ('Writing the appliance to the SD card - ' + $writePercent.ToString() + '%')
+        return
+    }
+    $percent = Get-DownloadPercentForLine -Line $Line
+    if ($null -ne $percent) {
+        Set-BuildBarPercent -Percent $percent
+        Set-ProgressStatus -Text ('Downloading content - ' + $percent.ToString() + '%')
+        return
+    }
+    $statusText = Get-WriterStatusTextForLine -Line $Line
+    if ($statusText) {
+        Set-ProgressStatus -Text $statusText
+        return
+    }
+    if ($stage -and $stage -ne 'download') {
+        $statusMap = @{
+            'requirements' = 'Checking requirements.'
+            'system' = 'Preparing system files.'
+            'write' = 'Writing the appliance to the SD card. Do not remove the card.'
+            'partition' = 'Preparing the SD card.'
+            'copy' = 'Copying files to the SD card.'
+            'verify' = 'Verifying the SD card.'
+            'done' = 'Finished.'
+        }
+        if ($statusMap.Contains($stage)) { Set-ProgressStatus -Text $statusMap[$stage] }
+    }
 }
 
 function Build-StageList {
@@ -1164,7 +1254,8 @@ function Start-CreatorBuild {
     Show-Step -Step 5
     Build-StageList
     Set-CurrentStage -StageId 'requirements'
-    Set-ProgressStatus -Text 'Checking requirements.'
+    Set-ProgressStatus -Text 'Starting the build...'
+    Add-Log 'Starting the build process.'
     $titleControl = Find-Control 'ProgressTitle'
     if ($titleControl) { $titleControl.Text = 'Creating your Emergency Web Pi' }
     $elapsedControl = Find-Control 'ProgressElapsed'
@@ -1173,30 +1264,14 @@ function Start-CreatorBuild {
 
     $onLine = {
         param([string]$Line, [string]$Stream)
-        Add-Log $Line
-        $stage = Get-StageForWriterLine -Line $Line
-        if ($stage) { Set-CurrentStage -StageId $stage }
-        $percent = Get-DownloadPercentForLine -Line $Line
-        if ($null -ne $percent) {
-            Set-BuildBarPercent -Percent $percent
-            Set-ProgressStatus -Text ('Downloading content - ' + $percent.ToString() + '%')
-        } elseif ($stage -ne 'download') {
-            $statusMap = @{
-                'system' = 'Preparing system files.'
-                'write' = 'Writing the appliance to the SD card. Do not remove the card.'
-                'partition' = 'Preparing the SD card.'
-                'copy' = 'Copying files to the SD card.'
-                'verify' = 'Verifying the SD card.'
-                'done' = 'Finished.'
-            }
-            if ($statusMap.Contains($stage)) { Set-ProgressStatus -Text $statusMap[$stage] }
-        }
+        Invoke-BuildLine -Line $Line -Stream $Stream
     }
     $onComplete = {
         param([int]$ExitCode, [string[]]$Output)
         Complete-CreatorBuild -ExitCode $ExitCode -Output $Output
     }
     Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+    Add-Log 'Build process started.'
 }
 
 function Start-ElapsedTimer {
@@ -1216,6 +1291,17 @@ function Start-ElapsedTimer {
         }
         $control = Find-Control 'ProgressElapsed'
         if ($control) { $control.Text = $text }
+        # The writer now reports progress for every long operation, so a long
+        # silence while the build runs means the current step is stuck.
+        if ($script:buildJob -and -not $script:buildCompleted.Done -and -not $script:buildCancelled -and $script:buildLastLineTime) {
+            $silent = (Get-Date) - $script:buildLastLineTime
+            if ($silent.TotalSeconds -ge 180) {
+                $status = Find-Control 'ProgressStatus'
+                if ($status) {
+                    $status.Text = ('Still working - no progress reported for ' + ([int]$silent.TotalMinutes).ToString() + ' min.')
+                }
+            }
+        }
     })
     $script:elapsedTimer.Start()
 }
@@ -1232,7 +1318,7 @@ function Complete-CreatorBuild {
         Show-Completion
         return
     }
-    if ($outputText.Contains('BASE_IMAGE_UNAVAILABLE') -and -not $script:baseImageRetryDone) {
+    if (-not $script:buildCancelled -and $outputText.Contains('BASE_IMAGE_UNAVAILABLE') -and -not $script:baseImageRetryDone) {
         $script:baseImageRetryDone = $true
         Write-AppLog 'Base image download failed; asking the user for a local image.'
         $imagePath = Select-FilePath -Filter 'Raspberry Pi image (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All files (*.*)|*.*' -Title 'Select the Raspberry Pi OS image'
@@ -1253,11 +1339,7 @@ function Complete-CreatorBuild {
                 -ImagePathOverride $imagePath
             $onLine = {
                 param([string]$Line, [string]$Stream)
-                Add-Log $Line
-                $stage = Get-StageForWriterLine -Line $Line
-                if ($stage) { Set-CurrentStage -StageId $stage }
-                $percent = Get-DownloadPercentForLine -Line $Line
-                if ($null -ne $percent) { Set-BuildBarPercent -Percent $percent }
+                Invoke-BuildLine -Line $Line -Stream $Stream
             }
             $onComplete = {
                 param([int]$RetryExitCode, [string[]]$RetryOutput)

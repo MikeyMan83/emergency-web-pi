@@ -124,23 +124,69 @@ function Save-ReleaseAsset {
   param(
     [Parameter(Mandatory = $true)]$Asset,
     [Parameter(Mandatory = $true)][string]$Destination,
-    [string]$Token
+    [string]$Token,
+    [string]$ProgressLabel = ""
   )
 
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-  $headers = @{ "User-Agent" = "EmergencyWebPi"; "Accept" = "application/octet-stream" }
   if (-not [string]::IsNullOrWhiteSpace($Token)) {
-    $headers["Authorization"] = "Bearer $Token"
     $uri = $Asset.url
   } else {
     $uri = $Asset.browser_download_url
   }
-  $previous = $ProgressPreference
-  $ProgressPreference = "SilentlyContinue"
+  $request = [System.Net.WebRequest]::Create($uri)
+  $request.Method = "GET"
+  $request.UserAgent = "EmergencyWebPi"
+  $request.Accept = "application/octet-stream"
+  if (-not [string]::IsNullOrWhiteSpace($Token)) {
+    $request.Headers["Authorization"] = "Bearer $Token"
+  }
+  # Bound the wait so a stalled connection fails instead of hanging silently:
+  # 120 s to receive the response, 300 s maximum stall between reads.
+  $request.Timeout = 120000
+  $request.ReadWriteTimeout = 300000
+
+  $response = $request.GetResponse()
+  $total = $response.ContentLength
+  $stream = $response.GetResponseStream()
+  $file = [System.IO.File]::Create($Destination)
   try {
-    Invoke-WebRequest -Uri $uri -Headers $headers -OutFile $Destination -UseBasicParsing
+    $buffer = New-Object byte[] (1MB)
+    [Int64]$downloaded = 0
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $file.Write($buffer, 0, $read)
+      $downloaded += $read
+      if ($watch.Elapsed.TotalSeconds -ge 1) {
+        $watch.Reset()
+        $watch.Start()
+        Write-ReleaseAssetProgress -Label $ProgressLabel -Downloaded $downloaded -Total $total
+      }
+    }
   } finally {
-    $ProgressPreference = $previous
+    $file.Dispose()
+    $stream.Dispose()
+    $response.Dispose()
+  }
+  if ($ProgressLabel) {
+    Write-ReleaseAssetProgress -Label $ProgressLabel -Downloaded $downloaded -Total $total
+  }
+}
+
+function Write-ReleaseAssetProgress {
+  param(
+    [Parameter(Mandatory = $true)][string]$Label,
+    [Parameter(Mandatory = $true)][Int64]$Downloaded,
+    [Int64]$Total
+  )
+
+  $done = [math]::Round($Downloaded / 1MB, 1)
+  if ($Total -gt 0) {
+    $all = [math]::Round($Total / 1MB, 1)
+    $percent = [int](($Downloaded * 100) / $Total)
+    Write-Host ("${Label}: $done of $all MB ($percent%)")
+  } else {
+    Write-Host ("${Label}: $done MB downloaded")
   }
 }
 
@@ -151,19 +197,21 @@ function Download-BaseImageAssets {
   )
 
   New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+  Write-Host "Looking up the base image release."
   $token = Get-GitHubToken
   $headers = @{ "User-Agent" = "EmergencyWebPi"; "Accept" = "application/vnd.github+json" }
   if (-not [string]::IsNullOrWhiteSpace($token)) {
     $headers["Authorization"] = "Bearer $token"
   }
 
-  $releases = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=20" -Headers $headers)
+  $releases = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=20" -Headers $headers -TimeoutSec 120)
   foreach ($release in $releases) {
     if ($release.draft) { continue }
     $manifestAsset = @($release.assets | Where-Object { $_.name -like "ewp-base-*.img.manifest.json" })[0]
     if ($null -eq $manifestAsset) { continue }
 
     $manifestPath = Join-Path $TargetDir $manifestAsset.name
+    Write-Host "Downloading base image manifest."
     Save-ReleaseAsset -Asset $manifestAsset -Destination $manifestPath -Token $token
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
     Validate-PrebuiltManifest -Manifest $manifest
@@ -184,7 +232,9 @@ function Download-BaseImageAssets {
       $path = Join-Path $TargetDir $name
       if (-not (Test-Path $path) -or (Get-Item $path).Length -ne [int64]$asset.size) {
         Write-Host "Downloading base image asset: $name"
-        Save-ReleaseAsset -Asset $asset -Destination $path -Token $token
+        Save-ReleaseAsset -Asset $asset -Destination $path -Token $token -ProgressLabel "Base image download"
+      } else {
+        Write-Host "Using cached base image asset: $name"
       }
       if ([string]::IsNullOrWhiteSpace($firstPath)) { $firstPath = $path }
     }
@@ -235,19 +285,52 @@ function Expand-BaseImage {
   $tempGz = "$OutputPath.gz.tmp"
   $out = [System.IO.File]::Create($tempGz)
   try {
+    $buffer = New-Object byte[] (4MB)
+    $totalParts = 0
+    foreach ($path in $inputs) { $totalParts += (Get-Item $path).Length }
+    [Int64]$copied = 0
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
     foreach ($path in $inputs) {
       $in = [System.IO.File]::OpenRead($path)
-      try { $in.CopyTo($out, 4MB) } finally { $in.Dispose() }
+      try {
+        while (($read = $in.Read($buffer, 0, $buffer.Length)) -gt 0) {
+          $out.Write($buffer, 0, $read)
+          $copied += $read
+          if ($watch.Elapsed.TotalSeconds -ge 2) {
+            $watch.Reset()
+            $watch.Start()
+            Write-Host ("Unpacking base image: " + [math]::Round($copied / 1MB, 1) + " of " + [math]::Round($totalParts / 1MB, 1) + " MB")
+          }
+        }
+      } finally { $in.Dispose() }
     }
   } finally {
     $out.Dispose()
   }
 
+  $expectedSize = [int64]$Manifest.image.sizeBytes
   $gzIn = [System.IO.File]::OpenRead($tempGz)
   $gz = New-Object System.IO.Compression.GZipStream($gzIn, [System.IO.Compression.CompressionMode]::Decompress)
   $imgOut = [System.IO.File]::Create($OutputPath)
   try {
-    $gz.CopyTo($imgOut, 4MB)
+    $buffer = New-Object byte[] (4MB)
+    [Int64]$unpacked = 0
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    while (($read = $gz.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $imgOut.Write($buffer, 0, $read)
+      $unpacked += $read
+      if ($watch.Elapsed.TotalSeconds -ge 2) {
+        $watch.Reset()
+        $watch.Start()
+        if ($expectedSize -gt 0) {
+          $percent = [int](($unpacked * 100) / $expectedSize)
+          if ($percent -gt 100) { $percent = 100 }
+          Write-Host ("Unpacking base image: " + [math]::Round($unpacked / 1MB, 1) + " of " + [math]::Round($expectedSize / 1MB, 1) + " MB ($percent%)")
+        } else {
+          Write-Host ("Unpacking base image: " + [math]::Round($unpacked / 1MB, 1) + " MB")
+        }
+      }
+    }
   } finally {
     $imgOut.Dispose()
     $gz.Dispose()
@@ -323,6 +406,7 @@ function Write-ImageToDisk {
     [Int64]$totalBytes = $source.Length
     [Int64]$written = 0
     $lastPercent = -1
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
     while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
       # Raw device writes must be sector aligned.
       $writeLen = $read
@@ -333,13 +417,17 @@ function Write-ImageToDisk {
       $target.Write($buffer, 0, $writeLen)
       $written += $read
       $percent = [int](($written * 100) / $totalBytes)
-      if ($percent -ne $lastPercent) {
-        Write-Progress -Activity "Writing appliance image" -Status "$percent%" -PercentComplete $percent
+      # Report at most every 2 seconds and every 5 percent, so the UI shows
+      # real progress without flooding the log.
+      if ($percent -ne $lastPercent -and ($percent -ge $lastPercent + 5 -or $watch.Elapsed.TotalSeconds -ge 2)) {
+        Write-Host "Writing appliance image: $percent%"
         $lastPercent = $percent
+        $watch.Reset()
+        $watch.Start()
       }
     }
     $target.Flush($true)
-    Write-Progress -Activity "Writing appliance image" -Completed
+    Write-Host "Writing appliance image: 100%"
   } finally {
     $source.Dispose()
     $target.Dispose()
@@ -455,7 +543,9 @@ function Write-TextFile {
   [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+Write-Host "Checking administrator access."
 Require-Admin
+Write-Host "Checked: administrator access."
 
 $resolvedWorkspace = Resolve-WorkspacePath -PathValue $WorkspaceDir
 $resolvedCache = Resolve-WorkspacePath -PathValue $ContentDir
@@ -470,11 +560,16 @@ if (-not $Force) {
   throw "Writing is destructive. Re-run with -Force to write to disk #$DiskNumber."
 }
 
+Write-Host "Checking target SD card (disk #$DiskNumber)."
 $disk = Get-TargetDisk -Number $DiskNumber -AllowFixed:$AllowFixedDisk
+Write-Host "Checked: SD card accepted - $($disk.FriendlyName), $([math]::Round($disk.Size / 1GB, 1)) GB, $($disk.BusType) bus."
 
+Write-Host "Checking content profile."
 $profilePath = Resolve-WorkspacePath -PathValue $Profile
 $urls = Read-ProfileEntries -Path $profilePath
+Write-Host "Checked: content profile has $($urls.Count) libraries."
 
+Write-Host "Checking Wi-Fi configuration."
 # Credentials first, so a bad value fails before anything is downloaded or erased.
 if (-not [string]::IsNullOrWhiteSpace($DeviceConfigPath)) {
   if (-not (Test-Path $DeviceConfigPath)) { throw "Device config not found: $DeviceConfigPath" }
@@ -487,6 +582,7 @@ if (-not [string]::IsNullOrWhiteSpace($DeviceConfigPath)) {
   }
   $deviceConfig = New-DeviceConfigJson -Ssid $ApSsid -Password $ApPassword -Country $CountryCode
 }
+Write-Host "Checked: Wi-Fi configuration."
 
 # Resolve and verify the base image.
 if ([string]::IsNullOrWhiteSpace($ImagePath)) {
@@ -510,10 +606,12 @@ $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
 Validate-PrebuiltManifest -Manifest $manifest
 
 $rawImagePath = Join-Path $resolvedWorkspace "prebuilt-base.img"
+Write-Host "Verifying base image download (SHA-256)."
 $rawImage = Expand-BaseImage -Manifest $manifest -SourcePath $ImagePath -OutputPath $rawImagePath
 if ((Get-Item $rawImage).Length -ne [int64]$manifest.image.sizeBytes) {
   throw "Unpacked image size does not match the manifest."
 }
+Write-Host "Verifying unpacked base image (SHA-256)."
 if ((Get-FileSha256 -Path $rawImage) -ne ([string]$manifest.image.sha256).ToLowerInvariant()) {
   throw "Unpacked image SHA-256 does not match the manifest."
 }
@@ -552,7 +650,7 @@ $zimRoot = New-ZimDataVolume -DiskNumber $DiskNumber
 
 if ($ContentMode -eq "Prebuilt") {
   foreach ($item in $items) {
-    Write-Host "Copying: $($item.name)"
+    Write-Host "Copying: $($item.name) ($([math]::Round($item.bytes / 1MB, 1)) MB)"
     $dest = Join-Path $zimRoot $item.name
     Copy-Item -Path (Join-Path $resolvedCache $item.name) -Destination $dest -Force
     if ((Get-Item $dest).Length -ne $item.bytes) {

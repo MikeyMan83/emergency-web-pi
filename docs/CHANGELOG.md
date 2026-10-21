@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Fixed
+
+- The creator no longer hangs on "Checking requirements" with a blank details panel. The build-output pump read the child process streams before starting the process, so the build never launched and progress stopped silently; the pump now starts the process first and streams stdout and stderr on the UI dispatcher, forwarding every writer line to the details log and status line.
+- The SD writer now reports each requirement check, the base-image lookup/download/verification (with real byte progress and network timeouts), unpack progress, and write progress, so the progress view reflects the actual work instead of sitting silent during long operations.
+- Cancelling a build now stops the whole writer process tree (including download helpers) and is disabled while it is not safe; a stall indicator appears when an operation reports no progress for several minutes.
+
 ## [0.4.0] - 2026-10-21
 
 ### Changed

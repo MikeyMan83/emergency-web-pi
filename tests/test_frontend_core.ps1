@@ -231,17 +231,60 @@ $stageCases = @(
   @{ Line = "Copying: wikipedia_en_all_nopic.zim"; Stage = "copy" }
   @{ Line = "Flushing to the card ..."; Stage = "verify" }
   @{ Line = "Prebuilt SD build complete"; Stage = "done" }
+  @{ Line = "Checking administrator access."; Stage = "requirements" }
+  @{ Line = "Checking target SD card (disk #1)."; Stage = "requirements" }
+  @{ Line = "Looking up the base image release."; Stage = "system" }
+  @{ Line = "Downloading base image manifest."; Stage = "system" }
+  @{ Line = "Downloading base image asset: ewp-base-0.4.0.img.gz.001"; Stage = "system" }
+  @{ Line = "Base image download: 12.3 of 45.6 MB (27%)"; Stage = "system" }
+  @{ Line = "Using cached base image asset: ewp-base-0.4.0.img.gz.001"; Stage = "system" }
+  @{ Line = "Verifying base image download (SHA-256)."; Stage = "system" }
+  @{ Line = "Verifying unpacked base image (SHA-256)."; Stage = "system" }
+  @{ Line = "Unpacking base image: 1.0 of 2.0 GB (50%)"; Stage = "system" }
+  @{ Line = "Writing appliance image: 42%"; Stage = "write" }
 )
 foreach ($case in $stageCases) {
   Assert-Equal $case.Stage (Get-StageForWriterLine -Line $case.Line) ("stage for line: " + $case.Line)
 }
 Assert-Equal $null (Get-StageForWriterLine -Line "Some unrelated output") "unrelated line maps to null stage"
 Assert-Equal $null (Get-StageForWriterLine -Line "") "empty line maps to null stage"
+Assert-Equal $null (Get-StageForWriterLine -Line "Checked: SD card accepted - Generic MassStorageClass, 29.8 GB, USB bus.") "checked-only line does not advance the stage"
 
 # --- Download percent --------------------------------------------------------
 Assert-Equal 42 (Get-DownloadPercentForLine -Line "[#a1b2c3 840MiB/2.0GiB(42%) CN:5 DL:8.5MiB]") "aria2 percent parsed"
 Assert-Equal 0 (Get-DownloadPercentForLine -Line "[#a1b2c3 0MiB/2.0GiB(0%) CN:1 DL:0b]") "aria2 zero percent parsed"
+Assert-Equal 73 (Get-DownloadPercentForLine -Line "[#9ff24d 1.8MiB/2.5MiB(73%) CN:1 DL:3.7MiB]") "aria2 KiB/MiB percent parsed"
 Assert-Equal $null (Get-DownloadPercentForLine -Line "Downloading: file.zim") "non-aria2 line has null percent"
+Assert-Equal $null (Get-DownloadPercentForLine -Line "Base image download: 12.3 of 45.6 MB (27%)") "base image progress is not content percent"
+Assert-Equal $null (Get-DownloadPercentForLine -Line "Writing appliance image: 42%") "write progress is not content percent"
+Assert-Equal $null (Get-DownloadPercentForLine -Line "Unpacking base image: 1.0 of 2.0 GB (50%)") "unpack progress is not content percent"
+
+# --- Write percent -----------------------------------------------------------
+Assert-Equal 42 (Get-WritePercentForLine -Line "Writing appliance image: 42%") "write percent parsed"
+Assert-Equal 100 (Get-WritePercentForLine -Line "Writing appliance image: 100%") "write percent 100 parsed"
+Assert-Equal 0 (Get-WritePercentForLine -Line "Writing appliance image: 0%") "write percent 0 parsed"
+Assert-Equal $null (Get-WritePercentForLine -Line "Writing appliance image to disk #1 ...") "write stage entry has no percent"
+Assert-Equal $null (Get-WritePercentForLine -Line "Some unrelated output") "unrelated line has no write percent"
+Assert-Equal $null (Get-WritePercentForLine -Line "") "empty line has no write percent"
+
+# --- Writer status text ------------------------------------------------------
+Assert-Equal "Checking administrator access." (Get-WriterStatusTextForLine -Line "Checking administrator access.") "specific requirement shown"
+Assert-Equal "Checking target SD card (disk #1)." (Get-WriterStatusTextForLine -Line "Checking target SD card (disk #1).") "specific disk check shown"
+Assert-Equal "Looking up the base image release." (Get-WriterStatusTextForLine -Line "Looking up the base image release.") "lookup status"
+Assert-Equal "Downloading base image manifest." (Get-WriterStatusTextForLine -Line "Downloading base image manifest.") "manifest status"
+Assert-Equal "Downloading system image - ewp-base-0.4.0.img.gz.001" (Get-WriterStatusTextForLine -Line "Downloading base image asset: ewp-base-0.4.0.img.gz.001") "asset download status"
+Assert-Equal "Downloading system image - 12.3 of 45.6 MB (27%)" (Get-WriterStatusTextForLine -Line "Base image download: 12.3 of 45.6 MB (27%)") "asset progress status"
+Assert-Equal "Using cached system image - ewp-base-0.4.0.img.gz.001" (Get-WriterStatusTextForLine -Line "Using cached base image asset: ewp-base-0.4.0.img.gz.001") "cached asset status"
+Assert-Equal "Verifying base image download (SHA-256)." (Get-WriterStatusTextForLine -Line "Verifying base image download (SHA-256).") "verify download status"
+Assert-Equal "Verifying unpacked base image (SHA-256)." (Get-WriterStatusTextForLine -Line "Verifying unpacked base image (SHA-256).") "verify unpacked status"
+Assert-Equal "Unpacking base image: 1.0 of 2.0 GB (50%)" (Get-WriterStatusTextForLine -Line "Unpacking base image: 1.0 of 2.0 GB (50%)") "unpack progress status"
+Assert-Equal "System files are ready." (Get-WriterStatusTextForLine -Line "Base image verified.") "verified status"
+Assert-Equal "Downloading content - wikipedia_en_all_nopic.zim" (Get-WriterStatusTextForLine -Line "Downloading: wikipedia_en_all_nopic.zim") "content download status"
+Assert-Equal "Using cached content - wikipedia_en_all_nopic.zim" (Get-WriterStatusTextForLine -Line "Using cached: wikipedia_en_all_nopic.zim") "cached content status"
+Assert-Equal "Copying wikipedia_en_all_nopic.zim (840.5 MB)" (Get-WriterStatusTextForLine -Line "Copying: wikipedia_en_all_nopic.zim (840.5 MB)") "copy status"
+Assert-Equal $null (Get-WriterStatusTextForLine -Line "Checked: SD card accepted - Generic MassStorageClass, 29.8 GB, USB bus.") "checked-only line has no status override"
+Assert-Equal $null (Get-WriterStatusTextForLine -Line "Some unrelated output") "unrelated line has no status override"
+Assert-Equal $null (Get-WriterStatusTextForLine -Line "") "empty line has no status override"
 
 # --- Cancellation safety -----------------------------------------------------
 Assert-True (Test-WriterCancellationSafe -StageId "requirements") "requirements cancellable"

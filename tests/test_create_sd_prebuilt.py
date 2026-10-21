@@ -38,6 +38,33 @@ class PrebuiltWriterTests(unittest.TestCase):
         self.assertIn("8,63", WRITER)
         self.assertIn("[A-Z]{2}", WRITER)
 
+    def test_progress_is_reported_for_each_phase(self) -> None:
+        for needle in (
+            '"Checking administrator access."',
+            '"Checking target SD card',
+            '"Checking content profile."',
+            '"Checking Wi-Fi configuration."',
+            '"Looking up the base image release."',
+            '"Downloading base image manifest."',
+            '"Verifying base image download (SHA-256)."',
+            '"Verifying unpacked base image (SHA-256)."',
+            '"Unpacking base image: "',
+            '"Writing appliance image: $percent%"',
+            '"Writing appliance image: 100%"',
+            '"Base image download"',
+        ):
+            self.assertIn(needle, WRITER)
+
+    def test_network_calls_are_bounded(self) -> None:
+        self.assertIn("-TimeoutSec 120", WRITER)
+        self.assertIn("$request.Timeout = 120000", WRITER)
+        self.assertIn("$request.ReadWriteTimeout = 300000", WRITER)
+
+    def test_requirement_checks_run_before_any_disk_write(self) -> None:
+        self.assertLess(WRITER.index("Write-Host \"Checking administrator access.\""), WRITER.index("Get-TargetDisk -Number $DiskNumber"))
+        self.assertLess(WRITER.index("Get-TargetDisk -Number $DiskNumber"), WRITER.index("Write-ImageToDisk -ImagePath $rawImage"))
+        self.assertLess(WRITER.index("Invoke-AriaDownload -Aria"), WRITER.index("Write-ImageToDisk -ImagePath $rawImage"))
+
 
 class CreatorUsesPrebuiltWriterTests(unittest.TestCase):
     def test_end_user_flow_is_wsl_free(self) -> None:

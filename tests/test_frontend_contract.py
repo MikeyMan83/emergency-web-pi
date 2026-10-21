@@ -7,6 +7,7 @@ FRONTEND = (REPO_ROOT / "portable" / "EmergencyWebPi.ps1").read_text(encoding="u
 CORE = (REPO_ROOT / "portable" / "EmergencyWebPi-Core.ps1").read_text(encoding="utf-8")
 MAIN_XAML = (REPO_ROOT / "portable" / "ui" / "MainWindow.xaml").read_text(encoding="utf-8")
 BLOB = FRONTEND + "\n" + CORE
+WRITER = (REPO_ROOT / "scripts" / "create-sd-prebuilt.ps1").read_text(encoding="utf-8")
 
 
 def function_body(source: str, name: str) -> str:
@@ -54,10 +55,14 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_progress_maps_real_writer_output_to_stages(self):
         body = function_body(FRONTEND, "Start-CreatorBuild")
-        self.assertIn("Get-StageForWriterLine", body)
-        self.assertIn("Get-DownloadPercentForLine", body)
+        self.assertIn("Invoke-BuildLine", body)
         self.assertIn("Build-StageList", body)
         self.assertIn("Set-CurrentStage", body)
+        line_handler = function_body(FRONTEND, "Invoke-BuildLine")
+        self.assertIn("Get-StageForWriterLine", line_handler)
+        self.assertIn("Get-DownloadPercentForLine", line_handler)
+        self.assertIn("Get-WritePercentForLine", line_handler)
+        self.assertIn("Get-WriterStatusTextForLine", line_handler)
         self.assertIn("Get-CreatorStages", CORE)
         for stage_id in ("requirements", "system", "download", "write", "partition", "copy", "verify", "done"):
             self.assertIn(stage_id, CORE)
@@ -68,6 +73,58 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("DispatcherTimer", body)
         for forbidden in ("ReadToEnd", "OutputDataReceived", "ErrorDataReceived", "BeginOutputReadLine", "DoEvents", "WaitAny"):
             self.assertNotIn(forbidden, body)
+
+    def test_build_process_starts_before_reading_output_streams(self):
+        # Regression: Process.StandardOutput/StandardError are null until the
+        # process starts; reading them first silently killed every build.
+        body = function_body(FRONTEND, "Start-BuildProcess")
+        self.assertLess(body.index("[void]$process.Start()"), body.index("$process.StandardOutput.ReadLineAsync()"))
+        self.assertLess(body.index("[void]$process.Start()"), body.index("$process.StandardError.ReadLineAsync()"))
+
+    def test_build_pump_survives_faulted_streams_and_handler_errors(self):
+        body = function_body(FRONTEND, "Start-BuildProcess")
+        self.assertIn("IsFaulted", body)
+        self.assertIn("Build output handler error", body)
+        self.assertIn("Build pump error", body)
+        self.assertIn("Test-BuildProcessExited", body)
+
+    def test_cancel_kills_the_process_tree_and_reports_progress(self):
+        body = function_body(FRONTEND, "Stop-BuildProcess")
+        self.assertIn("taskkill", body)
+        self.assertIn("/T /F", body)
+        self.assertIn("Test-BuildProcessExited", body)
+        self.assertIn("Cancelling...", body)
+
+    def test_cancel_does_not_offer_the_base_image_retry(self):
+        body = function_body(FRONTEND, "Complete-CreatorBuild")
+        self.assertIn("-not $script:buildCancelled -and $outputText.Contains('BASE_IMAGE_UNAVAILABLE')", body)
+
+    def test_stall_indicator_waits_for_real_silence(self):
+        body = function_body(FRONTEND, "Start-ElapsedTimer")
+        self.assertIn("buildLastLineTime", body)
+        self.assertIn("no progress reported for", body)
+
+    def test_writer_reports_progress_for_every_phase(self):
+        for needle in (
+            '"Checking administrator access."',
+            '"Checking target SD card',
+            '"Checking content profile."',
+            '"Checking Wi-Fi configuration."',
+            '"Looking up the base image release."',
+            '"Downloading base image manifest."',
+            '"Verifying base image download (SHA-256)."',
+            '"Verifying unpacked base image (SHA-256)."',
+            '"Unpacking base image: "',
+            '"Writing appliance image: $percent%"',
+            '"Writing appliance image: 100%"',
+            '"Base image download"',
+        ):
+            self.assertIn(needle, WRITER)
+
+    def test_writer_network_calls_are_bounded(self):
+        self.assertIn("-TimeoutSec 120", WRITER)
+        self.assertIn("$request.Timeout = 120000", WRITER)
+        self.assertIn("$request.ReadWriteTimeout = 300000", WRITER)
 
     def test_cancellation_is_gated_on_writer_stage_safety(self):
         body = function_body(FRONTEND, "Set-CurrentStage")

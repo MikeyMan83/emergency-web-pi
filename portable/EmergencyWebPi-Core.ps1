@@ -376,11 +376,19 @@ function Get-StageForWriterLine {
   $text = $Line.Trim()
   if ($text.Length -eq 0) { return $null }
 
+  if ($text -match "^Checking ") { return "requirements" }
+  if ($text -match "^Looking up the base image release") { return "system" }
+  if ($text -match "^Downloading base image manifest") { return "system" }
   if ($text -match "^Downloading base image asset") { return "system" }
+  if ($text -match "^Base image download:") { return "system" }
+  if ($text -match "^Using cached base image asset:") { return "system" }
+  if ($text -match "^Verifying base image download") { return "system" }
+  if ($text -match "^Verifying unpacked base image") { return "system" }
   if ($text -match "^Unpacking base image") { return "system" }
   if ($text -match "^Base image verified") { return "system" }
   if ($text -match "^Downloading:") { return "download" }
   if ($text -match "^Using cached:") { return "download" }
+  if ($text -match "^Writing appliance image: \d+%") { return "write" }
   if ($text -match "^Writing appliance image to disk") { return "write" }
   if ($text -match "^Creating ZIMDATA") { return "partition" }
   if ($text -match "^Copying:") { return "copy" }
@@ -393,9 +401,46 @@ function Get-DownloadPercentForLine {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
 
   # aria2c progress lines look like: [#a1b2c3 12MiB/2.0GiB(0%) CN:5 DL:8.5MiB]
-  if ($Line -match "\((\d+)%\)") {
+  # Only the aria2c "done/total(percent)" shape counts as content-download progress;
+  # other writer progress lines (base image, unpacking, writing) use different
+  # formats and must not move the content bar.
+  if ($Line -match '(?i)(\d+(?:\.\d+)?)(K|M|G)iB/\S+\((\d+)%\)') {
+    return [int]$Matches[3]
+  }
+  return $null
+}
+
+function Get-WritePercentForLine {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
+
+  # The writer reports raw-disk write progress as: Writing appliance image: 42%
+  if ($Line -match "^Writing appliance image: (\d+)%") {
     return [int]$Matches[1]
   }
+  return $null
+}
+
+function Get-WriterStatusTextForLine {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
+
+  # Maps a writer output line to the specific status text the progress screen
+  # should show, so the user always sees what is actually happening.
+  $text = $Line.Trim()
+  if ($text.Length -eq 0) { return $null }
+
+  if ($text -match "^Checking .+") { return $text }
+  if ($text -match "^Looking up the base image release") { return $text }
+  if ($text -match "^Downloading base image manifest") { return $text }
+  if ($text -match "^Downloading base image asset: (.+)") { return ("Downloading system image - " + $Matches[1]) }
+  if ($text -match "^Base image download: (.+)") { return ("Downloading system image - " + $Matches[1]) }
+  if ($text -match "^Using cached base image asset: (.+)") { return ("Using cached system image - " + $Matches[1]) }
+  if ($text -match "^Verifying base image download") { return $text }
+  if ($text -match "^Verifying unpacked base image") { return $text }
+  if ($text -match "^Unpacking base image") { return $text }
+  if ($text -match "^Base image verified") { return "System files are ready." }
+  if ($text -match "^Downloading: (.+)") { return ("Downloading content - " + $Matches[1]) }
+  if ($text -match "^Using cached: (.+)") { return ("Using cached content - " + $Matches[1]) }
+  if ($text -match "^Copying: (.+)") { return ("Copying " + $Matches[1]) }
   return $null
 }
 
