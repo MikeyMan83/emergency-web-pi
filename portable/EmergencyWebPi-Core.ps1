@@ -370,12 +370,105 @@ function Get-CreatorStages {
   return $stages
 }
 
+function Get-CreatorStageWeights {
+  param([Parameter(Mandatory = $true)][ValidateSet("FirstBoot", "Prebuilt")][string]$ContentMode)
+
+  # The weights are the whole-workflow progress contract. They sum to 100 for
+  # every mode; "done" carries no weight because completion sets the bar to 100.
+  if ($ContentMode -eq "Prebuilt") {
+    return [PSCustomObject][ordered]@{
+      requirements = 5
+      system = 25
+      download = 35
+      write = 20
+      partition = 5
+      copy = 8
+      verify = 2
+      done = 0
+    }
+  }
+  return [PSCustomObject][ordered]@{
+    requirements = 5
+    system = 55
+    write = 25
+    partition = 10
+    verify = 5
+    done = 0
+  }
+}
+
+function Get-CreatorStageBasePercent {
+  param(
+    [Parameter(Mandatory = $true)][ValidateSet("FirstBoot", "Prebuilt")][string]$ContentMode,
+    [Parameter(Mandatory = $true)][string]$StageId
+  )
+
+  $stages = @(Get-CreatorStages -ContentMode $ContentMode)
+  $weights = Get-CreatorStageWeights -ContentMode $ContentMode
+  [int]$base = 0
+  foreach ($stage in $stages) {
+    if ($stage.Id -eq $StageId) { return $base }
+    $base += [int]$weights.($stage.Id)
+  }
+  return 0
+}
+
+function Get-CreatorOverallPercent {
+  param(
+    [Parameter(Mandatory = $true)][ValidateSet("FirstBoot", "Prebuilt")][string]$ContentMode,
+    [Parameter(Mandatory = $true)][string]$StageId,
+    [int]$StagePercent = 0
+  )
+
+  $base = Get-CreatorStageBasePercent -ContentMode $ContentMode -StageId $StageId
+  $weights = Get-CreatorStageWeights -ContentMode $ContentMode
+  $weight = [int]$weights.($StageId)
+  if ($weight -le 0) { return [Math]::Max(0, [Math]::Min(100, $base)) }
+  $clamped = [Math]::Max(0, [Math]::Min(100, $StagePercent))
+  return [int][Math]::Floor($base + ($weight * $clamped / 100.0))
+}
+
+function Get-SystemPercentForLine {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
+
+  # The writer reports cumulative system-file work as: System files: 42%
+  if ($Line -match "^System files: (\d+)%") {
+    return [int]$Matches[1]
+  }
+  return $null
+}
+
+function Get-DownloadStagePercent {
+  param(
+    [double]$CompletedWeight,
+    [double]$CurrentWeight,
+    [int]$CurrentPercent,
+    [double]$TotalWeight
+  )
+
+  if ($TotalWeight -le 0) { return 0 }
+  $percent = [Math]::Max(0, [Math]::Min(100, $CurrentPercent))
+  return [int][Math]::Floor((($CompletedWeight + ($CurrentWeight * $percent / 100.0)) * 100.0) / $TotalWeight)
+}
+
+function Get-ItemStagePercent {
+  param(
+    [int]$CompletedCount,
+    [int]$TotalCount
+  )
+
+  if ($TotalCount -le 0) { return 0 }
+  return [int][Math]::Floor(([Math]::Max(0, $CompletedCount) * 100.0) / $TotalCount)
+}
+
 function Get-StageForWriterLine {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
 
   $text = $Line.Trim()
   if ($text.Length -eq 0) { return $null }
 
+  # The specific disk-space check must win over the generic "Checking " rule.
+  if ($text -match "^Checking available disk space") { return "system" }
   if ($text -match "^Checking ") { return "requirements" }
   if ($text -match "^Looking up the base image release") { return "system" }
   if ($text -match "^Downloading base image manifest") { return "system" }
@@ -386,12 +479,19 @@ function Get-StageForWriterLine {
   if ($text -match "^Verifying unpacked base image") { return "system" }
   if ($text -match "^Unpacking base image") { return "system" }
   if ($text -match "^Base image verified") { return "system" }
+  if ($text -match "^System files: \d+%") { return "system" }
+  if ($text -match "^Verifying cached base image asset") { return "system" }
+  if ($text -match "^Cached base image asset") { return "system" }
+  if ($text -match "^Removing incomplete base image download") { return "system" }
+  if ($text -match "^Preparing to download selected content") { return "download" }
   if ($text -match "^Downloading:") { return "download" }
   if ($text -match "^Using cached:") { return "download" }
+  if ($text -match "^Content download complete") { return "download" }
   if ($text -match "^Writing appliance image: \d+%") { return "write" }
   if ($text -match "^Writing appliance image to disk") { return "write" }
   if ($text -match "^Creating ZIMDATA") { return "partition" }
   if ($text -match "^Copying:") { return "copy" }
+  if ($text -match "^Copied:") { return "copy" }
   if ($text -match "^Flushing to the card") { return "verify" }
   if ($text -match "^Prebuilt SD build complete") { return "done" }
   return $null
@@ -438,9 +538,18 @@ function Get-WriterStatusTextForLine {
   if ($text -match "^Verifying unpacked base image") { return $text }
   if ($text -match "^Unpacking base image") { return $text }
   if ($text -match "^Base image verified") { return "System files are ready." }
+  if ($text -match "^System files: (\d+)%") { return ("Preparing system files - " + $Matches[1] + "%") }
+  if ($text -match "^Checking available disk space") { return $text }
+  if ($text -match "^Verifying cached base image asset") { return $text }
+  if ($text -match "^Cached base image asset verified") { return "Cached system image verified." }
+  if ($text -match "^Cached base image asset failed verification") { return "Cached system image failed verification; downloading it again." }
+  if ($text -match "^Removing incomplete base image download") { return $text }
+  if ($text -match "^Preparing to download selected content") { return "Preparing to download the selected libraries." }
   if ($text -match "^Downloading: (.+)") { return ("Downloading content - " + $Matches[1]) }
   if ($text -match "^Using cached: (.+)") { return ("Using cached content - " + $Matches[1]) }
+  if ($text -match "^Content download complete") { return "Selected content is ready." }
   if ($text -match "^Copying: (.+)") { return ("Copying " + $Matches[1]) }
+  if ($text -match "^Copied: (.+)") { return ("Copied " + $Matches[1]) }
   return $null
 }
 
@@ -466,7 +575,8 @@ function New-PrebuiltBuildArguments {
     [Parameter(Mandatory = $true)][string]$WorkspaceDir,
     [Parameter(Mandatory = $true)][string]$ReleaseRepo,
     [Parameter(Mandatory = $true)][ValidateSet("FirstBoot", "Prebuilt")][string]$ContentMode,
-    [string]$ImagePathOverride = ""
+    [string]$ImagePathOverride = "",
+    [string]$ManifestPathOverride = ""
   )
 
   # Frozen writer contract: scripts/create-sd-prebuilt.ps1 with bounded arguments.
@@ -483,6 +593,9 @@ function New-PrebuiltBuildArguments {
   )
   if (-not [string]::IsNullOrWhiteSpace($ImagePathOverride)) {
     $parts += @("-ImagePath", (Quote-Arg -Value $ImagePathOverride))
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ManifestPathOverride)) {
+    $parts += @("-ManifestPath", (Quote-Arg -Value $ManifestPathOverride))
   }
   return ($parts -join " ")
 }

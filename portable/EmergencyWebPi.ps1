@@ -385,6 +385,10 @@ function Start-BuildProcess {
     $process.StartInfo = $psi
     $script:buildJob = $process
     $script:buildCancelled = $false
+    $script:buildStopRequested = $false
+    $script:buildKillTarget = $null
+    $script:buildCancelledAt = $null
+    $script:buildExitedAt = $null
     $script:buildOutputLines = New-Object System.Collections.Generic.List[string]
     $script:buildErrorLines = New-Object System.Collections.Generic.List[string]
     $script:buildOnLine = $OnLine
@@ -402,8 +406,9 @@ function Start-BuildProcess {
             while ($true) {
                 $task = $script:buildStdoutTask
                 if ($task -and $task.IsCompleted) {
-                    if ($task.IsFaulted) {
-                        # A killed process can fault a pending read; treat it as end-of-stream.
+                    if ($task.IsFaulted -or $task.IsCanceled) {
+                        # A killed process can fault or cancel a pending read;
+                        # treat either one as end-of-stream.
                         $script:buildStdoutTask = $null
                         continue
                     }
@@ -423,7 +428,7 @@ function Start-BuildProcess {
             while ($true) {
                 $task = $script:buildStderrTask
                 if ($task -and $task.IsCompleted) {
-                    if ($task.IsFaulted) {
+                    if ($task.IsFaulted -or $task.IsCanceled) {
                         $script:buildStderrTask = $null
                         continue
                     }
@@ -441,13 +446,23 @@ function Start-BuildProcess {
                 break
             }
             if (-not $hasOutput) {
+                $exited = Test-BuildProcessExited
+                if ($exited -and -not $script:buildExitedAt) { $script:buildExitedAt = Get-Date }
                 $stdoutDone = ($null -eq $script:buildStdoutTask)
                 $stderrDone = ($null -eq $script:buildStderrTask)
-                if (-not $script:buildCompleted.Done -and $stdoutDone -and $stderrDone -and (Test-BuildProcessExited)) {
+                $cancelGrace = ($script:buildCancelled -and $script:buildCancelledAt -and ((Get-Date) - $script:buildCancelledAt).TotalSeconds -ge 2)
+                $orphanGrace = ($exited -and $script:buildExitedAt -and ((Get-Date) - $script:buildExitedAt).TotalSeconds -ge 5)
+                $streamsDone = ($stdoutDone -and $stderrDone) -or ($exited -and ($cancelGrace -or $orphanGrace))
+                if (-not $script:buildCompleted.Done -and $streamsDone -and $exited) {
                     $script:buildCompleted.Done = $true
+                    # A surviving grandchild can keep a redirected pipe open after
+                    # the main writer exits; do not wait for that EOF forever.
+                    $script:buildStdoutTask = $null
+                    $script:buildStderrTask = $null
                     $exitCode = -1
                     try { $exitCode = $script:buildJob.ExitCode } catch { $exitCode = -1 }
                     $output = @($script:buildOutputLines) + @($script:buildErrorLines)
+                    Write-AppLog ('Build process finished (exit code ' + $exitCode.ToString() + $(if ($script:buildCancelled) { '; cancelled' } else { '' }) + ').')
                     $sender.Stop()
                     if ($script:buildOnComplete) { & $script:buildOnComplete $exitCode $output }
                 }
@@ -475,25 +490,55 @@ function Test-BuildProcessExited {
 }
 
 function Stop-BuildProcess {
+    if ($script:buildStopRequested) { return }
+    $script:buildStopRequested = $true
     $script:buildCancelled = $true
+    $script:buildCancelledAt = Get-Date
+    Write-AppLog 'Cancellation requested; stopping the writer process and any download helpers.'
     $cancelButton = Find-Control 'BtnCancel'
     if ($cancelButton) { $cancelButton.IsEnabled = $false }
     Set-ProgressStatus -Text 'Cancelling...'
-    if (-not $script:buildJob) { return }
-    if (Test-BuildProcessExited) { return }
+    Write-AppLog 'Cancelling...'
+    if (-not $script:buildJob) {
+        Write-AppLog 'No build process was running.'
+        return
+    }
+    if (Test-BuildProcessExited) {
+        Write-AppLog 'The build process had already exited.'
+        return
+    }
+
     # Kill the whole tree so helper processes (for example aria2c) stop too.
+    # taskkill starts immediately and returns without waiting; a short dispatcher
+    # tick then force-kills the main writer if it has not exited yet. This keeps
+    # the UI thread free while cancellation is in flight. The tick reads the
+    # target from a script variable: delegate handlers cannot see function locals.
+    $script:buildKillTarget = $script:buildJob
+    $killPsi = New-Object System.Diagnostics.ProcessStartInfo
+    $killPsi.FileName = 'taskkill'
+    $killPsi.Arguments = '/PID ' + $script:buildKillTarget.Id.ToString() + ' /T /F'
+    $killPsi.UseShellExecute = $false
+    $killPsi.CreateNoWindow = $true
+    $killPsi.RedirectStandardOutput = $true
+    $killPsi.RedirectStandardError = $true
     try {
-        $killPsi = New-Object System.Diagnostics.ProcessStartInfo
-        $killPsi.FileName = 'taskkill'
-        $killPsi.Arguments = '/PID ' + $script:buildJob.Id.ToString() + ' /T /F'
-        $killPsi.UseShellExecute = $false
-        $killPsi.CreateNoWindow = $true
-        $killPsi.RedirectStandardOutput = $true
-        $killPsi.RedirectStandardError = $true
-        $killer = [System.Diagnostics.Process]::Start($killPsi)
-        [void]$killer.WaitForExit(5000)
-    } catch { }
-    try { if (-not $script:buildJob.HasExited) { $script:buildJob.Kill() } } catch { }
+        $script:buildKiller = [System.Diagnostics.Process]::Start($killPsi)
+    } catch {
+        Write-AppLog ('Could not start taskkill: ' + $_.Exception.Message)
+    }
+    $killTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $killTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $killTimer.Add_Tick({
+        param($sender, $eventArgs)
+        $sender.Stop()
+        try {
+            $target = $script:buildKillTarget
+            if ($target -and -not $target.HasExited) { $target.Kill() }
+        } catch { }
+        Write-AppLog 'Writer process termination requested.'
+    })
+    $killTimer.Start()
+    Write-AppLog 'Stopping the writer process tree.'
 }
 
 $script:app = [PSCustomObject]@{
@@ -522,6 +567,20 @@ $script:marqueeTimer = $null
 $script:elapsedTimer = $null
 $script:buildStartTime = $null
 $script:buildLastLineTime = $null
+$script:buildBarPercent = 0
+$script:buildStagePercent = 0
+$script:buildStopRequested = $false
+$script:buildKillTarget = $null
+$script:buildCancelledAt = $null
+$script:buildExitedAt = $null
+$script:downloadItems = @()
+$script:downloadUseBytes = $false
+$script:downloadTotalWeight = 0
+$script:downloadCompletedWeight = 0
+$script:downloadCurrentItem = $null
+$script:downloadCurrentPercent = 0
+$script:copyTotalCount = 0
+$script:copyCompletedCount = 0
 
 function Find-Control {
     param([Parameter(Mandatory)][string]$Name)
@@ -1046,10 +1105,16 @@ function Set-BuildBarPercent {
     param([int]$Percent)
     $fill = Find-Control 'BuildBarFill'
     if (-not $fill) { return }
+    $percent = [Math]::Max(0, [Math]::Min(100, $Percent))
+    # Overall progress is monotonic: a stage transition can only move the bar
+    # forward, never reset it to zero.
+    if (-not $script:buildBarPercent -or $percent -gt $script:buildBarPercent) {
+        $script:buildBarPercent = $percent
+    }
     $track = Find-Control 'BuildBarTrack'
     $trackWidth = 560
     if ($track) { $trackWidth = [Math]::Max(100, $track.ActualWidth) }
-    $fill.Width = [Math]::Max(0, [Math]::Min($trackWidth, [Math]::Round($trackWidth * $Percent / 100.0)))
+    $fill.Width = [Math]::Max(0, [Math]::Min($trackWidth, [Math]::Round($trackWidth * $script:buildBarPercent / 100.0)))
     $fill.Visibility = 'Visible'
 }
 
@@ -1088,10 +1153,15 @@ function Stop-Marquee {
 function Set-CurrentStage {
     param([Parameter(Mandatory)][string]$StageId)
     if ($StageId -ne $script:activeStageId) {
-        # A new stage starts a new measurable operation; reset the progress bar.
-        Set-BuildBarPercent -Percent 0
+        # Entering a stage means the previous stage finished; move the overall
+        # bar to this stage's base instead of resetting it to zero.
+        $script:activeStageId = $StageId
+        $script:buildStagePercent = 0
+        $base = Get-CreatorStageBasePercent -ContentMode $script:app.ContentMode -StageId $StageId
+        Set-BuildBarPercent -Percent $base
+    } else {
+        $script:activeStageId = $StageId
     }
-    $script:activeStageId = $StageId
     foreach ($entry in $script:stageRows.GetEnumerator()) {
         $row = $entry.Value
         $dot = $row.Dot
@@ -1110,9 +1180,9 @@ function Set-CurrentStage {
             $label.FontWeight = 'Normal'
         }
     }
-    # Only genuinely unmeasurable stages use the marquee; the write reports a
-    # real percentage now.
-    $marqueeStages = @('partition', 'copy', 'verify')
+    # Only genuinely unmeasurable stages use the marquee; the write and copy
+    # stages report real percentages now.
+    $marqueeStages = @('partition', 'verify')
     if ($marqueeStages -contains $StageId) { Start-Marquee } else { Stop-Marquee }
     $cancelButton = Find-Control 'BtnCancel'
     if ($cancelButton) {
@@ -1137,33 +1207,116 @@ function Set-ProgressStatus {
     if ($status -and $Text) { $status.Text = $Text }
 }
 
+function Set-ActiveStagePercent {
+    param([Parameter(Mandatory)][string]$StageId, [Parameter(Mandatory)][int]$Percent)
+    $script:buildStagePercent = [Math]::Max(0, [Math]::Min(100, $Percent))
+    Set-BuildBarPercent -Percent (Get-CreatorOverallPercent -ContentMode $script:app.ContentMode -StageId $StageId -StagePercent $script:buildStagePercent)
+}
+
+function Complete-CurrentDownloadItem {
+    if ($script:downloadCurrentItem -and -not $script:downloadCurrentItem.Completed) {
+        $script:downloadCompletedWeight += [double]$script:downloadCurrentItem.Weight
+        $script:downloadCurrentItem.Completed = $true
+    }
+    $script:downloadCurrentItem = $null
+    $script:downloadCurrentPercent = 0
+}
+
+function Complete-DownloadItemByName {
+    param([Parameter(Mandatory)][string]$Name)
+    Complete-CurrentDownloadItem
+    $item = @($script:downloadItems | Where-Object { $_.Name -eq $Name } | Select-Object -First 1)
+    if ($item -and -not $item.Completed) {
+        $script:downloadCompletedWeight += [double]$item.Weight
+        $item.Completed = $true
+    }
+}
+
 function Invoke-BuildLine {
     param([Parameter(Mandatory)][string]$Line, [Parameter(Mandatory)][string]$Stream)
     Add-Log $Line
     $script:buildLastLineTime = Get-Date
     $stage = Get-StageForWriterLine -Line $Line
     if ($stage) { Set-CurrentStage -StageId $stage }
+
+    $systemPercent = Get-SystemPercentForLine -Line $Line
+    if ($null -ne $systemPercent -and $script:activeStageId -eq 'system') {
+        Set-ActiveStagePercent -StageId 'system' -Percent $systemPercent
+        Set-ProgressStatus -Text ('Preparing system files - ' + $systemPercent.ToString() + '%')
+        return
+    }
+
     $writePercent = Get-WritePercentForLine -Line $Line
-    if ($null -ne $writePercent) {
-        Set-BuildBarPercent -Percent $writePercent
+    if ($null -ne $writePercent -and $script:activeStageId -eq 'write') {
+        Set-ActiveStagePercent -StageId 'write' -Percent $writePercent
         Set-ProgressStatus -Text ('Writing the appliance to the SD card - ' + $writePercent.ToString() + '%')
         return
     }
-    $percent = Get-DownloadPercentForLine -Line $Line
-    if ($null -ne $percent) {
-        Set-BuildBarPercent -Percent $percent
-        Set-ProgressStatus -Text ('Downloading content - ' + $percent.ToString() + '%')
+
+    if ($script:activeStageId -eq 'download') {
+        if ($Line -match '^Downloading: (.+)$') {
+            Complete-CurrentDownloadItem
+            $name = $Matches[1]
+            $item = @($script:downloadItems | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
+            if (-not $item) {
+                $item = [PSCustomObject]@{ Name = $name; Weight = 1.0; Completed = $false }
+                $script:downloadItems += ,$item
+                $script:downloadTotalWeight += 1.0
+            }
+            $script:downloadCurrentItem = $item
+            $script:downloadCurrentPercent = 0
+            $percent = Get-DownloadStagePercent -CompletedWeight $script:downloadCompletedWeight -CurrentWeight 0 -CurrentPercent 0 -TotalWeight $script:downloadTotalWeight
+            Set-ActiveStagePercent -StageId 'download' -Percent $percent
+            Set-ProgressStatus -Text ('Downloading content - ' + $name)
+            return
+        }
+        if ($Line -match '^Using cached: (.+)$') {
+            Complete-DownloadItemByName -Name $Matches[1]
+            $percent = Get-DownloadStagePercent -CompletedWeight $script:downloadCompletedWeight -CurrentWeight 0 -CurrentPercent 0 -TotalWeight $script:downloadTotalWeight
+            Set-ActiveStagePercent -StageId 'download' -Percent $percent
+            Set-ProgressStatus -Text ('Using cached content - ' + $Matches[1])
+            return
+        }
+        if ($Line -match '^Content download complete') {
+            Complete-CurrentDownloadItem
+            Set-ActiveStagePercent -StageId 'download' -Percent 100
+            Set-ProgressStatus -Text 'Selected content is ready.'
+            return
+        }
+        $filePercent = Get-DownloadPercentForLine -Line $Line
+        if ($null -ne $filePercent) {
+            $script:downloadCurrentPercent = $filePercent
+            $currentWeight = 0
+            if ($script:downloadCurrentItem) { $currentWeight = [double]$script:downloadCurrentItem.Weight }
+            $percent = Get-DownloadStagePercent -CompletedWeight $script:downloadCompletedWeight -CurrentWeight $currentWeight -CurrentPercent $filePercent -TotalWeight $script:downloadTotalWeight
+            Set-ActiveStagePercent -StageId 'download' -Percent $percent
+            if ($script:downloadCurrentItem) {
+                Set-ProgressStatus -Text ('Downloading content - ' + [string]$script:downloadCurrentItem.Name + ' - ' + $filePercent.ToString() + '% of this file')
+            } else {
+                Set-ProgressStatus -Text ('Downloading content - ' + $filePercent.ToString() + '%')
+            }
+            return
+        }
+    }
+
+    if ($script:activeStageId -eq 'copy' -and $Line -match '^Copied: (.+)$') {
+        $script:copyCompletedCount += 1
+        $percent = Get-ItemStagePercent -CompletedCount $script:copyCompletedCount -TotalCount $script:copyTotalCount
+        Set-ActiveStagePercent -StageId 'copy' -Percent $percent
+        Set-ProgressStatus -Text ('Copied ' + $Matches[1])
         return
     }
+
     $statusText = Get-WriterStatusTextForLine -Line $Line
     if ($statusText) {
         Set-ProgressStatus -Text $statusText
         return
     }
-    if ($stage -and $stage -ne 'download') {
+    if ($stage) {
         $statusMap = @{
             'requirements' = 'Checking requirements.'
             'system' = 'Preparing system files.'
+            'download' = 'Downloading selected content.'
             'write' = 'Writing the appliance to the SD card. Do not remove the card.'
             'partition' = 'Preparing the SD card.'
             'copy' = 'Copying files to the SD card.'
@@ -1235,6 +1388,11 @@ function Start-CreatorBuild {
         Show-AppMessage -Kind Error -Title 'No content selected' -Message 'Please choose a content profile or select at least one library.'
         return
     }
+    if ($script:buildJob -and -not (Test-BuildProcessExited)) {
+        Write-AppLog 'A build is already running; ignoring the new build request.'
+        return
+    }
+
     $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
     $profilePath = Write-GeneratedProfileFile -Entries $entries
     Write-AppLog ('Creator build starting with ' + $entries.Count.ToString() + ' libraries.')
@@ -1242,6 +1400,21 @@ function Start-CreatorBuild {
     $estimate = Get-PreflightEstimate -Items @($checked | ForEach-Object { $_.Item }) -BaseManifest $script:app.BaseManifest
     $script:app.RequiredBytes = $estimate.RequiredBytes
     $script:app.RequiredBytesKnown = $true
+
+    $totals = Get-SelectionTotals -Items @($checked | ForEach-Object { $_.Item })
+    $script:downloadUseBytes = ($totals.KnownSize -and $totals.TotalBytes -gt 0)
+    $script:downloadItems = @($checked | ForEach-Object {
+        $name = Resolve-ZimFileName -Url $_.Item.SourceUrl
+        $weight = if ($script:downloadUseBytes) { [double]$_.Item.EstimatedBytes } else { 1.0 }
+        [PSCustomObject]@{ Name = $name; Weight = $weight; Completed = $false }
+    })
+    $script:downloadTotalWeight = 0
+    foreach ($item in $script:downloadItems) { $script:downloadTotalWeight += [double]$item.Weight }
+    $script:downloadCompletedWeight = 0
+    $script:downloadCurrentItem = $null
+    $script:downloadCurrentPercent = 0
+    $script:copyTotalCount = if ($script:app.ContentMode -eq 'Prebuilt') { $checked.Count } else { 0 }
+    $script:copyCompletedCount = 0
 
     $wifi = New-WifiCredentials
     $configDir = Join-Path $script:workspaceDirectory 'config'
@@ -1261,6 +1434,13 @@ function Start-CreatorBuild {
     $script:prebuiltFlow = $true
     $scriptToRun = $prebuiltScript
     $script:buildStartTime = Get-Date
+    $script:buildBarPercent = 0
+    $script:buildStagePercent = 0
+    $script:buildCancelled = $false
+    $script:buildStopRequested = $false
+    $script:buildCancelledAt = $null
+    $script:buildExitedAt = $null
+    $script:baseImageRetryDone = $false
     Show-Step -Step 5
     Build-StageList
     Set-CurrentStage -StageId 'requirements'
@@ -1330,23 +1510,45 @@ function Complete-CreatorBuild {
     }
     if (-not $script:buildCancelled -and $outputText.Contains('BASE_IMAGE_UNAVAILABLE') -and -not $script:baseImageRetryDone) {
         $script:baseImageRetryDone = $true
-        Write-AppLog 'Base image download failed; asking the user for a local image.'
-        $imagePath = Select-FilePath -Filter 'Raspberry Pi image (*.img;*.img.xz;*.zip)|*.img;*.img.xz;*.zip|All files (*.*)|*.*' -Title 'Select the Raspberry Pi OS image'
+        Write-AppLog 'Base image download failed; asking the user for a local Emergency Web Pi base image.'
+        $imagePath = Select-FilePath -Filter 'Emergency Web Pi base image (*.img;*.img.gz;*.001)|*.img;*.img.gz;*.001|All files (*.*)|*.*' -Title 'Select the Emergency Web Pi base image'
         if ($imagePath) {
             Write-AppLog ('Retrying with local base image: ' + $imagePath)
+            $manifestPath = Get-ChildItem -Path (Split-Path -Parent $imagePath) -Filter 'ewp-base-*.img.manifest.json' -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if (-not $manifestPath) { $manifestPath = Get-Item -Path ($imagePath + '.manifest.json') -ErrorAction SilentlyContinue }
+            if (-not $manifestPath) {
+                $manifestPath = Select-FilePath -Filter 'Emergency Web Pi base image manifest (*.img.manifest.json)|*.img.manifest.json|All files (*.*)|*.*' -Title 'Select the base image manifest'
+            }
+            if ($manifestPath) { Write-AppLog ('Using local base image manifest: ' + $manifestPath.FullName) }
             $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
             $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
             $profilePath = Write-GeneratedProfileFile -Entries $entries
             $wifiConfigPath = Join-Path $script:workspaceDirectory 'config\dynamic-appliance-config.json'
-            $arguments = New-PrebuiltBuildArguments `
-                -DiskNumber $script:app.SelectedDiskNumber `
-                -ProfilePath $profilePath `
-                -DeviceConfigPath $wifiConfigPath `
-                -ContentDir $script:cacheDirectory `
-                -WorkspaceDir $script:workspaceDirectory `
-                -ReleaseRepo "MikeyMan83/emergency-web-pi" `
-                -ContentMode $script:app.ContentMode `
-                -ImagePathOverride $imagePath
+            $retryArgs = @{
+                DiskNumber = $script:app.SelectedDiskNumber
+                ProfilePath = $profilePath
+                DeviceConfigPath = $wifiConfigPath
+                ContentDir = $script:cacheDirectory
+                WorkspaceDir = $script:workspaceDirectory
+                ReleaseRepo = 'MikeyMan83/emergency-web-pi'
+                ContentMode = $script:app.ContentMode
+                ImagePathOverride = $imagePath
+            }
+            if ($manifestPath) { $retryArgs['ManifestPathOverride'] = $manifestPath.FullName }
+            $arguments = New-PrebuiltBuildArguments @retryArgs
+            # A retry is a new build: reset the whole-workflow progress state.
+            $script:buildBarPercent = 0
+            $script:buildStagePercent = 0
+            $script:activeStageId = $null
+            $script:downloadCompletedWeight = 0
+            $script:downloadCurrentItem = $null
+            $script:downloadCurrentPercent = 0
+            foreach ($item in $script:downloadItems) { $item.Completed = $false }
+            $script:copyCompletedCount = 0
+            Set-CurrentStage -StageId 'requirements'
+            Set-ProgressStatus -Text 'Starting the build...'
+            Add-Log 'Starting the build process.'
             $onLine = {
                 param([string]$Line, [string]$Stream)
                 Invoke-BuildLine -Line $Line -Stream $Stream
@@ -1356,6 +1558,7 @@ function Complete-CreatorBuild {
                 Complete-CreatorBuild -ExitCode $RetryExitCode -Output $RetryOutput
             }
             Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+            Add-Log 'Build process started.'
             return
         }
     }
@@ -1403,12 +1606,15 @@ function Show-BuildError {
         if ($messageControl) { $messageControl.Text = 'The operation was cancelled.' }
         if ($hintControl) { $hintControl.Text = 'No changes were made to the SD card. You can go back and try again.' }
     } elseif ($Output.Contains('BASE_IMAGE_UNAVAILABLE')) {
-        if ($messageControl) { $messageControl.Text = 'The Raspberry Pi base image could not be downloaded.' }
-        if ($hintControl) { $hintControl.Text = 'Check the Internet connection on this PC, then try again. The SD card was not modified.' }
+        if ($messageControl) { $messageControl.Text = 'The Emergency Web Pi base image could not be downloaded.' }
+        if ($hintControl) { $hintControl.Text = 'Check the Internet connection on this PC, then try again. If you already downloaded the ewp-base files, select them when prompted. The SD card was not modified.' }
     } elseif ($Output.Contains('Refusing to write')) {
         if ($messageControl) { $messageControl.Text = 'The selected drive was rejected by the safety checks.' }
         if ($hintControl) { $hintControl.Text = 'Make sure you selected a removable SD card, then try again.' }
-    } elseif ($Output -match 'not enough free space|insufficient') {
+    } elseif ($Output -match 'Not enough free space on the workspace drive') {
+        if ($messageControl) { $messageControl.Text = 'This PC does not have enough free disk space for the base image.' }
+        if ($hintControl) { $hintControl.Text = 'Free up space on the drive that stores the Emergency Web Pi workspace, then try again. The SD card was not modified.' }
+    } elseif ($Output -match 'Not enough free space on the SD card|not enough free space|insufficient') {
         if ($messageControl) { $messageControl.Text = 'The SD card does not have enough free space.' }
         if ($hintControl) { $hintControl.Text = 'Use a larger SD card, or choose a smaller content profile.' }
     } elseif ($Output.Contains('aria2c.exe')) {

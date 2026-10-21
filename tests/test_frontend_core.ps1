@@ -607,6 +607,123 @@ $plantedStyleSource = '$link = New-Object System.Windows.Controls.TextBlock' + "
 $plantedViolations = @(Get-StyleTargetViolations -FrontendSource $plantedStyleSource -XamlStyles $xamlStyles)
 Assert-True ($plantedViolations.Count -ge 1) "style target-type scan flags TargetType mismatches"
 
+# --- Stage weights and whole-workflow progress --------------------------------
+# The weights are the whole-workflow progress contract: they must sum to 100 for
+# every mode, and the base percent of a stage is the sum of the weights of the
+# stages before it, so entering a stage never moves the bar backwards.
+$prebuiltWeights = Get-CreatorStageWeights -ContentMode "Prebuilt"
+Assert-Equal 5 ([int]$prebuiltWeights.requirements) "prebuilt requirements weight"
+Assert-Equal 25 ([int]$prebuiltWeights.system) "prebuilt system weight"
+Assert-Equal 35 ([int]$prebuiltWeights.download) "prebuilt download weight"
+Assert-Equal 20 ([int]$prebuiltWeights.write) "prebuilt write weight"
+Assert-Equal 5 ([int]$prebuiltWeights.partition) "prebuilt partition weight"
+Assert-Equal 8 ([int]$prebuiltWeights.copy) "prebuilt copy weight"
+Assert-Equal 2 ([int]$prebuiltWeights.verify) "prebuilt verify weight"
+Assert-Equal 0 ([int]$prebuiltWeights.done) "prebuilt done carries no weight"
+$prebuiltWeightSum = 0
+foreach ($stage in @(Get-CreatorStages -ContentMode "Prebuilt")) { $prebuiltWeightSum += [int]$prebuiltWeights.($stage.Id) }
+Assert-Equal 100 $prebuiltWeightSum "prebuilt weights sum to 100"
+
+$firstBootWeights = Get-CreatorStageWeights -ContentMode "FirstBoot"
+Assert-Equal 5 ([int]$firstBootWeights.requirements) "first boot requirements weight"
+Assert-Equal 55 ([int]$firstBootWeights.system) "first boot system weight"
+Assert-Equal 25 ([int]$firstBootWeights.write) "first boot write weight"
+Assert-Equal 10 ([int]$firstBootWeights.partition) "first boot partition weight"
+Assert-Equal 5 ([int]$firstBootWeights.verify) "first boot verify weight"
+$firstBootWeightSum = 0
+foreach ($stage in @(Get-CreatorStages -ContentMode "FirstBoot")) { $firstBootWeightSum += [int]$firstBootWeights.($stage.Id) }
+Assert-Equal 100 $firstBootWeightSum "first boot weights sum to 100"
+
+Assert-Equal 0 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "requirements") "prebuilt requirements base is 0"
+Assert-Equal 5 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "system") "prebuilt system base is 5"
+Assert-Equal 30 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "download") "prebuilt download base is 30"
+Assert-Equal 65 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "write") "prebuilt write base is 65"
+Assert-Equal 85 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "partition") "prebuilt partition base is 85"
+Assert-Equal 90 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "copy") "prebuilt copy base is 90"
+Assert-Equal 98 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "verify") "prebuilt verify base is 98"
+Assert-Equal 100 (Get-CreatorStageBasePercent -ContentMode "Prebuilt" -StageId "done") "prebuilt done base is 100"
+Assert-Equal 5 (Get-CreatorStageBasePercent -ContentMode "FirstBoot" -StageId "system") "first boot system base is 5"
+Assert-Equal 60 (Get-CreatorStageBasePercent -ContentMode "FirstBoot" -StageId "write") "first boot write base is 60"
+Assert-Equal 95 (Get-CreatorStageBasePercent -ContentMode "FirstBoot" -StageId "verify") "first boot verify base is 95"
+
+# Overall percent = stage base + stage weight * stage percent / 100.
+Assert-Equal 17 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "system" -StagePercent 50) "overall percent mid-system"
+Assert-Equal 65 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "download" -StagePercent 100) "overall percent at download end"
+Assert-Equal 94 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "copy" -StagePercent 50) "overall percent mid-copy"
+Assert-Equal 100 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "verify" -StagePercent 100) "overall percent at verify end"
+Assert-Equal 100 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "done" -StagePercent 0) "overall percent for done is 100"
+Assert-Equal 60 (Get-CreatorOverallPercent -ContentMode "FirstBoot" -StageId "write" -StagePercent 0) "overall percent at write start"
+Assert-Equal 30 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "system" -StagePercent 250) "overall percent clamps stage percent"
+Assert-Equal 5 (Get-CreatorOverallPercent -ContentMode "Prebuilt" -StageId "system" -StagePercent -10) "overall percent clamps negative stage percent"
+
+# --- System (base image) progress lines ----------------------------------------
+Assert-Equal 42 (Get-SystemPercentForLine -Line "System files: 42%") "system percent parsed"
+Assert-Equal 0 (Get-SystemPercentForLine -Line "System files: 0%") "system percent zero parsed"
+Assert-Equal 100 (Get-SystemPercentForLine -Line "System files: 100%") "system percent 100 parsed"
+Assert-Equal $null (Get-SystemPercentForLine -Line "Downloading: file.zim") "content line has no system percent"
+Assert-Equal $null (Get-SystemPercentForLine -Line "System files: soon") "non-numeric system line has no percent"
+Assert-Equal $null (Get-SystemPercentForLine -Line "") "empty line has no system percent"
+
+# --- Weighted download and item stage progress ---------------------------------
+Assert-Equal 5 (Get-DownloadStagePercent -CompletedWeight 0 -CurrentWeight 10 -CurrentPercent 50 -TotalWeight 100) "download stage percent mid-item"
+Assert-Equal 50 (Get-DownloadStagePercent -CompletedWeight 50 -CurrentWeight 0 -CurrentPercent 0 -TotalWeight 100) "download stage percent between items"
+Assert-Equal 100 (Get-DownloadStagePercent -CompletedWeight 100 -CurrentWeight 0 -CurrentPercent 0 -TotalWeight 100) "download stage percent complete"
+Assert-Equal 0 (Get-DownloadStagePercent -CompletedWeight 0 -CurrentWeight 0 -CurrentPercent 0 -TotalWeight 0) "download stage percent with no items"
+Assert-Equal 75 (Get-ItemStagePercent -CompletedCount 3 -TotalCount 4) "item stage percent counts copies"
+Assert-Equal 0 (Get-ItemStagePercent -CompletedCount 0 -TotalCount 0) "item stage percent with no items"
+Assert-Equal 100 (Get-ItemStagePercent -CompletedCount 4 -TotalCount 4) "item stage percent complete"
+
+# --- Writer line mapping for the image acquisition and copy stages -------------
+$stageCases2 = @(
+  @{ Line = "System files: 42%"; Stage = "system" }
+  @{ Line = "Checking available disk space."; Stage = "system" }
+  @{ Line = "Verifying cached base image asset (SHA-256)."; Stage = "system" }
+  @{ Line = "Cached base image asset verified."; Stage = "system" }
+  @{ Line = "Cached base image asset failed verification: ewp-base-0.4.1.img.gz"; Stage = "system" }
+  @{ Line = "Removing incomplete base image download: ewp-base-0.4.1.img.gz.partial"; Stage = "system" }
+  @{ Line = "Preparing to download selected content."; Stage = "download" }
+  @{ Line = "Content download complete."; Stage = "download" }
+  @{ Line = "Copied: wikipedia_en_all_nopic.zim"; Stage = "copy" }
+)
+foreach ($case in $stageCases2) {
+  Assert-Equal $case.Stage (Get-StageForWriterLine -Line $case.Line) ("stage for line: " + $case.Line)
+}
+
+# --- Status text for the image acquisition and copy stages ---------------------
+Assert-Equal "Preparing system files - 42%" (Get-WriterStatusTextForLine -Line "System files: 42%") "system progress status"
+Assert-Equal "Checking available disk space." (Get-WriterStatusTextForLine -Line "Checking available disk space.") "disk space status"
+Assert-Equal "Verifying cached base image asset (SHA-256)." (Get-WriterStatusTextForLine -Line "Verifying cached base image asset (SHA-256).") "cache verify status"
+Assert-Equal "Cached system image verified." (Get-WriterStatusTextForLine -Line "Cached base image asset verified.") "cache verified status"
+Assert-Equal "Cached system image failed verification; downloading it again." (Get-WriterStatusTextForLine -Line "Cached base image asset failed verification: ewp-base-0.4.1.img.gz") "cache failed status"
+Assert-Equal "Removing incomplete base image download: ewp-base-0.4.1.img.gz.partial" (Get-WriterStatusTextForLine -Line "Removing incomplete base image download: ewp-base-0.4.1.img.gz.partial") "stale partial status"
+Assert-Equal "Preparing to download the selected libraries." (Get-WriterStatusTextForLine -Line "Preparing to download selected content.") "content prep status"
+Assert-Equal "Selected content is ready." (Get-WriterStatusTextForLine -Line "Content download complete.") "content complete status"
+Assert-Equal "Copied wikipedia_en_all_nopic.zim" (Get-WriterStatusTextForLine -Line "Copied: wikipedia_en_all_nopic.zim") "copied status"
+
+# --- Manifest override in the frozen writer argument contract ------------------
+$buildArgsWithManifest = New-PrebuiltBuildArguments `
+  -DiskNumber 3 `
+  -ProfilePath "C:\ws\creator-profile.txt" `
+  -DeviceConfigPath "C:\ws\config\dynamic-appliance-config.json" `
+  -ContentDir "C:\cache" `
+  -WorkspaceDir "C:\ws" `
+  -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+  -ContentMode "Prebuilt" `
+  -ImagePathOverride "D:\images\ewp-base-0.4.1.img.gz" `
+  -ManifestPathOverride "D:\images\ewp-base-0.4.1.img.manifest.json"
+Assert-True ($buildArgsWithManifest.Contains('-ImagePath "D:\images\ewp-base-0.4.1.img.gz"')) "image override appended with manifest"
+Assert-True ($buildArgsWithManifest.Contains('-ManifestPath "D:\images\ewp-base-0.4.1.img.manifest.json"')) "manifest override appended"
+$buildArgsNoManifest = New-PrebuiltBuildArguments `
+  -DiskNumber 3 `
+  -ProfilePath "C:\ws\creator-profile.txt" `
+  -DeviceConfigPath "C:\ws\config\dynamic-appliance-config.json" `
+  -ContentDir "C:\cache" `
+  -WorkspaceDir "C:\ws" `
+  -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+  -ContentMode "Prebuilt" `
+  -ImagePathOverride "D:\images\ewp-base-0.4.1.img.gz"
+Assert-True (-not $buildArgsNoManifest.Contains("-ManifestPath")) "no manifest path without override"
+
 # --- Summary ---------------------------------------------------------------------
 Write-Output ("")
 Write-Output ("Core module tests: " + $script:passed + " passed, " + $script:failed + " failed.")

@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Fixed
+
+- The base image is now acquired entirely inside the creator. The writer downloads the pinned `ewp-base` release asset from the configured GitHub release, verifies it against the manifest SHA-256, and reuses a verified cached copy instead of downloading again. Downloads are atomic (`.partial` file plus rename), stale partial downloads are cleaned up on the next run, cached assets are hash-verified with self-healing when the cache does not match, and the workspace drive free-space requirement (download plus unpack, with a margin) is checked before anything is downloaded.
+- The creator's base-image fallback now asks for the Emergency Web Pi base image (`ewp-base`) and its manifest instead of a raw Raspberry Pi OS image, which the writer cannot use; the retry passes both `-ImagePath` and `-ManifestPath` and restarts the whole-workflow progress from zero.
+- The overall progress bar now represents the whole workflow. Stage weights (requirements, system files, content download, write, partition, copy, verify) map every writer line to a weighted percentage, the bar is monotonic across stage transitions, and the long base-image stage reports real download, hash, and unpack progress (`System files: N%`) instead of sitting near zero while the image is prepared.
+- Cancelling a build no longer risks hanging the UI. The writer process tree is stopped with `taskkill /T /F` without blocking the UI thread, a dispatcher tick force-kills the writer as a fallback, the output pump treats faulted or cancelled reads as end-of-stream and completes after short cancel/orphan grace periods, and a second cancel click is a no-op.
+- The details panel now shows timestamped writer output from the first second of the build, including cached-image reuse, disk-space checks, base-image download byte counts, and per-file copy progress (`Copied: <name>`).
+- Free-space failures are reported distinctly: not enough space on the PC's workspace drive versus not enough space on the SD card, each with a plain-language next step. The SD-card capacity check still runs before any destructive write.
+
 ## [0.4.1] - 2026-10-21
 
 ### Fixed

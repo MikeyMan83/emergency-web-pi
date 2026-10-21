@@ -257,5 +257,109 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("$config.ap.ssid", reader)
 
 
+    def test_cancel_never_blocks_the_ui_thread(self):
+        body = function_body(FRONTEND, "Stop-BuildProcess")
+        # Idempotent: a second cancel click must not start a second kill.
+        self.assertIn("$script:buildStopRequested", body)
+        # The UI thread must never wait for the writer to die.
+        self.assertNotIn("WaitForExit", body)
+        self.assertNotIn(".Wait(", body)
+        # No Task.Run: PowerShell scriptblocks have no runspace on a task thread.
+        self.assertNotIn("Task.Run", body)
+        # taskkill kills the tree immediately; a dispatcher tick force-kills the
+        # writer as a fallback, reading the target from a script variable because
+        # delegate handlers cannot see function locals.
+        self.assertIn("DispatcherTimer", body)
+        self.assertIn("$script:buildKillTarget", body)
+        self.assertIn("param($sender, $eventArgs)", body)
+        self.assertIn("$target.Kill()", body)
+
+    def test_build_pump_treats_canceled_reads_as_end_of_stream(self):
+        body = function_body(FRONTEND, "Start-BuildProcess")
+        # A killed process can fault or cancel a pending read; both are EOF.
+        self.assertIn("IsFaulted -or $task.IsCanceled", body)
+
+    def test_build_pump_has_cancel_and_orphan_grace_periods(self):
+        body = function_body(FRONTEND, "Start-BuildProcess")
+        # After cancel or after the writer exits, give the pipes a grace period
+        # so a surviving grandchild cannot hold the completion back forever.
+        self.assertIn("cancelGrace", body)
+        self.assertIn("orphanGrace", body)
+        self.assertIn("Build process finished (exit code", body)
+
+    def test_progress_bar_is_monotonic_across_stage_transitions(self):
+        body = function_body(FRONTEND, "Set-BuildBarPercent")
+        self.assertIn("$script:buildBarPercent", body)
+        self.assertIn("$percent -gt $script:buildBarPercent", body)
+        stage = function_body(FRONTEND, "Set-CurrentStage")
+        # Entering a stage moves the bar to the stage base, never back to zero.
+        self.assertIn("Get-CreatorStageBasePercent", stage)
+        self.assertIn("Set-BuildBarPercent -Percent $base", stage)
+        self.assertNotIn("Set-BuildBarPercent -Percent 0", stage)
+
+    def test_progress_covers_the_whole_workflow(self):
+        body = function_body(FRONTEND, "Invoke-BuildLine")
+        for needle in ("Get-SystemPercentForLine", "Get-DownloadStagePercent", "Get-ItemStagePercent", "Set-ActiveStagePercent"):
+            self.assertIn(needle, body)
+        self.assertIn("'^Content download complete'", body)
+        self.assertIn("'^Copied: (.+)$'", body)
+        active = function_body(FRONTEND, "Set-ActiveStagePercent")
+        self.assertIn("Get-CreatorOverallPercent", active)
+        start = function_body(FRONTEND, "Start-CreatorBuild")
+        for needle in ("$script:downloadTotalWeight", "$script:copyTotalCount", "$script:buildBarPercent = 0", "Set-CurrentStage -StageId 'requirements'"):
+            self.assertIn(needle, start)
+
+    def test_stage_weights_define_whole_workflow_progress(self):
+        for needle in ("function Get-CreatorStageWeights", "function Get-CreatorStageBasePercent", "function Get-CreatorOverallPercent", "function Get-SystemPercentForLine"):
+            self.assertIn(needle, CORE)
+
+    def test_base_image_fallback_offers_the_ewp_base_image(self):
+        body = function_body(FRONTEND, "Complete-CreatorBuild")
+        # The fallback must ask for the Emergency Web Pi base image (the writer
+        # needs an ewp-base image plus its manifest), not a raw Raspberry Pi OS image.
+        self.assertIn("Select the Emergency Web Pi base image", body)
+        self.assertIn("*.img;*.img.gz;*.001", body)
+        self.assertIn("ewp-base-*.img.manifest.json", body)
+        self.assertIn("ManifestPathOverride", body)
+        self.assertNotIn("Select the Raspberry Pi OS image", body)
+        self.assertNotIn("*.img.xz", body)
+
+    def test_base_image_fallback_resets_progress_for_the_retry(self):
+        body = function_body(FRONTEND, "Complete-CreatorBuild")
+        self.assertIn("$script:buildBarPercent = 0", body)
+        self.assertIn("$script:activeStageId = $null", body)
+
+    def test_error_mapping_distinguishes_workspace_and_sd_space(self):
+        body = function_body(FRONTEND, "Show-BuildError")
+        self.assertIn("Not enough free space on the workspace drive", body)
+        self.assertIn("Not enough free space on the SD card", body)
+
+    def test_writer_downloads_are_atomic_and_cache_is_verified(self):
+        self.assertIn(".partial", WRITER)
+        self.assertIn("Move-Item $partialPath $Destination", WRITER)
+        self.assertIn("Removing incomplete base image download", WRITER)
+        self.assertIn("Verifying cached base image asset (SHA-256).", WRITER)
+        self.assertIn("Cached base image asset failed verification", WRITER)
+        self.assertIn("function Get-ExpectedAssetSha256", WRITER)
+
+    def test_writer_checks_free_space_before_downloading(self):
+        self.assertIn("Not enough free space on the workspace drive", WRITER)
+        self.assertIn("function Get-DriveFreeBytes", WRITER)
+        download_fn = function_body(WRITER, "Download-BaseImageAssets")
+        self.assertLess(download_fn.index("Checking available disk space."), download_fn.index("Save-ReleaseAsset -Asset $info.Asset"))
+
+    def test_writer_reports_system_and_copy_progress(self):
+        for needle in ('"System files: 0%"', '"System files: 100%"', '"Preparing to download selected content."', '"Content download complete."', '"Copied: $($item.name)"', '"Checking available disk space."'):
+            self.assertIn(needle, WRITER)
+
+    def test_writer_manifest_requires_distribution_hashes(self):
+        body = function_body(WRITER, "Validate-PrebuiltManifest")
+        self.assertIn("Manifest is missing name, sizeBytes, or sha256 for an image part.", body)
+        self.assertIn("Manifest is missing distribution.file, sizeBytes, or sha256.", body)
+
+    def test_writer_checks_sd_space_before_the_destructive_write(self):
+        self.assertLess(WRITER.index("Not enough free space on the SD card"), WRITER.index("Write-ImageToDisk -ImagePath $rawImage"))
+
+
 if __name__ == "__main__":
     unittest.main()

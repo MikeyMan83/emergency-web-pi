@@ -63,6 +63,86 @@ function Get-FileSha256 {
   return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Get-FileSha256WithProgress {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [switch]$TrackSystemProgress
+  )
+
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    $buffer = New-Object byte[] (4MB)
+    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      [void]$hasher.TransformBlock($buffer, 0, $read, $null, 0)
+      if ($TrackSystemProgress) { Add-SystemProgress -Bytes $read }
+    }
+    [void]$hasher.TransformFinalBlock(@(), 0, 0)
+    return ([BitConverter]::ToString($hasher.Hash)).Replace("-", "").ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $hasher.Dispose()
+  }
+}
+
+function Get-DriveFreeBytes {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $full = [System.IO.Path]::GetFullPath($Path)
+  $root = [System.IO.Path]::GetPathRoot($full)
+  $drive = New-Object System.IO.DriveInfo($root)
+  return [int64]$drive.AvailableFreeSpace
+}
+
+function Get-ExpectedAssetSha256 {
+  param(
+    [Parameter(Mandatory = $true)]$Manifest,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
+
+  foreach ($part in @($Manifest.distribution.parts)) {
+    if ($part.name -eq $Name) { return ([string]$part.sha256).ToLowerInvariant() }
+  }
+  if ($Manifest.distribution.file -eq $Name) {
+    return ([string]$Manifest.distribution.sha256).ToLowerInvariant()
+  }
+  return ""
+}
+
+$script:systemProgressTotalBytes = 0
+$script:systemProgressDoneBytes = 0
+$script:systemProgressWatch = $null
+
+function Initialize-SystemProgress {
+  param([Parameter(Mandatory = $true)][int64]$TotalBytes)
+
+  $script:systemProgressTotalBytes = [Math]::Max(0, $TotalBytes)
+  $script:systemProgressDoneBytes = 0
+  $script:systemProgressWatch = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-Host "System files: 0%"
+}
+
+function Add-SystemProgress {
+  param([Parameter(Mandatory = $true)][int64]$Bytes)
+
+  if ($script:systemProgressTotalBytes -le 0) { return }
+  $script:systemProgressDoneBytes += $Bytes
+  if (-not $script:systemProgressWatch) { $script:systemProgressWatch = [System.Diagnostics.Stopwatch]::StartNew() }
+  if ($script:systemProgressWatch.Elapsed.TotalSeconds -lt 1) { return }
+  $script:systemProgressWatch.Reset()
+  $script:systemProgressWatch.Start()
+  $percent = [int](($script:systemProgressDoneBytes * 100) / $script:systemProgressTotalBytes)
+  if ($percent -gt 100) { $percent = 100 }
+  Write-Host ("System files: " + $percent + "%")
+}
+
+function Complete-SystemProgress {
+  if ($script:systemProgressTotalBytes -gt 0 -and $script:systemProgressDoneBytes -lt $script:systemProgressTotalBytes) {
+    $script:systemProgressDoneBytes = $script:systemProgressTotalBytes
+  }
+  Write-Host "System files: 100%"
+}
+
 function Get-TargetDisk {
   param(
     [int]$Number,
@@ -104,6 +184,15 @@ function Validate-PrebuiltManifest {
   if ([string]::IsNullOrWhiteSpace([string]$Manifest.image.sha256) -or [int64]$Manifest.image.sizeBytes -le 0) {
     throw "Manifest is missing image.sha256 or image.sizeBytes."
   }
+  if (@($Manifest.distribution.parts).Count -gt 0) {
+    foreach ($part in @($Manifest.distribution.parts)) {
+      if ([string]::IsNullOrWhiteSpace([string]$part.name) -or [int64]$part.sizeBytes -le 0 -or [string]::IsNullOrWhiteSpace([string]$part.sha256)) {
+        throw "Manifest is missing name, sizeBytes, or sha256 for an image part."
+      }
+    }
+  } elseif ([string]::IsNullOrWhiteSpace([string]$Manifest.distribution.file) -or [int64]$Manifest.distribution.sizeBytes -le 0 -or [string]::IsNullOrWhiteSpace([string]$Manifest.distribution.sha256)) {
+    throw "Manifest is missing distribution.file, sizeBytes, or sha256."
+  }
 }
 
 function Get-GitHubToken {
@@ -125,7 +214,8 @@ function Save-ReleaseAsset {
     [Parameter(Mandatory = $true)]$Asset,
     [Parameter(Mandatory = $true)][string]$Destination,
     [string]$Token,
-    [string]$ProgressLabel = ""
+    [string]$ProgressLabel = "",
+    [switch]$TrackSystemProgress
   )
 
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -149,7 +239,11 @@ function Save-ReleaseAsset {
   $response = $request.GetResponse()
   $total = $response.ContentLength
   $stream = $response.GetResponseStream()
-  $file = [System.IO.File]::Create($Destination)
+  # Download to a .partial file and rename only after the full asset is on
+  # disk, so an interrupted download can never be mistaken for a cached image.
+  $partialPath = $Destination + ".partial"
+  $file = [System.IO.File]::Create($partialPath)
+  $downloadComplete = $false
   try {
     $buffer = New-Object byte[] (1MB)
     [Int64]$downloaded = 0
@@ -157,16 +251,25 @@ function Save-ReleaseAsset {
     while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
       $file.Write($buffer, 0, $read)
       $downloaded += $read
+      if ($TrackSystemProgress) { Add-SystemProgress -Bytes $read }
       if ($watch.Elapsed.TotalSeconds -ge 1) {
         $watch.Reset()
         $watch.Start()
         Write-ReleaseAssetProgress -Label $ProgressLabel -Downloaded $downloaded -Total $total
       }
     }
+    $downloadComplete = $true
   } finally {
     $file.Dispose()
     $stream.Dispose()
     $response.Dispose()
+    if (-not $downloadComplete) {
+      Remove-Item $partialPath -Force -ErrorAction SilentlyContinue
+    }
+  }
+  if ($downloadComplete) {
+    if (Test-Path $Destination) { Remove-Item $Destination -Force }
+    Move-Item $partialPath $Destination
   }
   if ($ProgressLabel) {
     Write-ReleaseAssetProgress -Label $ProgressLabel -Downloaded $downloaded -Total $total
@@ -197,6 +300,10 @@ function Download-BaseImageAssets {
   )
 
   New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+  Get-ChildItem -Path $TargetDir -Filter "*.partial" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host ("Removing incomplete base image download: " + $_.Name)
+    Remove-Item $_.FullName -Force
+  }
   Write-Host "Looking up the base image release."
   $token = Get-GitHubToken
   $headers = @{ "User-Agent" = "EmergencyWebPi"; "Accept" = "application/vnd.github+json" }
@@ -222,23 +329,84 @@ function Download-BaseImageAssets {
     } else {
       $names = @($manifest.distribution.file)
     }
+    if ($names.Count -eq 0) {
+      throw "Release $($release.tag_name) has a manifest with no image file."
+    }
 
-    $firstPath = ""
+    $assetInfos = @()
+    $verifiedPaths = New-Object System.Collections.Generic.List[string]
     foreach ($name in $names) {
       $asset = @($release.assets | Where-Object { $_.name -eq $name })[0]
       if ($null -eq $asset) {
         throw "Release $($release.tag_name) is missing asset $name."
       }
       $path = Join-Path $TargetDir $name
-      if (-not (Test-Path $path) -or (Get-Item $path).Length -ne [int64]$asset.size) {
-        Write-Host "Downloading base image asset: $name"
-        Save-ReleaseAsset -Asset $asset -Destination $path -Token $token -ProgressLabel "Base image download"
-      } else {
-        Write-Host "Using cached base image asset: $name"
+      $expectedSha = Get-ExpectedAssetSha256 -Manifest $manifest -Name $name
+      if ([string]::IsNullOrWhiteSpace($expectedSha)) {
+        throw "Manifest is missing SHA-256 for $name."
       }
-      if ([string]::IsNullOrWhiteSpace($firstPath)) { $firstPath = $path }
+      $verified = $false
+      if ((Test-Path $path -PathType Leaf) -and (Get-Item $path).Length -eq [int64]$asset.size) {
+        Write-Host "Verifying cached base image asset (SHA-256)."
+        if ((Get-FileSha256 -Path $path) -eq $expectedSha) {
+          Write-Host "Cached base image asset verified."
+          $verified = $true
+          [void]$verifiedPaths.Add($path)
+        } else {
+          Write-Host "Cached base image asset failed verification: $name"
+          Remove-Item $path -Force
+        }
+      }
+      $assetInfos += [PSCustomObject]@{
+        Name = $name
+        Path = $path
+        Size = [int64]$asset.size
+        Asset = $asset
+        NeedsDownload = (-not $verified)
+        Verified = $verified
+      }
     }
-    return [PSCustomObject]@{ ImagePath = $firstPath; ManifestPath = $manifestPath }
+
+    $manifestBytes = [int64](Get-Item $manifestPath).Length
+    $imageBytes = [int64]$manifest.image.sizeBytes
+    $joinBytes = 0
+    if (@($manifest.distribution.parts).Count -gt 0) {
+      foreach ($info in $assetInfos) { $joinBytes += $info.Size }
+    }
+    $totalBytes = $manifestBytes + ($imageBytes * 2) + $joinBytes
+    foreach ($info in $assetInfos) {
+      if ($info.NeedsDownload) { $totalBytes += ($info.Size * 2) }
+    }
+    Initialize-SystemProgress -TotalBytes $totalBytes
+    Add-SystemProgress -Bytes $manifestBytes
+
+    Write-Host "Checking available disk space."
+    $downloadBytes = 0
+    foreach ($info in $assetInfos) {
+      if ($info.NeedsDownload) { $downloadBytes += $info.Size }
+    }
+    $requiredFree = $downloadBytes + $joinBytes + $imageBytes + 512MB
+    $freeBytes = Get-DriveFreeBytes -Path $TargetDir
+    if ($freeBytes -lt $requiredFree) {
+      throw ("Not enough free space on the workspace drive: the base image needs about " + [math]::Round($requiredFree / 1GB, 1) + " GB, but only " + [math]::Round($freeBytes / 1GB, 1) + " GB is free. Free up space or choose a different workspace.")
+    }
+
+    $firstPath = ""
+    foreach ($info in $assetInfos) {
+      if ($info.NeedsDownload) {
+        Write-Host "Downloading base image asset: $($info.Name)"
+        Save-ReleaseAsset -Asset $info.Asset -Destination $info.Path -Token $token -ProgressLabel "Base image download" -TrackSystemProgress
+      } else {
+        Write-Host "Using cached base image asset: $($info.Name)"
+      }
+      if ([string]::IsNullOrWhiteSpace($firstPath)) { $firstPath = $info.Path }
+    }
+    return [PSCustomObject]@{
+      ImagePath = $firstPath
+      ManifestPath = $manifestPath
+      VerifiedPaths = $verifiedPaths.ToArray()
+      ProgressInitialized = $true
+    }
   }
 
   throw "No release with an ewp-base image was found in $Repo."
@@ -248,7 +416,8 @@ function Expand-BaseImage {
   param(
     [Parameter(Mandatory = $true)]$Manifest,
     [Parameter(Mandatory = $true)][string]$SourcePath,
-    [Parameter(Mandatory = $true)][string]$OutputPath
+    [Parameter(Mandatory = $true)][string]$OutputPath,
+    [string[]]$SkipHashPaths = @()
   )
 
   $sourceDir = Split-Path -Parent $SourcePath
@@ -265,9 +434,6 @@ function Expand-BaseImage {
       if (-not (Test-Path $partPath)) {
         throw "Missing split image part: $($part.name)"
       }
-      if ((Get-FileSha256 -Path $partPath) -ne ([string]$part.sha256).ToLowerInvariant()) {
-        throw "SHA-256 mismatch for image part $($part.name)."
-      }
       $inputs += $partPath
     }
   } else {
@@ -275,10 +441,23 @@ function Expand-BaseImage {
     if (-not (Test-Path $gzPath)) {
       throw "Missing image archive: $($Manifest.distribution.file)"
     }
-    if ((Get-FileSha256 -Path $gzPath) -ne ([string]$Manifest.distribution.sha256).ToLowerInvariant()) {
-      throw "SHA-256 mismatch for $($Manifest.distribution.file)."
-    }
     $inputs += $gzPath
+  }
+
+  $skipHash = @{}
+  foreach ($skipPath in @($SkipHashPaths)) {
+    if (-not [string]::IsNullOrWhiteSpace($skipPath)) {
+      $skipHash[[System.IO.Path]::GetFullPath($skipPath)] = $true
+    }
+  }
+
+  foreach ($path in $inputs) {
+    $fullPath = [System.IO.Path]::GetFullPath($path)
+    if ($skipHash.ContainsKey($fullPath)) { continue }
+    $expectedSha = Get-ExpectedAssetSha256 -Manifest $Manifest -Name ([System.IO.Path]::GetFileName($path))
+    if ((Get-FileSha256WithProgress -Path $path -TrackSystemProgress) -ne $expectedSha) {
+      throw "SHA-256 mismatch for $([System.IO.Path]::GetFileName($path))."
+    }
   }
 
   Write-Host "Unpacking base image ..."
@@ -296,6 +475,7 @@ function Expand-BaseImage {
         while (($read = $in.Read($buffer, 0, $buffer.Length)) -gt 0) {
           $out.Write($buffer, 0, $read)
           $copied += $read
+          Add-SystemProgress -Bytes $read
           if ($watch.Elapsed.TotalSeconds -ge 2) {
             $watch.Reset()
             $watch.Start()
@@ -319,6 +499,7 @@ function Expand-BaseImage {
     while (($read = $gz.Read($buffer, 0, $buffer.Length)) -gt 0) {
       $imgOut.Write($buffer, 0, $read)
       $unpacked += $read
+      Add-SystemProgress -Bytes $read
       if ($watch.Elapsed.TotalSeconds -ge 2) {
         $watch.Reset()
         $watch.Start()
@@ -550,6 +731,8 @@ Write-Host "Checked: administrator access."
 $resolvedWorkspace = Resolve-WorkspacePath -PathValue $WorkspaceDir
 $resolvedCache = Resolve-WorkspacePath -PathValue $ContentDir
 $baseCache = Join-Path $resolvedWorkspace "prebuilt-base-cache"
+$verifiedImagePaths = @()
+$systemProgressInitialized = $false
 New-Item -ItemType Directory -Path $resolvedWorkspace -Force | Out-Null
 New-Item -ItemType Directory -Path $resolvedCache -Force | Out-Null
 
@@ -589,10 +772,13 @@ if ([string]::IsNullOrWhiteSpace($ImagePath)) {
   try {
     $assets = Download-BaseImageAssets -Repo $ReleaseRepo -TargetDir $baseCache
   } catch {
+    if ($_.Exception.Message -match "^Not enough free space") { throw }
     throw "BASE_IMAGE_UNAVAILABLE: could not download the base image from https://github.com/$ReleaseRepo/releases ($($_.Exception.Message)). Download the ewp-base files manually and pass -ImagePath."
   }
   $ImagePath = $assets.ImagePath
   if ([string]::IsNullOrWhiteSpace($ManifestPath)) { $ManifestPath = $assets.ManifestPath }
+  $verifiedImagePaths = @($assets.VerifiedPaths)
+  $systemProgressInitialized = ($assets.ProgressInitialized -eq $true)
 }
 if (-not (Test-Path $ImagePath)) { throw "Image artifact not found: $ImagePath" }
 $ImagePath = (Resolve-Path $ImagePath).Path
@@ -606,13 +792,46 @@ $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
 Validate-PrebuiltManifest -Manifest $manifest
 
 $rawImagePath = Join-Path $resolvedWorkspace "prebuilt-base.img"
+$expectedImageBytes = [int64]$manifest.image.sizeBytes
+$sourceIsRawImage = $ImagePath.EndsWith(".img", [System.StringComparison]::OrdinalIgnoreCase)
+if (-not $systemProgressInitialized) {
+  $inputBytes = 0
+  $hashBytes = 0
+  if (-not $sourceIsRawImage) {
+    $sourceDir = Split-Path -Parent $ImagePath
+    $inputPaths = @()
+    if (@($manifest.distribution.parts).Count -gt 0) {
+      foreach ($part in @($manifest.distribution.parts)) { $inputPaths += (Join-Path $sourceDir $part.name) }
+    } else {
+      $inputPaths += (Join-Path $sourceDir $manifest.distribution.file)
+    }
+    foreach ($inputPath in $inputPaths) {
+      if (-not (Test-Path $inputPath)) { throw "Missing base image input: $inputPath" }
+      $inputBytes += (Get-Item $inputPath).Length
+      if (-not ($verifiedImagePaths -contains $inputPath)) { $hashBytes += (Get-Item $inputPath).Length }
+    }
+  }
+  $joinBytes = 0
+  if (-not $sourceIsRawImage -and @($manifest.distribution.parts).Count -gt 0) { $joinBytes = $inputBytes }
+  $systemTotal = if ($sourceIsRawImage) { $expectedImageBytes } else { $hashBytes + $joinBytes + ($expectedImageBytes * 2) }
+  Initialize-SystemProgress -TotalBytes $systemTotal
+
+  Write-Host "Checking available disk space."
+  $requiredFree = if ($sourceIsRawImage) { $expectedImageBytes + 256MB } else { $inputBytes + $expectedImageBytes + 256MB }
+  $freeBytes = Get-DriveFreeBytes -Path $resolvedWorkspace
+  if ($freeBytes -lt $requiredFree) {
+    throw ("Not enough free space on the workspace drive: the base image needs about " + [math]::Round($requiredFree / 1GB, 1) + " GB, but only " + [math]::Round($freeBytes / 1GB, 1) + " GB is free. Free up space or choose a different workspace.")
+  }
+}
 Write-Host "Verifying base image download (SHA-256)."
-$rawImage = Expand-BaseImage -Manifest $manifest -SourcePath $ImagePath -OutputPath $rawImagePath
+$rawImage = Expand-BaseImage -Manifest $manifest -SourcePath $ImagePath -OutputPath $rawImagePath -SkipHashPaths $verifiedImagePaths
 if ((Get-Item $rawImage).Length -ne [int64]$manifest.image.sizeBytes) {
   throw "Unpacked image size does not match the manifest."
 }
 Write-Host "Verifying unpacked base image (SHA-256)."
-if ((Get-FileSha256 -Path $rawImage) -ne ([string]$manifest.image.sha256).ToLowerInvariant()) {
+$actualImageSha = Get-FileSha256WithProgress -Path $rawImage -TrackSystemProgress
+Complete-SystemProgress
+if ($actualImageSha -ne ([string]$manifest.image.sha256).ToLowerInvariant()) {
   throw "Unpacked image SHA-256 does not match the manifest."
 }
 Write-Host "Base image verified."
@@ -621,6 +840,7 @@ Write-Host "Base image verified."
 $items = @()
 $aria = ""
 if ($ContentMode -eq "Prebuilt") {
+  Write-Host "Preparing to download selected content."
   $aria = Resolve-AriaPath
   foreach ($url in $urls) {
     $name = Resolve-ZimFileName -Url $url
@@ -635,9 +855,10 @@ if ($ContentMode -eq "Prebuilt") {
     if ($length -le 0) { throw "Downloaded file is empty: $name" }
     $items += [ordered]@{ name = $name; bytes = [int64]$length }
   }
+  Write-Host "Content download complete."
   $needed = ($items | Measure-Object -Property bytes -Sum).Sum
   if ($needed + 1GB -gt $disk.Size) {
-    throw "Selected content needs $([math]::Round($needed / 1GB, 1)) GB but the card holds $([math]::Round($disk.Size / 1GB, 1)) GB."
+    throw "Not enough free space on the SD card: selected content needs $([math]::Round($needed / 1GB, 1)) GB but the card holds $([math]::Round($disk.Size / 1GB, 1)) GB."
   }
 }
 
@@ -656,6 +877,7 @@ if ($ContentMode -eq "Prebuilt") {
     if ((Get-Item $dest).Length -ne $item.bytes) {
       throw "Copied file size mismatch for $($item.name)."
     }
+    Write-Host "Copied: $($item.name)"
   }
   Write-TextFile -Path (Join-Path $zimRoot "content-manifest.json") -Content (([ordered]@{ schemaVersion = 1; items = $items } | ConvertTo-Json -Depth 5))
 } else {
