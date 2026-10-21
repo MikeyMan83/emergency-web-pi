@@ -12,4 +12,4 @@ You must strictly adhere to the following development workflow:
 2. **Implementation First:** Complete the entire design and implementation phase first within the frontend environment.
 3. **Batch Checks:** Run all available checks, tests, and linters together only after the implementation is complete.
 4. **Final Packaging:** Package the final candidate exactly ONCE after all checks have passed.
-5. **No Publishing:** Do NOT publish a release.
+//5. **No Publishing:** Do NOT publish a release.
