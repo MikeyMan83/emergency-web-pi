@@ -23,8 +23,14 @@ function Write-AppLog {
     param([Parameter(Mandatory)][string]$Message)
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $line = "[$stamp] $Message"
+    if (-not $script:logFile) {
+        $logDir = Join-Path $script:repoRoot 'logs'
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        $script:logFile = Join-Path $logDir ("startup-" + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.log')
+    }
     foreach ($target in $script:logTargets) {
         try {
+            # DispatcherPriority lives in System.Windows.Threading (WindowsBase).
             $target.Dispatcher.Invoke([action] {
                 $target.AppendText($line + [Environment]::NewLine)
                 $target.ScrollToEnd()
@@ -32,13 +38,13 @@ function Write-AppLog {
                     $target.Text = $target.Text.Substring($target.Text.Length - 100000)
                     $target.ScrollToEnd()
                 }
-            }, [System.Threading.DispatcherPriority]::Background)
-        } catch { }
-    }
-    if (-not $script:logFile) {
-        $logDir = Join-Path $script:repoRoot 'logs'
-        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-        $script:logFile = Join-Path $logDir ("startup-" + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.log')
+            }, [System.Windows.Threading.DispatcherPriority]::Background)
+        } catch {
+            # A broken log target must not lose the diagnostic; keep it in the file.
+            try {
+                Add-Content -Path $script:logFile -Value ("[$stamp] Could not write to a log target: " + $_.Exception.Message) -Encoding UTF8 -ErrorAction Stop
+            } catch { }
+        }
     }
     # Another process (the release smoke test, antivirus) can briefly hold the
     # log file with a share mode that makes this append fail; retry so no line
@@ -331,6 +337,8 @@ function Show-AppConfirm {
         [Parameter(Mandatory)][string]$Message,
         [ValidateSet('Info', 'Warning', 'Error')][string]$Kind = 'Warning'
     )
+    # Test seam: the headless lifecycle tests replace the modal confirm.
+    if ($script:confirmOverride) { return (& $script:confirmOverride $Title $Message $Kind) }
     $dialog = New-MessageDialog -Title $Title -Message $Message -Kind $Kind -ShowCancel
     [void]$dialog.ShowDialog()
     return ($dialog.Tag -eq 'OK')
@@ -349,6 +357,8 @@ function Open-LearnMoreUrl {
 
 function Select-FilePath {
     param([string]$Filter = 'All files (*.*)|*.*', [string]$Title = 'Select a file')
+    # Test seam: the headless lifecycle tests replace the modal picker.
+    if ($script:filePickerOverride) { return (& $script:filePickerOverride $Filter $Title) }
     $dialog = New-Object Microsoft.Win32.OpenFileDialog
     $dialog.Filter = $Filter
     $dialog.Title = $Title
@@ -381,6 +391,7 @@ function Start-BuildProcess {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = $script:repoRoot
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
     $script:buildJob = $process
@@ -464,7 +475,13 @@ function Start-BuildProcess {
                     $output = @($script:buildOutputLines) + @($script:buildErrorLines)
                     Write-AppLog ('Build process finished (exit code ' + $exitCode.ToString() + $(if ($script:buildCancelled) { '; cancelled' } else { '' }) + ').')
                     $sender.Stop()
-                    if ($script:buildOnComplete) { & $script:buildOnComplete $exitCode $output }
+                    if ($script:buildOnComplete) {
+                        try {
+                            & $script:buildOnComplete $exitCode $output
+                        } catch {
+                            Write-AppLog ('Build completion handler error: ' + $_.Exception.Message)
+                        }
+                    }
                 }
             }
         } catch {
@@ -473,11 +490,41 @@ function Start-BuildProcess {
     })
     $lineTimer.Start()
 
+    # Startup diagnostics: record what is launched, from where, and with which
+    # arguments (profile paths redacted), so a stuck or failed start is
+    # explainable from the log panel.
+    Write-AppLog ('Launching writer: ' + $psi.FileName)
+    Write-AppLog ('Writer script: ' + (Redact-BuildDiagnosticText -Text $FilePath))
+    Write-AppLog ('Writer working directory: ' + $psi.WorkingDirectory)
+    Write-AppLog ('Writer arguments: ' + (Redact-BuildDiagnosticText -Text $Arguments))
+
     # The output streams only exist once the process has started. Reading
     # StandardOutput/StandardError before Start() returns null, which broke the
     # pump and (with $ErrorActionPreference = 'Stop') prevented the build from
     # ever launching.
-    [void]$process.Start()
+    try {
+        [void]$process.Start()
+    } catch {
+        # The writer never existed. Report it through the normal completion path
+        # so the user sees the reason and gets a usable state instead of a
+        # progress page that never advances.
+        $reason = $_.Exception.Message
+        Write-AppLog ('Could not start the writer process: ' + $reason)
+        $lineTimer.Stop()
+        $script:buildStdoutTask = $null
+        $script:buildStderrTask = $null
+        $script:buildCompleted.Done = $true
+        $script:buildExitedAt = Get-Date
+        if ($script:buildOnComplete) {
+            try {
+                & $script:buildOnComplete 1 @('WRITER_START_FAILED: ' + $reason)
+            } catch {
+                Write-AppLog ('Build completion handler error: ' + $_.Exception.Message)
+            }
+        }
+        return $null
+    }
+    Write-AppLog ('Writer process started (pid ' + $process.Id.ToString() + ').')
     $script:buildStdoutTask = $process.StandardOutput.ReadLineAsync()
     $script:buildStderrTask = $process.StandardError.ReadLineAsync()
     $script:buildLastLineTime = Get-Date
@@ -487,6 +534,34 @@ function Start-BuildProcess {
 function Test-BuildProcessExited {
     if (-not $script:buildJob) { return $true }
     try { return $script:buildJob.HasExited } catch { return $true }
+}
+
+function Complete-BuildCancellation {
+    # Ends the build in the cancelled state even when no writer process is
+    # running (before launch, or while the base-image picker is open). The pump
+    # sets buildCompleted.Done before its own completion, so a manual
+    # cancellation must not re-fire the completion handler, but it must still
+    # leave the progress page.
+    if (-not $script:buildCompleted) { $script:buildCompleted = @{ Done = $false } }
+    $alreadyCompleted = $script:buildCompleted.Done
+    $script:buildCompleted.Done = $true
+    if ($script:elapsedTimer) { $script:elapsedTimer.Stop() }
+    Stop-Marquee
+    if ($script:app.Step -ne 5) {
+        # The build already finished and the UI moved on (completion or error
+        # page); a late cancel must not yank the user off that page.
+        return
+    }
+    if ($alreadyCompleted -or -not $script:buildOnComplete) {
+        Show-BuildError -ExitCode (-1) -Output 'CANCELLED: the operation was cancelled.' -Cancelled $true
+        return
+    }
+    try {
+        & $script:buildOnComplete (-1) @('CANCELLED: the operation was cancelled before a writer process was running.')
+    } catch {
+        Write-AppLog ('Build completion handler error: ' + $_.Exception.Message)
+        Show-BuildError -ExitCode (-1) -Output 'CANCELLED: the operation was cancelled.' -Cancelled $true
+    }
 }
 
 function Stop-BuildProcess {
@@ -499,12 +574,12 @@ function Stop-BuildProcess {
     if ($cancelButton) { $cancelButton.IsEnabled = $false }
     Set-ProgressStatus -Text 'Cancelling...'
     Write-AppLog 'Cancelling...'
-    if (-not $script:buildJob) {
-        Write-AppLog 'No build process was running.'
-        return
-    }
     if (Test-BuildProcessExited) {
-        Write-AppLog 'The build process had already exited.'
+        # No live writer (not launched yet, or the previous one already
+        # exited): finish the cancellation so the user is never stranded on
+        # the progress page.
+        Write-AppLog 'No build process was running.'
+        Complete-BuildCancellation
         return
     }
 
@@ -1380,6 +1455,28 @@ function Test-SelectedDiskStillValid {
     return $true
 }
 
+function Reset-CreatorBuildProgress {
+    # Shared by the first build and the base-image retry: a retry is a new
+    # build, so the whole-workflow progress counters and the elapsed timer
+    # restart instead of freezing at the previous attempt's values.
+    $script:buildStartTime = Get-Date
+    $script:buildBarPercent = 0
+    $script:buildStagePercent = 0
+    $script:activeStageId = $null
+    $script:buildCancelled = $false
+    $script:buildStopRequested = $false
+    $script:buildCancelledAt = $null
+    $script:buildExitedAt = $null
+    $script:downloadCompletedWeight = 0
+    $script:downloadCurrentItem = $null
+    $script:downloadCurrentPercent = 0
+    foreach ($item in $script:downloadItems) { $item.Completed = $false }
+    $script:copyCompletedCount = 0
+    $elapsedControl = Find-Control 'ProgressElapsed'
+    if ($elapsedControl) { $elapsedControl.Text = '' }
+    Start-ElapsedTimer
+}
+
 function Start-CreatorBuild {
     # The build contains exactly the checked libraries; the creator gates Continue on
     # at least one checked library, so an empty selection is an error, not a fallback.
@@ -1393,64 +1490,68 @@ function Start-CreatorBuild {
         return
     }
 
-    $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
-    $profilePath = Write-GeneratedProfileFile -Entries $entries
-    Write-AppLog ('Creator build starting with ' + $entries.Count.ToString() + ' libraries.')
+    Show-Step -Step 5
+    Set-ProgressStatus -Text 'Validating the selected image and content...'
+    Add-Log 'Validating the selected image and content.'
+    try {
+        $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
+        $estimate = Get-PreflightEstimate -Items @($checked | ForEach-Object { $_.Item }) -BaseManifest $script:app.BaseManifest
+        $script:app.RequiredBytes = $estimate.RequiredBytes
+        $script:app.RequiredBytesKnown = $true
 
-    $estimate = Get-PreflightEstimate -Items @($checked | ForEach-Object { $_.Item }) -BaseManifest $script:app.BaseManifest
-    $script:app.RequiredBytes = $estimate.RequiredBytes
-    $script:app.RequiredBytesKnown = $true
+        Set-ProgressStatus -Text 'Preparing the build...'
+        Add-Log 'Preparing the build (content profile, Wi-Fi configuration, writer arguments).'
+        $profilePath = Write-GeneratedProfileFile -Entries $entries
+        Write-AppLog ('Creator build starting with ' + $entries.Count.ToString() + ' libraries.')
 
-    $totals = Get-SelectionTotals -Items @($checked | ForEach-Object { $_.Item })
-    $script:downloadUseBytes = ($totals.KnownSize -and $totals.TotalBytes -gt 0)
-    $script:downloadItems = @($checked | ForEach-Object {
-        $name = Resolve-ZimFileName -Url $_.Item.SourceUrl
-        $weight = if ($script:downloadUseBytes) { [double]$_.Item.EstimatedBytes } else { 1.0 }
-        [PSCustomObject]@{ Name = $name; Weight = $weight; Completed = $false }
-    })
-    $script:downloadTotalWeight = 0
-    foreach ($item in $script:downloadItems) { $script:downloadTotalWeight += [double]$item.Weight }
-    $script:downloadCompletedWeight = 0
-    $script:downloadCurrentItem = $null
-    $script:downloadCurrentPercent = 0
-    $script:copyTotalCount = if ($script:app.ContentMode -eq 'Prebuilt') { $checked.Count } else { 0 }
-    $script:copyCompletedCount = 0
+        $totals = Get-SelectionTotals -Items @($checked | ForEach-Object { $_.Item })
+        $script:downloadUseBytes = ($totals.KnownSize -and $totals.TotalBytes -gt 0)
+        $script:downloadItems = @($checked | ForEach-Object {
+            $name = Resolve-ZimFileName -Url $_.Item.SourceUrl
+            $weight = if ($script:downloadUseBytes) { [double]$_.Item.EstimatedBytes } else { 1.0 }
+            [PSCustomObject]@{ Name = $name; Weight = $weight; Completed = $false }
+        })
+        $script:downloadTotalWeight = 0
+        foreach ($item in $script:downloadItems) { $script:downloadTotalWeight += [double]$item.Weight }
 
-    $wifi = New-WifiCredentials
-    $configDir = Join-Path $script:workspaceDirectory 'config'
-    if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
-    $configPath = Join-Path $configDir 'dynamic-appliance-config.json'
-    Set-Content -Path $configPath -Value (New-ApplianceConfigJsonText -Wifi $wifi) -Encoding UTF8
+        $wifi = New-WifiCredentials
+        $configDir = Join-Path $script:workspaceDirectory 'config'
+        if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
+        $configPath = Join-Path $configDir 'dynamic-appliance-config.json'
+        Set-Content -Path $configPath -Value (New-ApplianceConfigJsonText -Wifi $wifi) -Encoding UTF8
 
-    $arguments = New-PrebuiltBuildArguments `
-        -DiskNumber $script:app.SelectedDiskNumber `
-        -ProfilePath $profilePath `
-        -DeviceConfigPath $configPath `
-        -ContentDir $script:cacheDirectory `
-        -WorkspaceDir $script:workspaceDirectory `
-        -ReleaseRepo "MikeyMan83/emergency-web-pi" `
-        -ContentMode $script:app.ContentMode
+        $arguments = New-PrebuiltBuildArguments `
+            -DiskNumber $script:app.SelectedDiskNumber `
+            -ProfilePath $profilePath `
+            -DeviceConfigPath $configPath `
+            -ContentDir $script:cacheDirectory `
+            -WorkspaceDir $script:workspaceDirectory `
+            -ReleaseRepo "MikeyMan83/emergency-web-pi" `
+            -ContentMode $script:app.ContentMode
+    } catch {
+        # A failed validation or path resolution must not leave the wizard on a
+        # progress page that never advances.
+        Write-AppLog ('Build preparation failed: ' + $_.Exception.Message)
+        Show-BuildError -ExitCode 1 -Output ('BUILD_PREPARATION_FAILED: ' + $_.Exception.Message) -Cancelled $false
+        return
+    }
+    if (-not (Test-Path $script:prebuiltScript -PathType Leaf)) {
+        Write-AppLog ('Writer script not found: ' + (Redact-BuildDiagnosticText -Text $script:prebuiltScript))
+        Show-BuildError -ExitCode 1 -Output ('WRITER_START_FAILED: the writer script is missing: ' + (Redact-BuildDiagnosticText -Text $script:prebuiltScript)) -Cancelled $false
+        return
+    }
 
     $script:prebuiltFlow = $true
     $scriptToRun = $prebuiltScript
-    $script:buildStartTime = Get-Date
-    $script:buildBarPercent = 0
-    $script:buildStagePercent = 0
-    $script:buildCancelled = $false
-    $script:buildStopRequested = $false
-    $script:buildCancelledAt = $null
-    $script:buildExitedAt = $null
     $script:baseImageRetryDone = $false
-    Show-Step -Step 5
+    $script:copyTotalCount = if ($script:app.ContentMode -eq 'Prebuilt') { $checked.Count } else { 0 }
+    Reset-CreatorBuildProgress
     Build-StageList
     Set-CurrentStage -StageId 'requirements'
-    Set-ProgressStatus -Text 'Starting the build...'
-    Add-Log 'Starting the build process.'
     $titleControl = Find-Control 'ProgressTitle'
     if ($titleControl) { $titleControl.Text = 'Creating your Emergency Web Pi' }
-    $elapsedControl = Find-Control 'ProgressElapsed'
-    if ($elapsedControl) { $elapsedControl.Text = '' }
-    Start-ElapsedTimer
+    Set-ProgressStatus -Text 'Launching the writer process...'
+    Add-Log 'Launching the writer process.'
 
     $onLine = {
         param([string]$Line, [string]$Stream)
@@ -1461,7 +1562,8 @@ function Start-CreatorBuild {
         Complete-CreatorBuild -ExitCode $ExitCode -Output $Output
     }
     Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
-    Add-Log 'Build process started.'
+    Set-ProgressStatus -Text 'Waiting for the first writer response...'
+    Add-Log 'Waiting for the first writer response.'
 }
 
 function Start-ElapsedTimer {
@@ -1493,6 +1595,9 @@ function Start-ElapsedTimer {
             }
         }
     })
+    # Show a correct value immediately instead of waiting for the first tick.
+    $initialControl = Find-Control 'ProgressElapsed'
+    if ($initialControl) { $initialControl.Text = 'Elapsed: 0 s' }
     $script:elapsedTimer.Start()
 }
 
@@ -1513,14 +1618,22 @@ function Complete-CreatorBuild {
         Write-AppLog 'Base image download failed; asking the user for a local Emergency Web Pi base image.'
         $imagePath = Select-FilePath -Filter 'Emergency Web Pi base image (*.img;*.img.gz;*.001)|*.img;*.img.gz;*.001|All files (*.*)|*.*' -Title 'Select the Emergency Web Pi base image'
         if ($imagePath) {
-            Write-AppLog ('Retrying with local base image: ' + $imagePath)
+            Write-AppLog ('Retrying with local base image: ' + (Redact-BuildDiagnosticText -Text $imagePath))
+            if ($script:buildCancelled) {
+                # The user cancelled while the picker was open; do not launch.
+                Write-AppLog 'Retry cancelled before the writer was launched.'
+                return
+            }
             $manifestPath = Get-ChildItem -Path (Split-Path -Parent $imagePath) -Filter 'ewp-base-*.img.manifest.json' -File -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if (-not $manifestPath) { $manifestPath = Get-Item -Path ($imagePath + '.manifest.json') -ErrorAction SilentlyContinue }
             if (-not $manifestPath) {
                 $manifestPath = Select-FilePath -Filter 'Emergency Web Pi base image manifest (*.img.manifest.json)|*.img.manifest.json|All files (*.*)|*.*' -Title 'Select the base image manifest'
             }
-            if ($manifestPath) { Write-AppLog ('Using local base image manifest: ' + $manifestPath.FullName) }
+            # Select-FilePath returns a plain string; only Get-Item/Get-ChildItem
+            # results carry FullName.
+            $manifestFullPath = if ($manifestPath -is [System.IO.FileInfo]) { $manifestPath.FullName } else { [string]$manifestPath }
+            if ($manifestFullPath) { Write-AppLog ('Using local base image manifest: ' + (Redact-BuildDiagnosticText -Text $manifestFullPath)) }
             $checked = @($script:libraryRows | Where-Object { $_.CheckBox.IsChecked })
             $entries = @($checked | ForEach-Object { $_.Item.SourceUrl })
             $profilePath = Write-GeneratedProfileFile -Entries $entries
@@ -1535,30 +1648,33 @@ function Complete-CreatorBuild {
                 ContentMode = $script:app.ContentMode
                 ImagePathOverride = $imagePath
             }
-            if ($manifestPath) { $retryArgs['ManifestPathOverride'] = $manifestPath.FullName }
+            if ($manifestFullPath) { $retryArgs['ManifestPathOverride'] = $manifestFullPath }
             $arguments = New-PrebuiltBuildArguments @retryArgs
-            # A retry is a new build: reset the whole-workflow progress state.
-            $script:buildBarPercent = 0
-            $script:buildStagePercent = 0
-            $script:activeStageId = $null
-            $script:downloadCompletedWeight = 0
-            $script:downloadCurrentItem = $null
-            $script:downloadCurrentPercent = 0
-            foreach ($item in $script:downloadItems) { $item.Completed = $false }
-            $script:copyCompletedCount = 0
-            Set-CurrentStage -StageId 'requirements'
-            Set-ProgressStatus -Text 'Starting the build...'
-            Add-Log 'Starting the build process.'
-            $onLine = {
-                param([string]$Line, [string]$Stream)
-                Invoke-BuildLine -Line $Line -Stream $Stream
+            try {
+                # A retry is a new build: reset the whole-workflow progress state
+                # and restart the elapsed timer.
+                Reset-CreatorBuildProgress
+                Set-CurrentStage -StageId 'requirements'
+                Set-ProgressStatus -Text 'Launching the writer process...'
+                Add-Log 'Retrying the build with the selected base image.'
+                Add-Log 'Launching the writer process.'
+                $onLine = {
+                    param([string]$Line, [string]$Stream)
+                    Invoke-BuildLine -Line $Line -Stream $Stream
+                }
+                $onComplete = {
+                    param([int]$RetryExitCode, [string[]]$RetryOutput)
+                    Complete-CreatorBuild -ExitCode $RetryExitCode -Output $RetryOutput
+                }
+                # The writer script is script-scoped: a function-local variable
+                # from Start-CreatorBuild is gone by the time this runs.
+                Start-BuildProcess -FilePath $script:prebuiltScript -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
+                Set-ProgressStatus -Text 'Waiting for the first writer response...'
+                Add-Log 'Waiting for the first writer response.'
+            } catch {
+                Write-AppLog ('Base image retry failed to start: ' + $_.Exception.Message)
+                Show-BuildError -ExitCode 1 -Output ('WRITER_START_FAILED: ' + $_.Exception.Message) -Cancelled $false
             }
-            $onComplete = {
-                param([int]$RetryExitCode, [string[]]$RetryOutput)
-                Complete-CreatorBuild -ExitCode $RetryExitCode -Output $RetryOutput
-            }
-            Start-BuildProcess -FilePath $scriptToRun -Arguments $arguments -OnLine $onLine -OnComplete $onComplete
-            Add-Log 'Build process started.'
             return
         }
     }
@@ -1605,6 +1721,12 @@ function Show-BuildError {
     if ($Cancelled) {
         if ($messageControl) { $messageControl.Text = 'The operation was cancelled.' }
         if ($hintControl) { $hintControl.Text = 'No changes were made to the SD card. You can go back and try again.' }
+    } elseif ($Output.Contains('WRITER_START_FAILED')) {
+        if ($messageControl) { $messageControl.Text = 'The build helper could not be started.' }
+        if ($hintControl) { $hintControl.Text = 'The writer process could not be launched. Review the log below for the reason, then try again. The SD card was not modified.' }
+    } elseif ($Output.Contains('BUILD_PREPARATION_FAILED')) {
+        if ($messageControl) { $messageControl.Text = 'The build could not be prepared.' }
+        if ($hintControl) { $hintControl.Text = 'The selected content or base image could not be validated. Review the log below for the reason. No changes were made to the SD card, so you can go back and try again.' }
     } elseif ($Output.Contains('BASE_IMAGE_UNAVAILABLE')) {
         if ($messageControl) { $messageControl.Text = 'The Emergency Web Pi base image could not be downloaded.' }
         if ($hintControl) { $hintControl.Text = 'Check the Internet connection on this PC, then try again. If you already downloaded the ewp-base files, select them when prompted. The SD card was not modified.' }
@@ -1745,7 +1867,9 @@ function New-CreatorWindow {
     $btnCancel = Find-Control 'BtnCancel'
     if ($btnCancel) {
         $btnCancel.Add_Click({
-            if (Test-WriterCancellationSafe -StageId $script:activeStageId) {
+            # No active stage means nothing destructive has started yet, so
+            # cancellation is safe during every startup phase.
+            if ((Test-WriterCancellationSafe -StageId $script:activeStageId) -or -not $script:activeStageId) {
                 $confirmed = Show-AppConfirm -Kind Warning -Title 'Cancel the operation?' -Message 'The operation will stop. The SD card has not been written yet, so it is safe to cancel now.'
                 if ($confirmed) { Stop-BuildProcess }
             }

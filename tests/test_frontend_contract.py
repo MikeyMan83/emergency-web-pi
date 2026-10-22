@@ -306,7 +306,7 @@ class FrontendContractTests(unittest.TestCase):
         active = function_body(FRONTEND, "Set-ActiveStagePercent")
         self.assertIn("Get-CreatorOverallPercent", active)
         start = function_body(FRONTEND, "Start-CreatorBuild")
-        for needle in ("$script:downloadTotalWeight", "$script:copyTotalCount", "$script:buildBarPercent = 0", "Set-CurrentStage -StageId 'requirements'"):
+        for needle in ("$script:downloadTotalWeight", "$script:copyTotalCount", "Reset-CreatorBuildProgress", "Set-CurrentStage -StageId 'requirements'"):
             self.assertIn(needle, start)
 
     def test_stage_weights_define_whole_workflow_progress(self):
@@ -326,8 +326,15 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_base_image_fallback_resets_progress_for_the_retry(self):
         body = function_body(FRONTEND, "Complete-CreatorBuild")
-        self.assertIn("$script:buildBarPercent = 0", body)
-        self.assertIn("$script:activeStageId = $null", body)
+        # The retry routes through the shared progress reset (a retry is a new
+        # build). Pin the helper itself so the reset cannot silently lose a
+        # counter again - the v0.4.2 startup freeze came from exactly such drift.
+        self.assertIn("Reset-CreatorBuildProgress", body)
+        reset = function_body(FRONTEND, "Reset-CreatorBuildProgress")
+        self.assertIn("$script:buildBarPercent = 0", reset)
+        self.assertIn("$script:activeStageId = $null", reset)
+        self.assertIn("$script:buildStartTime = Get-Date", reset)
+        self.assertIn("Start-ElapsedTimer", reset)
 
     def test_error_mapping_distinguishes_workspace_and_sd_space(self):
         body = function_body(FRONTEND, "Show-BuildError")

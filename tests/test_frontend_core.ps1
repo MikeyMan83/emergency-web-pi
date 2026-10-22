@@ -520,6 +520,7 @@ $knownWpfTypeNames = @(
   "System.Windows.Media.SolidColorBrush",
   "System.Windows.MessageBox",
   "System.Windows.Thickness",
+  "System.Windows.Threading.DispatcherPriority",
   "System.Windows.Threading.DispatcherTimer"
 )
 
@@ -723,6 +724,34 @@ $buildArgsNoManifest = New-PrebuiltBuildArguments `
   -ContentMode "Prebuilt" `
   -ImagePathOverride "D:\images\ewp-base-0.4.1.img.gz"
 Assert-True (-not $buildArgsNoManifest.Contains("-ManifestPath")) "no manifest path without override"
+
+# --- Build diagnostic redaction ------------------------------------------------
+# Startup diagnostics echo the writer's executable, arguments and working
+# directory; the user's profile locations must not reach the on-screen log.
+# The test pins its own profile roots so it behaves identically on Windows and
+# on the Linux CI runner, then restores the real values.
+$redactionSavedUserProfile = $env:USERPROFILE
+$redactionSavedLocalAppData = $env:LOCALAPPDATA
+$redactionSavedAppData = $env:APPDATA
+try {
+  $env:USERPROFILE = 'C:\Users\TestUser'
+  $env:LOCALAPPDATA = 'C:\Users\TestUser\AppData\Local'
+  $env:APPDATA = 'C:\Users\TestUser\AppData\Roaming'
+
+  Assert-Equal 'Writer: powershell.exe -File %USERPROFILE%\scripts\writer.ps1' (Redact-BuildDiagnosticText -Text 'Writer: powershell.exe -File C:\Users\TestUser\scripts\writer.ps1') "redaction replaces the user profile root"
+  Assert-Equal 'Working directory: %LOCALAPPDATA%\Temp\ewp' (Redact-BuildDiagnosticText -Text 'Working directory: C:\Users\TestUser\AppData\Local\Temp\ewp') "redaction prefers the most specific root (LOCALAPPDATA over USERPROFILE)"
+  Assert-Equal 'Config: %APPDATA%\ewp\config.json' (Redact-BuildDiagnosticText -Text 'Config: C:\Users\TestUser\AppData\Roaming\ewp\config.json') "redaction replaces the roaming appdata root"
+  Assert-Equal 'cache at %USERPROFILE%\cache' (Redact-BuildDiagnosticText -Text 'cache at c:\users\testuser\cache') "redaction matches paths case-insensitively"
+  Assert-Equal '%USERPROFILE%\a and %USERPROFILE%\b' (Redact-BuildDiagnosticText -Text 'C:\Users\TestUser\a and C:\Users\TestUser\b') "redaction replaces every occurrence"
+  Assert-Equal 'D:\images\base.img -DiskNumber 3' (Redact-BuildDiagnosticText -Text 'D:\images\base.img -DiskNumber 3') "redaction leaves unrelated paths untouched"
+  Assert-Equal '' (Redact-BuildDiagnosticText -Text '') "redaction keeps empty text empty"
+  $env:LOCALAPPDATA = ''
+  Assert-Equal 'home: %USERPROFILE%' (Redact-BuildDiagnosticText -Text 'home: C:\Users\TestUser') "redaction still works when a profile root is unset"
+} finally {
+  if ($null -ne $redactionSavedUserProfile) { $env:USERPROFILE = $redactionSavedUserProfile } else { Remove-Item Env:\USERPROFILE -ErrorAction SilentlyContinue }
+  if ($null -ne $redactionSavedLocalAppData) { $env:LOCALAPPDATA = $redactionSavedLocalAppData } else { Remove-Item Env:\LOCALAPPDATA -ErrorAction SilentlyContinue }
+  if ($null -ne $redactionSavedAppData) { $env:APPDATA = $redactionSavedAppData } else { Remove-Item Env:\APPDATA -ErrorAction SilentlyContinue }
+}
 
 # --- Summary ---------------------------------------------------------------------
 Write-Output ("")

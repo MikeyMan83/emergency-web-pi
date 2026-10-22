@@ -560,6 +560,28 @@ function Test-WriterCancellationSafe {
   return ($StageId -eq "requirements" -or $StageId -eq "system" -or $StageId -eq "download")
 }
 
+function Redact-BuildDiagnosticText {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+  # Startup diagnostics echo paths; keep the user's profile locations out of
+  # the on-screen log. Matching is case-insensitive because Windows paths are.
+  $redacted = $Text
+  $roots = @(
+    @{ Path = $env:LOCALAPPDATA; Token = '%LOCALAPPDATA%' },
+    @{ Path = $env:APPDATA; Token = '%APPDATA%' },
+    @{ Path = $env:USERPROFILE; Token = '%USERPROFILE%' }
+  )
+  foreach ($root in $roots) {
+    if ([string]::IsNullOrWhiteSpace($root.Path)) { continue }
+    $redacted = [regex]::Replace(
+      $redacted,
+      [regex]::Escape($root.Path),
+      $root.Token,
+      [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  }
+  return $redacted
+}
+
 function Quote-Arg {
   param([Parameter(Mandatory = $true)][string]$Value)
 

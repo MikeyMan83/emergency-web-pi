@@ -57,6 +57,10 @@ jobs:
         run: |
           pwsh -NoProfile -File tests/test_frontend_core.ps1
 
+      - name: Run PowerShell creator build-lifecycle tests
+        run: |
+          pwsh -NoProfile -File tests/test_frontend_build.ps1
+
       - name: Parse PowerShell frontend scripts
         run: |
           pwsh -NoProfile -Command '
