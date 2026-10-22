@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-22
+
+### Fixed
+
+- The creator no longer gets stuck on "Starting the build..." after the base-image fallback asks for a local image and manifest. The retry launched the writer through a variable that only existed inside the first build's function, so the retry writer never started and the failure was swallowed; the retry now launches the writer with the correct script and arguments.
+- The build details panel is no longer blank. The log-to-panel dispatch referenced a nonexistent dispatcher-priority type, so every panel update failed silently; writer output now reaches the panel from the first second, and a dispatch failure is recorded in the log file instead of being swallowed.
+- The elapsed time no longer freezes during the base-image retry. A retry is treated as a new build: the whole-workflow progress state and the elapsed timer restart from zero instead of keeping the first attempt's stopped values.
+- Build startup now reports distinct stages (validating the selected image and content, preparing the build, launching the writer, waiting for the first writer response) and records timestamped diagnostics for the writer executable, arguments, working directory, and exit status, with user profile paths redacted from the on-screen log.
+- A writer that fails to start, exits immediately, or a build preparation that fails now shows the reason in plain language and returns to a usable error state instead of leaving the progress view silent.
+- Cancelling a build now works in every startup phase, including before the writer process exists and while the base-image file picker is open; cancelling returns to a cancelled state with a way back to the review step instead of leaving the wizard unresponsive.
+
+### Tests
+
+- Added a headless creator build-lifecycle suite (`tests/test_frontend_build.ps1`, 67 assertions) that drives the real frontend functions with fake writers and real child processes and dispatcher timers: successful image and manifest selection followed by the writer launch, the base-image retry, an invalid or mismatched manifest, writer creation failure and immediate exit, a writer that stays silent during a slow startup, and cancellation before creation, during launch, while output is drained, and during the file picker. It runs in Windows CI and skips on other platforms.
+- Added unit tests for the diagnostic redaction helper and extended the contract tests to pin the shared progress reset (including the elapsed-timer restart) used by both the first build and the retry.
+
 ## [0.4.2] - 2026-10-21
 
 ### Fixed
@@ -610,3 +626,4 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - RPi 3B+ quickstart guidance for SD card flashing and first boot automation.
 - First-boot bootstrap script to install Docker, clone/pull repo, and launch the stack.
 - Curated medical-survival content profile.
+
